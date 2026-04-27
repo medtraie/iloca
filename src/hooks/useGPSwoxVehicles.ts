@@ -1,11 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { createClient } from "@supabase/supabase-js";
-import { getLatestSnapshotPayload } from "@/services/supabaseService";
-
-// يجب التأكد من تهيئة supabase client للاتصال
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
-const supabase = createClient(supabaseUrl, supabaseKey);
+import { getLatestSnapshotPayload, getSupabaseClient } from "@/services/supabaseService";
 
 export interface GPSwoxVehicle {
   id: string;
@@ -88,19 +82,27 @@ export function useGPSwoxVehicles(refetchInterval = 30000, _companyId?: string) 
   return useQuery<GPSwoxVehicle[], Error>({
     queryKey: ["gpswox-vehicles"],
     queryFn: async () => {
-      if (!supabaseUrl || !supabaseKey) {
-        throw new Error("Supabase credentials not configured");
+      const supabase = getSupabaseClient();
+      if (!supabase) {
+        const cached = await getLatestSnapshotPayload("devices");
+        if (cached && cached.length > 0) {
+          const seen = new Set<string>();
+          return cached
+            .map((item) => normalizeVehicle(item))
+            .filter((v) => {
+              const key = `${v.imei || ""}|${v.plate || ""}|${v.name || ""}`.toLowerCase();
+              if (!key) return false;
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+        }
+        return [];
       }
       try {
         const { data, error } = await supabase.functions.invoke("gpswox", {
           body: {},
           method: "POST",
-          headers: supabaseKey
-            ? {
-                apikey: supabaseKey,
-                Authorization: `Bearer ${supabaseKey}`
-              }
-            : undefined
         });
 
         if (error) {

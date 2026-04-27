@@ -120,7 +120,7 @@ const Settings = () => {
     if (!supabase) {
       toast({
         title: "Configuration manquante",
-        description: "VITE_SUPABASE_URL أو VITE_SUPABASE_PUBLISHABLE_KEY غير مضبوط",
+        description: "VITE_SUPABASE_URL ou VITE_SUPABASE_PUBLISHABLE_KEY n'est pas configuré",
         variant: "destructive"
       });
       return;
@@ -128,7 +128,7 @@ const Settings = () => {
     if (!gpsApiUrl || !gpsEmail || !gpsPassword) {
       toast({
         title: "Champs requis",
-        description: "يرجى ملء API URL و Email و Password",
+        description: "Veuillez renseigner l'URL API, l'e-mail et le mot de passe",
         variant: "destructive"
       });
       return;
@@ -163,12 +163,12 @@ const Settings = () => {
       }
       toast({
         title: "✅ GPS Tracker",
-        description: "تم حفظ إعدادات GPSwox بنجاح"
+        description: "Les parametres GPSwox ont ete enregistres avec succes"
       });
     } catch (error: any) {
       toast({
         title: "❌ GPS Tracker",
-        description: error?.message || "فشل حفظ إعدادات GPSwox",
+        description: error?.message || "Echec de l'enregistrement des parametres GPSwox",
         variant: "destructive"
       });
     } finally {
@@ -505,8 +505,8 @@ const Settings = () => {
   const handleResetOfficialColor = () => {
     setBrandColor(DEFAULT_BRAND_COLOR);
     toast({
-      title: "✅ اللون الرسمي مفعل",
-      description: "تم اعتماد اللون الأصفر الرسمي للتطبيق",
+      title: "✅ Couleur officielle activee",
+      description: "La couleur jaune officielle de l'application a ete appliquee",
     });
   };
 
@@ -518,16 +518,16 @@ const Settings = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="lg:col-span-2" dir="rtl">
+        <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-3xl font-bold">إعدادات GPS Tracker</CardTitle>
+            <CardTitle className="text-3xl font-bold">Parametres GPS Tracker</CardTitle>
             <CardDescription className="text-lg">
-              للاتصال بنظام التتبع GPSwox/TrackPremier أدخل بيانات حساب
+              Pour connecter le systeme de suivi GPSwox/TrackPremier, renseignez vos identifiants
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="gpsApiUrl">رابط API (API URL)</Label>
+              <Label htmlFor="gpsApiUrl">URL API</Label>
               <Input
                 id="gpsApiUrl"
                 value={gpsApiUrl}
@@ -535,10 +535,10 @@ const Settings = () => {
                 placeholder="sf-tracker.pro"
                 disabled={gpsLoading || gpsSaving}
               />
-              <p className="text-sm text-muted-foreground">رابط خادم التتبع بدون `http://` أو `/api`</p>
+              <p className="text-sm text-muted-foreground">Adresse du serveur de suivi sans `http://` ni `/api`</p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="gpsEmail">البريد الإلكتروني (Email)</Label>
+              <Label htmlFor="gpsEmail">E-mail</Label>
               <Input
                 id="gpsEmail"
                 type="email"
@@ -549,7 +549,7 @@ const Settings = () => {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="gpsPassword">كلمة المرور (Password)</Label>
+              <Label htmlFor="gpsPassword">Mot de passe</Label>
               <div className="relative">
                 <Input
                   id="gpsPassword"
@@ -571,7 +571,7 @@ const Settings = () => {
             </div>
             <Button className="w-full" onClick={handleSaveGpsSettings} disabled={gpsSaving || gpsLoading}>
               <Save className={`h-4 w-4 ml-2 ${gpsSaving ? "animate-spin" : ""}`} />
-              {gpsSaving ? "جاري الحفظ..." : "حفظ الإعدادات"}
+              {gpsSaving ? "Enregistrement..." : "Enregistrer les parametres"}
             </Button>
           </CardContent>
         </Card>
