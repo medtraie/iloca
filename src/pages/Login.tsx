@@ -80,9 +80,6 @@ const Login = () => {
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? "Connexion..." : "Se connecter"}
             </Button>
-            <p className="text-xs text-muted-foreground">
-              Compte par défaut: admin@sftlocation.ma / admin123
-            </p>
           </form>
         </CardContent>
       </Card>

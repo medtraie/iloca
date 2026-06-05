@@ -1,11 +1,5 @@
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
-
-interface StoredUser {
-  id: string;
-  email: string;
-  passwordHash: string;
-  fullName: string;
-}
+import { getSupabaseClient } from "@/services/supabaseService";
 
 interface AuthUser {
   id: string;
@@ -21,56 +15,7 @@ interface AuthState {
   logout: () => void;
 }
 
-const AUTH_USERS_KEY = "auth:users";
-const AUTH_SESSION_KEY = "auth:session";
-
 const AuthContext = createContext<AuthState | undefined>(undefined);
-
-const hashPassword = async (plainText: string) => {
-  const normalized = plainText.trim();
-  if (typeof crypto !== "undefined" && crypto.subtle) {
-    const data = new TextEncoder().encode(normalized);
-    const digest = await crypto.subtle.digest("SHA-256", data);
-    return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
-  }
-  return btoa(normalized);
-};
-
-const toAuthUser = (stored: StoredUser): AuthUser => ({
-  id: stored.id,
-  email: stored.email,
-  fullName: stored.fullName
-});
-
-const getUsersFromStorage = (): StoredUser[] => {
-  try {
-    const raw = localStorage.getItem(AUTH_USERS_KEY);
-    return raw ? (JSON.parse(raw) as StoredUser[]) : [];
-  } catch {
-    return [];
-  }
-};
-
-const setUsersInStorage = (users: StoredUser[]) => {
-  localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(users));
-};
-
-const setSessionInStorage = (user: AuthUser | null) => {
-  if (!user) {
-    localStorage.removeItem(AUTH_SESSION_KEY);
-    return;
-  }
-  localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(user));
-};
-
-const getSessionFromStorage = (): AuthUser | null => {
-  try {
-    const raw = localStorage.getItem(AUTH_SESSION_KEY);
-    return raw ? (JSON.parse(raw) as AuthUser) : null;
-  } catch {
-    return null;
-  }
-};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -78,48 +23,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const initialize = async () => {
-      const users = getUsersFromStorage();
-      if (!users.length) {
-        const defaultUser: StoredUser = {
-          id: "u-admin",
-          email: "admin@sftlocation.ma",
-          passwordHash: await hashPassword("admin123"),
-          fullName: "Administrateur"
-        };
-        setUsersInStorage([defaultUser]);
+      const supabase = getSupabaseClient();
+      if (!supabase) {
+        setIsReady(true);
+        return;
       }
-      setUser(getSessionFromStorage());
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setUser({
+          id: session.user.id,
+          email: session.user.email || "",
+          fullName: session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "Utilisateur"
+        });
+      }
+
+      supabase.auth.onAuthStateChange((_event, session) => {
+        if (session?.user) {
+          setUser({
+            id: session.user.id,
+            email: session.user.email || "",
+            fullName: session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "Utilisateur"
+          });
+        } else {
+          setUser(null);
+        }
+      });
+
       setIsReady(true);
     };
+
     initialize();
   }, []);
 
   const login: AuthState["login"] = async (email, password) => {
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      return { success: false, message: "Service d'authentification non configuré." };
+    }
+
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail || !password) {
       return { success: false, message: "Veuillez saisir l'email et le mot de passe." };
     }
 
-    const users = getUsersFromStorage();
-    const candidate = users.find((stored) => stored.email.toLowerCase() === normalizedEmail);
-    if (!candidate) {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: normalizedEmail,
+      password,
+    });
+
+    if (error) {
       return { success: false, message: "Identifiants invalides." };
     }
 
-    const incomingHash = await hashPassword(password);
-    if (incomingHash !== candidate.passwordHash) {
-      return { success: false, message: "Identifiants invalides." };
+    if (data.user) {
+      setUser({
+        id: data.user.id,
+        email: data.user.email || "",
+        fullName: data.user.user_metadata?.full_name || data.user.email?.split("@")[0] || "Utilisateur"
+      });
+      return { success: true };
     }
 
-    const authUser = toAuthUser(candidate);
-    setUser(authUser);
-    setSessionInStorage(authUser);
-    return { success: true };
+    return { success: false, message: "Erreur inattendue." };
   };
 
-  const logout = () => {
+  const logout = async () => {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
     setUser(null);
-    setSessionInStorage(null);
   };
 
   const value = useMemo<AuthState>(
@@ -143,4 +117,3 @@ export function useAuth() {
   }
   return context;
 }
-

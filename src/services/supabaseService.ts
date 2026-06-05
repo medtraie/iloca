@@ -25,8 +25,8 @@ export const getSupabaseClient = () => {
   if (client) return client;
   client = createClient(getSupabaseUrl(), getSupabaseKey(), {
     auth: {
-      persistSession: false,
-      autoRefreshToken: false
+      persistSession: true,
+      autoRefreshToken: true
     }
   });
   return client;
