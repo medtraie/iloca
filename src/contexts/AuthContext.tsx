@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
-import { getSupabaseClient } from "@/services/supabaseService";
+import { getSupabaseClient, getSupabaseConfigError } from "@/services/supabaseService";
 
 interface AuthUser {
   id: string;
@@ -59,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login: AuthState["login"] = async (email, password) => {
     const supabase = getSupabaseClient();
     if (!supabase) {
-      return { success: false, message: "Service d'authentification non configuré." };
+      return { success: false, message: getSupabaseConfigError() || "Service d'authentification non configure." };
     }
 
     const normalizedEmail = email.trim().toLowerCase();

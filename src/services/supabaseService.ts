@@ -4,11 +4,17 @@ type JsonValue = string | number | boolean | null | { [key: string]: JsonValue }
 
 let client: SupabaseClient | null = null;
 
+const DEFAULT_SUPABASE_PROJECT_ID = "wypifrsooooeejfckomg";
+
+const getSupabaseProjectId = () => {
+  const envProjectId = import.meta.env.VITE_SUPABASE_PROJECT_ID as string | undefined;
+  return envProjectId || DEFAULT_SUPABASE_PROJECT_ID;
+};
+
 const getSupabaseUrl = () => {
   const envUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
   if (envUrl) return envUrl;
-  const fallbackRef = "wypifrsooooeejfckomg";
-  return `https://${fallbackRef}.supabase.co`;
+  return `https://${getSupabaseProjectId()}.supabase.co`;
 };
 
 const getSupabaseKey = () => {
@@ -19,6 +25,11 @@ const getSupabaseKey = () => {
 };
 
 export const isSupabaseConfigured = () => Boolean(getSupabaseUrl() && getSupabaseKey());
+
+export const getSupabaseConfigError = () => {
+  if (getSupabaseKey()) return "";
+  return "Supabase non configure: ajoutez VITE_SUPABASE_PUBLISHABLE_KEY dans le fichier .env.";
+};
 
 export const getSupabaseClient = () => {
   if (!isSupabaseConfigured()) return null;

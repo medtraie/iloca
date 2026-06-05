@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ShieldCheck } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { getSupabaseConfigError, isSupabaseConfigured } from "@/services/supabaseService";
 
 const Login = () => {
   const { isAuthenticated, isReady, login } = useAuth();
@@ -15,6 +16,7 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const configError = !isSupabaseConfigured() ? getSupabaseConfigError() : "";
 
   const from = (location.state as { from?: { pathname?: string } })?.from?.pathname || "/";
 
@@ -77,6 +79,14 @@ const Login = () => {
               />
             </div>
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
+            {configError ? (
+              <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                {configError}
+                <div className="mt-1 text-[11px]">
+                  Configurez `VITE_SUPABASE_PUBLISHABLE_KEY` dans `.env`, puis redemarrez l'application.
+                </div>
+              </div>
+            ) : null}
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? "Connexion..." : "Se connecter"}
             </Button>
@@ -88,4 +98,3 @@ const Login = () => {
 };
 
 export default Login;
-
