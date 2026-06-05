@@ -657,7 +657,7 @@ export default function Tracking() {
       } catch {
       }
     }, 8000);
-    toast.success("Mode direct activé");
+    toast.success("Mode temps reel active");
   };
 
   useEffect(() => {
@@ -726,7 +726,7 @@ export default function Tracking() {
     } else {
       downloadBlob(`rapport-${deviceLabel}-${stamp}.txt`, buildReport(deviceLabel, points), "text/plain");
     }
-    toast.success("Export prêt");
+    toast.success("Export pret");
   };
 
   return (
@@ -743,7 +743,7 @@ export default function Tracking() {
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" onClick={syncGps} disabled={syncing}>
                 <RefreshCw className={`mr-2 h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-                {syncing ? "Sync..." : "Sync GPSwox"}
+                {syncing ? "Synchronisation..." : "Synchroniser GPSwox"}
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -796,7 +796,7 @@ export default function Tracking() {
             </div>
 
             <div className="absolute right-3 top-3 z-[600] flex items-center gap-2 rounded-2xl border bg-background/80 backdrop-blur px-3 py-2 shadow-sm">
-              <div className="text-xs text-muted-foreground">Follow</div>
+              <div className="text-xs text-muted-foreground">Suivi auto</div>
               <Switch checked={follow} onCheckedChange={(v) => setFollow(v)} />
               <Button size="icon" variant="ghost" onClick={centerOnLast} disabled={!lastPoint}>
                 <LocateFixed className="h-4 w-4" />
@@ -812,7 +812,7 @@ export default function Tracking() {
                 <div className="space-y-1 min-w-0">
                   <div className="font-semibold">Contrôles</div>
                   <div className="text-[11px] text-muted-foreground truncate">
-                    {selectedDevice ? `${selectedDevice.plate || selectedDevice.name}` : "Aucun véhicule GPSwox sélectionné"}
+                    {selectedDevice ? `${selectedDevice.plate || selectedDevice.name}` : "Aucun vehicule GPSwox selectionne"}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -846,7 +846,7 @@ export default function Tracking() {
                         ))
                       ) : (
                         <SelectItem value="__empty" disabled>
-                          Aucun véhicule — cliquez sur Sync
+                          Aucun vehicule - cliquez sur Synchroniser
                         </SelectItem>
                       )}
                     </SelectContent>
@@ -855,7 +855,7 @@ export default function Tracking() {
                     <div className="text-muted-foreground truncate">
                       {gpsDevices.length} véhicule(s) GPSwox
                     </div>
-                    {selectedDevice ? <Badge variant="secondary">OK</Badge> : <Badge variant="secondary">—</Badge>}
+                    {selectedDevice ? <Badge variant="secondary">Lie</Badge> : <Badge variant="secondary">—</Badge>}
                   </div>
                 </div>
               </div>
@@ -864,11 +864,11 @@ export default function Tracking() {
 
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-2">
-                  <div className="text-xs font-medium">من</div>
+                  <div className="text-xs font-medium">Date debut</div>
                   <DatePicker value={fromDate} onChange={setFromDate} placeholder="Date début" />
                 </div>
                 <div className="space-y-2">
-                  <div className="text-xs font-medium">إلى</div>
+                  <div className="text-xs font-medium">Date fin</div>
                   <DatePicker value={toDate} onChange={setToDate} placeholder="Date fin" />
                 </div>
               </div>
@@ -889,7 +889,7 @@ export default function Tracking() {
 
               <div className="rounded-2xl border bg-muted/40 p-3 space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="text-sm font-semibold">Mode direct</div>
+                  <div className="text-sm font-semibold">Mode temps reel</div>
                   <Switch
                     checked={liveMode}
                     onCheckedChange={(v) => {
@@ -953,7 +953,7 @@ export default function Tracking() {
                 </SheetTrigger>
                 <SheetContent side="right" className="w-full sm:max-w-lg">
                   <SheetHeader>
-                    <SheetTitle>Détails Tracking</SheetTitle>
+                    <SheetTitle>Details du suivi</SheetTitle>
                   </SheetHeader>
                   <div className="mt-4 space-y-4">
                     <div className="rounded-2xl border p-4 space-y-3">
