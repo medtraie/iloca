@@ -94,7 +94,7 @@ const normalizeDevice = (raw: any): GPSwoxDevice => {
       : Date.now();
   const id = String(raw?.id ?? raw?.device_id ?? raw?.imei ?? raw?.uniqueId ?? raw?.uuid ?? raw?.plate ?? raw?.name ?? "unknown");
   const plate = String(raw?.plate_number ?? raw?.plate ?? raw?.registration ?? raw?.immatriculation ?? "");
-  const name = String(raw?.name ?? raw?.device_name ?? raw?.title ?? raw?.object_name ?? plate || "GPS Device");
+  const name = String((raw?.name ?? raw?.device_name ?? raw?.title ?? raw?.object_name ?? plate) || "GPS Device");
   const fuelLevelRaw = raw?.fuel_level ?? raw?.fuelLevel ?? raw?.fuelQuantity ?? raw?.attributes?.fuel_level;
   return {
     id,
