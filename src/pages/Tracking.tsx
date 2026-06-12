@@ -36,6 +36,23 @@ import {
 type HistoryPoint = { lat: number; lng: number; timestamp: number; speed?: number };
 type MapTheme = "osm" | "light" | "dark" | "satellite";
 
+// #region debug-point C:reporter
+const reportTrackingDebug = (hypothesisId: string, location: string, msg: string, data: Record<string, unknown>) =>
+  fetch("http://127.0.0.1:7777/event", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: "tracking-runtime",
+      runId: "post-fix",
+      hypothesisId,
+      location,
+      msg: `[DEBUG] ${msg}`,
+      data,
+      ts: Date.now()
+    })
+  }).catch(() => {});
+// #endregion
+
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
 const tileCatalog: Record<MapTheme, { label: string; url: string; attribution: string; maxZoom: number }> = {
@@ -255,6 +272,7 @@ export default function Tracking() {
   const endMarkerRef = useRef<L.Marker | null>(null);
   const startMarkerRef = useRef<L.Marker | null>(null);
   const stopMarkersRef = useRef<L.Marker[]>([]);
+  const vehicleMarkersRef = useRef<L.Marker[]>([]);
   const geofenceCircleRef = useRef<L.Circle | null>(null);
   const geofenceMarkerRef = useRef<L.Marker | null>(null);
   const playbackTimerRef = useRef<number | null>(null);
@@ -307,6 +325,17 @@ export default function Tracking() {
     return selectedDevice.plate || selectedDevice.name || selectedDevice.imei || selectedDevice.id;
   }, [selectedDevice]);
 
+  useEffect(() => {
+    // #region debug-point C:devices-state
+    reportTrackingDebug("C", "Tracking.tsx:devices-state", "Tracking GPS devices state updated", {
+      totalDevices: gpsDevices.length,
+      visibleDevices: filteredDevices.length,
+      withCoords: gpsDevices.filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lng) && (item.lat !== 0 || item.lng !== 0)).length,
+      selectedVehicleId: vehicleId || null
+    });
+    // #endregion
+  }, [gpsDevices.length, filteredDevices.length, vehicleId]);
+
   const stats = useMemo(() => computeRouteStats(points), [points]);
   const detectedStops = useMemo(() => detectStops(points), [points]);
 
@@ -350,6 +379,7 @@ export default function Tracking() {
       });
       if (mapped.length) {
         setGpsDevices(mapped);
+        drawVehicleMarkers(mapped);
         toast.success(`${mapped.length} véhicules GPSwox chargés`);
       } else {
         toast.error("Aucun véhicule GPSwox trouvé");
@@ -417,6 +447,11 @@ export default function Tracking() {
     stopMarkersRef.current = [];
   };
 
+  const clearVehicleMarkers = () => {
+    vehicleMarkersRef.current.forEach((m) => m.remove());
+    vehicleMarkersRef.current = [];
+  };
+
   const stopPlayback = () => {
     if (playbackTimerRef.current) {
       clearInterval(playbackTimerRef.current);
@@ -453,6 +488,15 @@ export default function Tracking() {
     if (!map || !overlay) return;
 
     clearOverlays();
+    // #region debug-point D:draw-route
+    reportTrackingDebug("D", "Tracking.tsx:drawRoute", "Tracking route draw requested", {
+      pointsCount: input.length,
+      first: input[0] || null,
+      last: input[input.length - 1] || null,
+      overlayReady: Boolean(overlay),
+      mapReady: Boolean(map)
+    });
+    // #endregion
     if (input.length < 2) return;
     const coords = input.map((p) => [p.lat, p.lng] as [number, number]);
     routeLineRef.current = L.polyline(coords, { color: "#0ea5e9", weight: 4, opacity: 0.85, lineCap: "round" }).addTo(overlay);
@@ -488,6 +532,33 @@ export default function Tracking() {
     geofenceInsideRef.current = null;
   };
 
+  const drawVehicleMarkers = (devices: GPSwoxDevice[]) => {
+    const overlay = overlayLayerRef.current;
+    if (!overlay) return;
+    clearVehicleMarkers();
+    const usable = devices.filter((device) => Number.isFinite(device.lat) && Number.isFinite(device.lng) && (device.lat !== 0 || device.lng !== 0));
+    usable.forEach((device) => {
+      const isSelected = selectedDevice ? String(selectedDevice.id) === String(device.id) : false;
+      const color = device.status === "moving" ? "#16a34a" : device.status === "online" ? "#0ea5e9" : "#6b7280";
+      const label = isSelected ? (device.plate || device.name || device.id) : undefined;
+      const marker = L.marker([device.lat, device.lng], {
+        icon: buildDotIcon(color, isSelected ? 14 : 11, label),
+        zIndexOffset: isSelected ? 1200 : 500
+      }).addTo(overlay);
+      marker.bindPopup(
+        `<div style="min-width:180px"><div style="font-weight:600">${device.plate || device.name}</div><div>ID: ${device.id}</div><div>Statut: ${device.status}</div><div>Vitesse: ${Math.round(device.speed || 0)} km/h</div></div>`
+      );
+      vehicleMarkersRef.current.push(marker);
+    });
+    // #region debug-point D:vehicle-markers
+    reportTrackingDebug("D", "Tracking.tsx:drawVehicleMarkers", "Vehicle markers drawn on map", {
+      requested: devices.length,
+      rendered: usable.length,
+      selectedVehicleId: selectedDevice?.id || null
+    });
+    // #endregion
+  };
+
   const loadHistory = async () => {
     ensureMap();
     stopPlayback();
@@ -500,6 +571,17 @@ export default function Tracking() {
 
     try {
       const { fromIso, toIso } = toIsoRange(fromDate, toDate);
+      // #region debug-point B:load-history
+      reportTrackingDebug("B", "Tracking.tsx:loadHistory:start", "Tracking load history requested", {
+        selectedDeviceId: selectedDevice.id,
+        selectedPlate: selectedDevice.plate,
+        selectedName: selectedDevice.name,
+        fromIso,
+        toIso,
+        selectedLat: selectedDevice.lat,
+        selectedLng: selectedDevice.lng
+      });
+      // #endregion
       const history = await gpswoxService.getDeviceHistory(selectedDevice.id, fromIso, toIso);
       const normalized: HistoryPoint[] = (history || [])
         .filter((p: any) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
@@ -511,17 +593,32 @@ export default function Tracking() {
         }))
         .sort((a, b) => a.timestamp - b.timestamp);
 
+      // #region debug-point B:load-history-result
+      reportTrackingDebug("B", "Tracking.tsx:loadHistory:result", "Tracking history normalized", {
+        rawCount: Array.isArray(history) ? history.length : 0,
+        normalizedCount: normalized.length,
+        first: normalized[0] || null,
+        last: normalized[normalized.length - 1] || null
+      });
+      // #endregion
+
       setPoints(normalized);
       geofenceInsideRef.current = null;
 
       if (!normalized.length) {
         toast.error("Aucun historique pour cette période");
         clearOverlays();
+        drawVehicleMarkers(filteredDevices);
         return;
       }
       drawRoute(normalized);
       toast.success("Trajet chargé");
     } catch {
+      // #region debug-point B:load-history-error
+      reportTrackingDebug("B", "Tracking.tsx:loadHistory:error", "Tracking load history failed", {
+        selectedDeviceId: selectedDevice.id
+      });
+      // #endregion
       toast.error("Échec de chargement du trajet");
     }
   };
@@ -532,6 +629,12 @@ export default function Tracking() {
     const overlay = overlayLayerRef.current;
     if (!map || !overlay) return;
     if (points.length < 2) {
+      // #region debug-point C:playback-blocked
+      reportTrackingDebug("C", "Tracking.tsx:togglePlayback:blocked", "Playback blocked because route is too short", {
+        pointsCount: points.length,
+        selectedDeviceId: selectedDevice?.id || null
+      });
+      // #endregion
       toast.error("Aucun trajet chargé");
       return;
     }
@@ -546,6 +649,16 @@ export default function Tracking() {
 
     if (playbackIndexRef.current >= points.length - 1) playbackIndexRef.current = 0;
     const start = points[playbackIndexRef.current];
+    // #region debug-point C:playback-start
+    reportTrackingDebug("C", "Tracking.tsx:togglePlayback:start", "Playback started", {
+      pointsCount: points.length,
+      startIndex: playbackIndexRef.current,
+      start,
+      follow,
+      speedMs: playSpeedMs,
+      geofenceEnabled
+    });
+    // #endregion
 
     if (!traceMarkerRef.current) {
       traceMarkerRef.current = L.marker([start.lat, start.lng], { icon: buildDotIcon("#111827", 12), zIndexOffset: 1000 }).addTo(overlay);
@@ -566,6 +679,12 @@ export default function Tracking() {
     if (playbackTimerRef.current) clearInterval(playbackTimerRef.current);
     playbackTimerRef.current = window.setInterval(() => {
       if (playbackIndexRef.current >= points.length - 1) {
+        // #region debug-point C:playback-finish
+        reportTrackingDebug("C", "Tracking.tsx:togglePlayback:finish", "Playback finished", {
+          pointsCount: points.length,
+          lastIndex: playbackIndexRef.current
+        });
+        // #endregion
         stopPlayback();
         toast.success("Fin de la lecture");
         return;
@@ -577,6 +696,15 @@ export default function Tracking() {
       if (traceLineRef.current) {
         const nextCoords = points.slice(0, playbackIndexRef.current + 1).map((x) => [x.lat, x.lng] as [number, number]);
         traceLineRef.current.setLatLngs(nextCoords);
+      }
+      if (playbackIndexRef.current === 1 || playbackIndexRef.current === points.length - 1) {
+        // #region debug-point D:playback-tick
+        reportTrackingDebug("D", "Tracking.tsx:togglePlayback:tick", "Playback tick advanced", {
+          index: playbackIndexRef.current,
+          point: p,
+          traceCoordsCount: playbackIndexRef.current + 1
+        });
+        // #endregion
       }
       if (follow) map.panTo(latlng, { animate: true, duration: 0.25 });
 
@@ -679,6 +807,7 @@ export default function Tracking() {
       geofenceCircleRef.current = null;
       geofenceMarkerRef.current = null;
       stopMarkersRef.current = [];
+      vehicleMarkersRef.current = [];
     };
   }, []);
 
@@ -693,13 +822,38 @@ export default function Tracking() {
   }, [geofenceEnabled, geofenceRadiusM]);
 
   useEffect(() => {
+    ensureMap();
+    if (points.length) return;
+    drawVehicleMarkers(filteredDevices);
+  }, [filteredDevices, selectedDevice?.id, points.length]);
+
+  useEffect(() => {
     stopPlayback();
     stopLive();
     setPoints([]);
     clearOverlays();
+    drawVehicleMarkers(filteredDevices);
     playbackIndexRef.current = 0;
     geofenceInsideRef.current = null;
   }, [vehicleId]);
+
+  useEffect(() => {
+    if (!selectedDevice) return;
+    // #region debug-point C:selected-device
+    reportTrackingDebug("C", "Tracking.tsx:selected-device", "Tracking selected device changed", {
+      id: selectedDevice.id,
+      plate: selectedDevice.plate,
+      name: selectedDevice.name,
+      lat: selectedDevice.lat,
+      lng: selectedDevice.lng,
+      online: selectedDevice.online,
+      speed: selectedDevice.speed
+    });
+    // #endregion
+    if (!points.length && mapRef.current && Number.isFinite(selectedDevice.lat) && Number.isFinite(selectedDevice.lng) && (selectedDevice.lat !== 0 || selectedDevice.lng !== 0)) {
+      mapRef.current.flyTo([selectedDevice.lat, selectedDevice.lng], Math.max(mapRef.current.getZoom(), 13), { duration: 0.6 });
+    }
+  }, [selectedDevice?.id]);
 
   useEffect(() => {
     if (!follow) return;

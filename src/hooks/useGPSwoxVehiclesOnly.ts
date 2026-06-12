@@ -29,6 +29,23 @@ export interface GPSwoxDevice {
   raw?: any;
 }
 
+// #region debug-point A:reporter
+const reportTrackingDebug = (hypothesisId: string, location: string, msg: string, data: Record<string, unknown>) =>
+  fetch("http://127.0.0.1:7777/event", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: "tracking-runtime",
+      runId: "post-fix",
+      hypothesisId,
+      location,
+      msg: `[DEBUG] ${msg}`,
+      data,
+      ts: Date.now()
+    })
+  }).catch(() => {});
+// #endregion
+
 const toNumber = (v: any) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -138,8 +155,24 @@ export function useGPSwoxVehiclesOnly(refetchInterval = 60000) {
       if (supabase) {
         try {
           const { data, error } = await supabase.functions.invoke("gpswox", { body: {}, method: "POST" });
+          // #region debug-point A:supabase-response
+          reportTrackingDebug("A", "useGPSwoxVehiclesOnly.ts:supabase", "Supabase GPSwox response received", {
+            hasError: Boolean(error),
+            ok: Boolean(data?.ok),
+            vehiclesCount: Array.isArray(data?.vehicles) ? data.vehicles.length : 0,
+            keys: data && typeof data === "object" ? Object.keys(data).slice(0, 8) : []
+          });
+          // #endregion
           if (!error && data?.ok && Array.isArray(data?.vehicles)) {
-            return dedupe(data.vehicles.map(normalizeDevice));
+            const normalized = dedupe(data.vehicles.map(normalizeDevice));
+            // #region debug-point A:supabase-normalized
+            reportTrackingDebug("A", "useGPSwoxVehiclesOnly.ts:supabase-normalized", "Supabase vehicles normalized", {
+              total: normalized.length,
+              withCoords: normalized.filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lng) && (item.lat !== 0 || item.lng !== 0)).length,
+              sample: normalized.slice(0, 3).map((item) => ({ id: item.id, plate: item.plate, lat: item.lat, lng: item.lng, status: item.status }))
+            });
+            // #endregion
+            return normalized;
           }
         } catch {
         }
@@ -147,8 +180,19 @@ export function useGPSwoxVehiclesOnly(refetchInterval = 60000) {
       const local = await import("@/services/gpswoxService");
       try {
         const items = await local.gpswoxService.getDevices();
-        return dedupe(items.map(normalizeDevice));
+        const normalized = dedupe(items.map(normalizeDevice));
+        // #region debug-point A:local-normalized
+        reportTrackingDebug("A", "useGPSwoxVehiclesOnly.ts:local-normalized", "Local GPSwox vehicles normalized", {
+          total: normalized.length,
+          withCoords: normalized.filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lng) && (item.lat !== 0 || item.lng !== 0)).length,
+          sample: normalized.slice(0, 3).map((item) => ({ id: item.id, plate: item.plate, lat: item.lat, lng: item.lng, status: item.status }))
+        });
+        // #endregion
+        return normalized;
       } catch {
+        // #region debug-point A:local-error
+        reportTrackingDebug("A", "useGPSwoxVehiclesOnly.ts:local-error", "Local GPSwox vehicles fetch failed", {});
+        // #endregion
         return [];
       }
     }

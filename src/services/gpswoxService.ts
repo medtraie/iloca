@@ -61,6 +61,23 @@ const DEFAULT_LOCAL_API_URL = "http://127.0.0.1/api";
 const DEFAULT_GPSWOX_EMAIL = "Medorarlis93@gmail.com";
 const DEFAULT_GPSWOX_PASSWORD = "Tr198989";
 
+// #region debug-point B:reporter
+const reportTrackingDebug = (hypothesisId: string, location: string, msg: string, data: Record<string, unknown>) =>
+  fetch("http://127.0.0.1:7777/event", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: "tracking-runtime",
+      runId: "post-fix",
+      hypothesisId,
+      location,
+      msg: `[DEBUG] ${msg}`,
+      data,
+      ts: Date.now()
+    })
+  }).catch(() => {});
+// #endregion
+
 const getBaseUrl = () =>
   (import.meta.env.VITE_GPSWOX_BASE_URL as string | undefined) ||
   (import.meta.env.VITE_GPSWOX_URL as string | undefined) ||
@@ -95,6 +112,19 @@ const parseBool = (v: any) => {
   if (typeof v === "number") return v > 0;
   if (typeof v === "string") return ["1", "true", "on", "online", "moving"].includes(v.toLowerCase());
   return false;
+};
+
+const splitHistoryDateTime = (input?: string) => {
+  if (!input) return { date: "", time: "" };
+  const asDate = new Date(input);
+  if (Number.isNaN(asDate.getTime())) return { date: "", time: "" };
+  const yyyy = asDate.getFullYear();
+  const mm = String(asDate.getMonth() + 1).padStart(2, "0");
+  const dd = String(asDate.getDate()).padStart(2, "0");
+  const hh = String(asDate.getHours()).padStart(2, "0");
+  const mi = String(asDate.getMinutes()).padStart(2, "0");
+  const ss = String(asDate.getSeconds()).padStart(2, "0");
+  return { date: `${yyyy}-${mm}-${dd}`, time: `${hh}:${mi}:${ss}` };
 };
 
 const pickArray = (payload: any): any[] => {
@@ -496,21 +526,63 @@ async function getDevices(): Promise<GpswoxDevice[]> {
 }
 
 async function getDeviceHistory(deviceId: string, from?: string, to?: string) {
-  const params = { device_id: deviceId, from: from || "", to: to || "" };
+  const fromParts = splitHistoryDateTime(from);
+  const toParts = splitHistoryDateTime(to);
+  const params = {
+    device_id: deviceId,
+    from_date: fromParts.date,
+    from_time: fromParts.time,
+    to_date: toParts.date,
+    to_time: toParts.time
+  };
   const endpoints = ["/history", "/get_history"];
   let lastError: unknown = null;
+  // #region debug-point B:history-request
+  reportTrackingDebug("B", "gpswoxService.ts:getDeviceHistory:start", "GPSwox history requested", {
+    deviceId,
+    fromDate: params.from_date,
+    fromTime: params.from_time,
+    toDate: params.to_date,
+    toTime: params.to_time,
+    endpoints
+  });
+  // #endregion
   for (const endpoint of endpoints) {
     try {
       const payload = await request(endpoint, params);
-      const records = pickArray(payload).map((item) => ({
+      const rows = pickArray(payload).flatMap((item) => {
+        if (Array.isArray(item?.items)) return item.items;
+        return [item];
+      });
+      const records = rows.map((item) => ({
         lat: parseNumber(item.lat ?? item.latitude),
         lng: parseNumber(item.lng ?? item.longitude),
-        timestamp: Number(item.timestamp ?? new Date(item.time || item.date || Date.now()).getTime()),
+        timestamp: Number(item.timestamp ?? new Date(item.time || item.raw_time || item.show || item.date || Date.now()).getTime()),
         speed: parseNumber(item.speed ?? item.current_speed)
       }));
-      if (records.length) return records.filter((record) => record.lat && record.lng);
+      // #region debug-point B:history-response
+      reportTrackingDebug("B", "gpswoxService.ts:getDeviceHistory:response", "GPSwox history payload parsed", {
+        endpoint,
+        rowsCount: rows.length,
+        recordsCount: records.length,
+        validCoords: records.filter((record) => Number.isFinite(record.lat) && Number.isFinite(record.lng) && (record.lat !== 0 || record.lng !== 0)).length,
+        first: records[0] || null,
+        last: records[records.length - 1] || null
+      });
+      // #endregion
+      if (records.length) {
+        return records.filter(
+          (record) => Number.isFinite(record.lat) && Number.isFinite(record.lng) && (record.lat !== 0 || record.lng !== 0)
+        );
+      }
     } catch (error) {
       lastError = error;
+      // #region debug-point B:history-error
+      reportTrackingDebug("B", "gpswoxService.ts:getDeviceHistory:error", "GPSwox history request failed", {
+        endpoint,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      // #endregion
     }
   }
   if (lastError) {
