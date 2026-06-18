@@ -1,79 +1,201 @@
-// في أعلى الملف (حول سطور الاستيراد)
-import { useState, useMemo, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useEffect, useMemo } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Wallet, Activity, Landmark, AlertCircle, BellRing, Target } from "lucide-react";
-import { Link } from "react-router-dom";
-import { useLocalStorage } from "@/hooks/useLocalStorage";
-import { useContracts } from "@/hooks/useContracts";
-import { useMiscellaneousExpenses } from "@/hooks/useMiscellaneousExpenses";
-import { useRepairs } from "@/hooks/useRepairs";
-import type { Payment } from "@/types/payment";
-import { computeContractSummary } from "@/utils/contractMath";
-import type { Contract } from "@/services/localStorageService";
-import { TreasuryDashboard } from "@/components/treasury/TreasuryDashboard";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Wallet,
+  Building2,
+  TrendingUp,
+  TrendingDown,
+  ArrowUpRight,
+  ArrowDownRight,
+  Plus,
+  Search,
+  History,
+  Settings2,
+  AlertCircle,
+  Banknote,
+  CheckCircle2,
+  ArrowLeftRight,
+  Calculator,
+  Target,
+  FileDown,
+  ChevronRight,
+  DollarSign,
+  ArrowLeft,
+  BellRing,
+  Landmark,
+  Activity,
+  ArrowRightLeft
+} from "lucide-react";
+import { TreasuryOverview } from "@/components/treasury/TreasuryOverview";
 import { TreasuryMovements } from "@/components/treasury/TreasuryMovements";
+import { TreasuryStats } from "@/components/treasury/TreasuryStats";
+import { TreasurySettings as TreasurySettingsComponent } from "@/components/treasury/TreasurySettings";
+import { AddMovementDialog } from "@/components/treasury/AddMovementDialog";
+import { TreasuryDashboard } from "@/components/treasury/TreasuryDashboard";
 import { TreasuryCharts } from "@/components/treasury/TreasuryCharts";
 import { TreasuryForecast } from "@/components/treasury/TreasuryForecast";
 import { TreasuryActions } from "@/components/treasury/TreasuryActions";
-import { motion, useReducedMotion } from "framer-motion";
-import { localStorageService } from "@/services/localStorageService";
+import { useContracts } from "@/hooks/useContracts";
+import { useRepairs } from "@/hooks/useRepairs";
+import { useMiscellaneousExpenses } from "@/hooks/useMiscellaneousExpenses";
+import { paymentsRepository } from "@/repositories/paymentsRepository";
+import { bankTransfersRepository, BankTransfer } from "@/repositories/bankTransfersRepository";
+import { auditLogsRepository, AuditLogEntry } from "@/repositories/auditLogsRepository";
+import { treasurySettingsRepository, TreasurySettings } from "@/repositories/treasurySettingsRepository";
+import { Payment } from "@/types/payment";
+import { computeContractSummary } from "@/utils/contractMath";
 import { isPendingStatus } from "@/utils/chequeUtils";
+import type { Contract } from "@/types/appData";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { Link } from "react-router-dom";
 
-export interface TreasuryMovement {
+export type TimeFilter = "day" | "week" | "month" | "year";
+
+export type TreasuryMovementType = "recette" | "divers" | "reparation" | "transfert";
+
+export type TreasuryMovement = {
   id: string;
   date: string;
-  type: 'recette' | 'depense' | 'divers' | 'transfert' | 'reparation';
+  type: TreasuryMovementType;
   amount: number;
-  paymentMethod: 'Espèces' | 'Virement' | 'Chèque';
-  reference: string;
+  paymentMethod: "Espèces" | "Virement" | "Chèque";
+  reference?: string;
   description?: string;
-  balance?: number;
-}
+};
 
-interface TreasuryBudgetTargets {
-  entryTarget: number;
-  exitCap: number;
-  minAvailable: number;
-}
+type AlertLevel = "all" | "high" | "medium" | "low";
 
-interface PendingAlertCommand {
-  level?: "high" | "medium" | "low";
+type PendingAlertCommand = {
+  level?: Exclude<AlertLevel, "all">;
   alertId?: string;
-}
+  at?: number;
+};
 
 const Tresorerie = () => {
-  const { contracts: allContracts, refetch: refetchContracts } = useContracts();
-  const { expenses: miscExpenses, refetch: refetchMisc, deleteExpense } = useMiscellaneousExpenses();
-  const { repairs } = useRepairs();
+  const { toast } = useToast();
+  const { contracts: allContracts, loading: contractsLoading } = useContracts();
+  const { repairs, loading: repairsLoading } = useRepairs();
+  const { expenses: miscExpenses, deleteExpense, loading: miscExpensesLoading } = useMiscellaneousExpenses();
+
   const shouldReduceMotion = useReducedMotion();
-  
-  const [payments, setPayments] = useLocalStorage<Payment[]>("payments", []);
-  const [bankTransfers, setBankTransfers] = useLocalStorage<any[]>("bankTransfers", []);
-  const [budgetTargets, setBudgetTargets] = useLocalStorage<TreasuryBudgetTargets>("treasury:budget-targets", {
+
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>("month");
+  const [startDate, setStartDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  });
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [alertLevelFilter, setAlertLevelFilter] = useState<AlertLevel>("all");
+  const [focusedAlertId, setFocusedAlertId] = useState<string | null>(null);
+
+  const [budgetTargets, setBudgetTargets] = useState(() => ({
     entryTarget: 120000,
     exitCap: 80000,
     minAvailable: 25000
-  });
-  const [forecastThresholds] = useLocalStorage("treasury:forecast-thresholds", {
-    urgentCheckDays: 3,
-    highDebtAmount: 10000,
-    urgentExpenseDays: 7
-  });
-  
-  const [timeFilter, setTimeFilter] = useState<'day' | 'week' | 'month' | 'year'>('month');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [alertLevelFilter, setAlertLevelFilter] = useState<"all" | "high" | "medium" | "low">("all");
-  const [focusedAlertId, setFocusedAlertId] = useState<string | null>(null);
+  }));
 
-  // Refresh data on mount
+  const [forecastThresholds, setForecastThresholds] = useState(() => ({
+    urgentCheckDays: 3,
+    urgentExpenseDays: 7
+  }));
+  
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [bankTransfers, setBankTransfers] = useState<BankTransfer[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [settings, setSettings] = useState<TreasurySettings | null>(null);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    refetchContracts();
-    refetchMisc();
-  }, [refetchContracts, refetchMisc]);
+    if (!settings) return;
+    setBudgetTargets({
+      entryTarget: settings.entryTarget,
+      exitCap: settings.exitCap,
+      minAvailable: settings.minAvailable
+    });
+    setForecastThresholds({
+      urgentCheckDays: settings.urgentCheckDays,
+      urgentExpenseDays: settings.urgentExpenseDays
+    });
+  }, [settings]);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [p, b, a, s] = await Promise.all([
+        paymentsRepository.getAll(),
+        bankTransfersRepository.getAll(),
+        auditLogsRepository.getAll(),
+        treasurySettingsRepository.get()
+      ]);
+      setPayments(p);
+      setBankTransfers(b);
+      setAuditLogs(a);
+      setSettings(s);
+    } catch (error) {
+      console.error("Failed to fetch treasury data", error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de charger les données de trésorerie",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const handleAddPayment = async (p: Omit<Payment, "id">) => {
+    try {
+      const newPayment = await paymentsRepository.create(p);
+      setPayments(prev => [newPayment, ...prev]);
+      await auditLogsRepository.create({
+        action: "payment_added",
+        details: `Paiement reçu de ${p.customerName}`,
+        amount: p.amount,
+        reference: p.contractNumber
+      });
+      fetchData();
+      toast({ title: "Succès", description: "Paiement ajouté" });
+    } catch (error) {
+      toast({ title: "Erreur", description: "Échec de l'ajout", variant: "destructive" });
+    }
+  };
+
+  const handleAddTransfer = async (t: Omit<BankTransfer, "id">) => {
+    try {
+      const newTransfer = await bankTransfersRepository.create(t);
+      setBankTransfers(prev => [newTransfer, ...prev]);
+      await auditLogsRepository.create({
+        action: "transfer_added",
+        details: `Transfert ${t.type}`,
+        amount: t.amount,
+        reference: t.reference
+      });
+      fetchData();
+      toast({ title: "Succès", description: "Transfert effectué" });
+    } catch (error) {
+      toast({ title: "Erreur", description: "Échec du transfert", variant: "destructive" });
+    }
+  };
+
+  const updateSettings = async (s: Partial<TreasurySettings>) => {
+    try {
+      const updated = await treasurySettingsRepository.update(s);
+      setSettings(updated);
+      toast({ title: "Succès", description: "Paramètres mis à jour" });
+    } catch (error) {
+      toast({ title: "Erreur", description: "Échec de la mise à jour", variant: "destructive" });
+    }
+  };
 
   // Handle delete movement
   const handleDeleteMovement = async (movementId: string, movementType: string) => {
@@ -88,10 +210,9 @@ const Tresorerie = () => {
           await deleteExpense(movementId);
           break;
         case 'reparation':
-          // حذف حركة إصلاح عبر الخدمة الموحدة (يعالج البادئة rental_app_)
-          localStorageService.deleteWhere('repairPayments', 'id', movementId);
-          // تحديث الواجهة
-          refetchContracts();
+          // Delete repair payment (now in payments table)
+          await paymentsRepository.delete(movementId);
+          setPayments(prev => prev.filter(p => p.id !== movementId));
           break;
         case 'transfert':
           // Delete bank transfer
@@ -105,14 +226,9 @@ const Tresorerie = () => {
 
   // Calculate totals
   const totals = useMemo(() => {
-    // Espèces: مدفوعات نقد - مصاريف نقد - إصلاحات نقد ± التحويلات
     let totalEspeces = 0;
-    payments.forEach(payment => {
-      if (payment.paymentMethod === 'Espèces') totalEspeces += payment.amount;
-    });
-    (miscExpenses || []).forEach(expense => {
-      if (expense.payment_method === 'Espèces') totalEspeces -= expense.amount;
-    });
+    let totalVirements = 0;
+
     // تأثير التحويلات على espèces مطابق لصفحة Recette
     (bankTransfers || []).forEach(transfer => {
       if (transfer.type === 'cash') {
@@ -125,21 +241,18 @@ const Tresorerie = () => {
       }
       // ملاحظة: تحويل Chèque → Banque لا يغيّر espèces
     });
-    const repairPayments = JSON.parse(localStorage.getItem('repairPayments') || '[]');
-    repairPayments.forEach((p: any) => {
-      if (p.paymentMethod === 'Espèces') totalEspeces -= p.amount;
+
+    payments.forEach(payment => {
+      // If payment is a receipt (contract) it's positive, if it's a repair payment it's negative for treasury
+      const amount = payment.repairId ? -payment.amount : payment.amount;
+      
+      if (payment.paymentMethod === 'Espèces') totalEspeces += amount;
+      else if (payment.paymentMethod === 'Virement') totalVirements += amount;
     });
 
-    // Virements: مدفوعات تحويل - مصاريف تحويل - إصلاحات تحويل
-    let totalVirements = 0;
-    payments.forEach(payment => {
-      if (payment.paymentMethod === 'Virement') totalVirements += payment.amount;
-    });
     (miscExpenses || []).forEach(expense => {
-      if (expense.payment_method === 'Virement') totalVirements -= expense.amount;
-    });
-    repairPayments.forEach((p: any) => {
-      if (p.paymentMethod === 'Virement') totalVirements -= p.amount;
+      if (expense.payment_method === 'Espèces') totalEspeces -= expense.amount;
+      else if (expense.payment_method === 'Virement') totalVirements -= expense.amount;
     });
 
     // رصيد البنك = virements + التحويلات الداخلة (cash/check) - التحويلات الخارجة (bank_to_cash)
@@ -180,15 +293,15 @@ const Tresorerie = () => {
   const allMovements = useMemo(() => {
     const movements: TreasuryMovement[] = [];
 
-    // Add payments (recettes)
+    // Add payments (recettes & reparations)
     (payments || []).forEach(payment => {
       movements.push({
         id: payment.id,
         date: payment.paymentDate,
-        type: 'recette',
-        amount: payment.amount,
+        type: payment.repairId ? 'reparation' : 'recette',
+        amount: payment.repairId ? -payment.amount : payment.amount,
         paymentMethod: payment.paymentMethod,
-        reference: `Contrat ${payment.contractNumber}`,
+        reference: payment.repairId ? `Réparation ${payment.contractNumber}` : `Contrat ${payment.contractNumber}`,
         description: payment.customerName
       });
     });
@@ -206,20 +319,6 @@ const Tresorerie = () => {
       });
     });
 
-    // Add repair payments (expenses)
-    const repairPayments = JSON.parse(localStorage.getItem('repairPayments') || '[]');
-    repairPayments.forEach((payment: any) => {
-      movements.push({
-        id: payment.id,
-        date: payment.date,
-        type: 'reparation',
-        amount: -payment.amount, // Negative for expense
-        paymentMethod: payment.paymentMethod,
-        reference: payment.reference,
-        description: payment.description
-      });
-    });
-
     // Add bank transfers
     (bankTransfers || []).forEach(transfer => {
       movements.push({
@@ -233,13 +332,22 @@ const Tresorerie = () => {
       });
     });
 
-    // Sort by date desc
-    return movements.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    // Sort by date desc, handling invalid dates
+    return movements.sort((a, b) => {
+      const dateA = a.date ? new Date(a.date).getTime() : 0;
+      const dateB = b.date ? new Date(b.date).getTime() : 0;
+      return (isNaN(dateB) ? 0 : dateB) - (isNaN(dateA) ? 0 : dateA);
+    });
   }, [payments, miscExpenses, repairs, bankTransfers]);
 
   const operationsSummary = useMemo(() => {
     const monthKey = new Date().toISOString().slice(0, 7);
-    const monthlyMovements = allMovements.filter((movement) => movement.date.slice(0, 7) === monthKey);
+    const monthlyMovements = allMovements.filter((movement) => {
+      if (!movement.date) return false;
+      const d = new Date(movement.date);
+      if (isNaN(d.getTime())) return false;
+      return d.toISOString().slice(0, 7) === monthKey;
+    });
     const entries = monthlyMovements.filter((movement) => movement.amount > 0).reduce((sum, movement) => sum + movement.amount, 0);
     const exits = Math.abs(monthlyMovements.filter((movement) => movement.amount < 0).reduce((sum, movement) => sum + movement.amount, 0));
     const pendingDebts = totals.clientDebts + totals.supplierDebts + (totals.repairDebts || 0);
@@ -291,7 +399,12 @@ const Tresorerie = () => {
     });
 
     const monthlyEntries = allMovements
-      .filter((movement) => movement.date.slice(0, 7) === monthKey && movement.amount > 0)
+      .filter((movement) => {
+        if (!movement.date) return false;
+        const d = new Date(movement.date);
+        if (isNaN(d.getTime())) return false;
+        return d.toISOString().slice(0, 7) === monthKey && movement.amount > 0;
+      })
       .reduce((sum, movement) => sum + movement.amount, 0);
 
     if (overdueChecks.length > 0) {
@@ -369,7 +482,7 @@ const Tresorerie = () => {
   }, [treasuryAlerts, alertLevelFilter, focusedAlertId]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-background to-indigo-100/40 p-4 md:p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-background to-indigo-100/40 p-4 md:p-6 safe-pt safe-pb">
       <div className="mx-auto max-w-7xl space-y-6">
         <motion.div
           initial={shouldReduceMotion ? false : { opacity: 0, y: 10 }}

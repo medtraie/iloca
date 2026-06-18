@@ -77,13 +77,13 @@ export const ReportFilters = ({
   return (
     <Card className="mb-6">
       <CardContent className="p-6">
-        <div className="flex flex-wrap items-center gap-6">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-4 sm:gap-6">
           {/* Time Filter */}
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-gray-600" />
-            <Label className="text-sm font-medium">Période:</Label>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Filter className="w-4 h-4 text-gray-600 shrink-0" />
+            <Label className="text-sm font-medium whitespace-nowrap">Période:</Label>
             <Select value={timeFilter} onValueChange={(value: TimeFilter) => onTimeFilterChange(value)}>
-              <SelectTrigger className="w-32">
+              <SelectTrigger className="w-full sm:w-32">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -95,9 +95,9 @@ export const ReportFilters = ({
           </div>
 
           {/* Date Selector */}
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-gray-600" />
-            <Label className="text-sm font-medium">Date:</Label>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Calendar className="w-4 h-4 text-gray-600 shrink-0" />
+            <Label className="text-sm font-medium whitespace-nowrap">Date:</Label>
             {timeFilter === 'year' ? (
               <input
                 type="number"
@@ -112,16 +112,16 @@ export const ReportFilters = ({
                 type={getDateInputType()}
                 value={getDateValue()}
                 onChange={(e) => handleDateChange(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm w-full sm:w-auto"
               />
             )}
           </div>
 
           {/* Chart Toggles */}
-          <div className="flex items-center gap-4 ml-auto">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4 w-full sm:w-auto sm:ml-auto">
             <div className="flex items-center gap-2">
-              <PieChart className="w-4 h-4 text-blue-600" />
-              <Label className="text-sm font-medium">Pie Chart:</Label>
+              <PieChart className="w-4 h-4 text-blue-600 shrink-0" />
+              <Label className="text-sm font-medium whitespace-nowrap">Pie:</Label>
               <Switch
                 checked={showPieChart}
                 onCheckedChange={onShowPieChartChange}
@@ -138,8 +138,8 @@ export const ReportFilters = ({
             </div>
 
             <div className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-green-600" />
-              <Label className="text-sm font-medium">Bar Chart:</Label>
+              <BarChart3 className="w-4 h-4 text-green-600 shrink-0" />
+              <Label className="text-sm font-medium whitespace-nowrap">Bar:</Label>
               <Switch
                 checked={showBarChart}
                 onCheckedChange={onShowBarChartChange}
@@ -156,8 +156,8 @@ export const ReportFilters = ({
             </div>
 
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-purple-600" />
-              <Label className="text-sm font-medium">Line Chart:</Label>
+              <TrendingUp className="w-4 h-4 text-purple-600 shrink-0" />
+              <Label className="text-sm font-medium whitespace-nowrap">Line:</Label>
               <Switch
                 checked={showLineChart}
                 onCheckedChange={onShowLineChartChange}
@@ -168,13 +168,15 @@ export const ReportFilters = ({
 
         {/* Current Filter Summary */}
         <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-          <p className="text-sm text-gray-600">
-            <span className="font-medium">Filtre actuel:</span> 
+          <p className="text-sm text-gray-600 flex flex-col sm:flex-row sm:flex-wrap gap-1 sm:gap-0">
+            <span className="font-medium">Filtre actuel:</span>
+            <span>
             {timeFilter === 'day' && ` Jour du ${new Date(selectedDate).toLocaleDateString('fr-FR')}`}
             {timeFilter === 'month' && ` Mois de ${new Date(selectedDate).toLocaleDateString('fr-FR', { year: 'numeric', month: 'long' })}`}
             {timeFilter === 'year' && ` Année ${selectedDate.split('-')[0]}`}
-            <span className="ml-4">
-              Graphiques actifs: 
+            </span>
+            <span className="sm:ml-4">
+              Graphiques: 
               {showPieChart && (freezePieChart ? ' Pie (gelé)' : ' Pie')}
               {showBarChart && (freezeBarChart ? ' Bar (gelé)' : ' Bar')}
               {showLineChart && ' Line'}

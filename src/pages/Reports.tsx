@@ -3,7 +3,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Calendar, DollarSign, Filter, Trophy, AlertTriangle, RefreshCw, Download, FileSpreadsheet, FileText } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useLocalStorage } from "@/hooks/useLocalStorage";
 import MetricsSection from "@/features/reports/MetricsSection";
 import VehiclePlanningSection from "@/features/reports/VehiclePlanningSection";
 import AllVehiclesSection from "@/features/reports/AllVehiclesSection";
@@ -16,7 +15,7 @@ import { useContracts } from "@/hooks/useContracts";
 import { useExpenses } from "@/hooks/useExpenses";
 import { computeContractSummary } from "@/utils/contractMath";
 import type { Contract as RevenueChartContract } from "@/components/RevenueChart";
-import type { Contract as ServiceContract } from "@/services/localStorageService";
+import { Contract as ServiceContract } from "@/types/appData";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -41,6 +40,8 @@ interface Contract {
   nombreDeJourProlonge?: number;
   // For compatibility
   customerName?: string;
+  contract_number?: string;
+  contract_data?: any;
 }
 
 interface Vehicle {
@@ -68,12 +69,10 @@ const Reports = () => {
 
   // Force refresh data when component mounts and every 30 seconds
   useEffect(() => {
-    console.log("[Reports] Component mounted, fetching contract data...");
     refetchContracts();
     
     // Set up periodic refresh for real-time data sync
     const interval = setInterval(() => {
-      console.log("[Reports] Auto-refreshing contract data for financial status sync...");
       refetchContracts();
     }, 30000); // Refresh every 30 seconds
     
@@ -81,21 +80,11 @@ const Reports = () => {
   }, [refetchContracts]);
 
   const contracts: Contract[] = useMemo(() => {
-    console.log("[Reports] Processing contracts:", allContracts?.length || 0);
-    return allContracts?.map(c => {
+    return (allContracts || []).map(c => {
       const contractWithAmount = {...c, total_amount: Number(c.total_amount)};
       // Use centralized calculation logic
-      const summary = computeContractSummary(contractWithAmount, { advanceMode: 'field' });
+      const summary = computeContractSummary(contractWithAmount as any, { advanceMode: 'field' });
       const updatedContract = { ...contractWithAmount, total_amount: summary.total };
-      
-      // Enhanced logging for troubleshooting extension amounts
-      const hasExtension = updatedContract.contract_data?.extensionAmount > 0;
-      const hasOverdue = updatedContract.contract_data?.overdueAmount > 0;
-      
-      console.log("[Reports] Contract", c.contract_number, 
-        "- Original amount:", c.total_amount,
-        "- Updated amount:", updatedContract.total_amount,
-        "- Summary:", summary);
       
       return {
         ...updatedContract,
@@ -105,18 +94,21 @@ const Reports = () => {
         endDate: updatedContract.end_date,
         totalAmount: summary.total,
       };
-    }) || [];
+    });
   }, [allContracts]);
   
   const vehicles: Vehicle[] = useMemo(() =>
-    (allVehicles || [])
-      .filter(v => v.marque && v.modele && v.immatriculation)
-      .map(v => ({
+    (allVehicles || []).map(v => {
+      const marque = v.marque || v.brand || "—";
+      const modele = v.modele || v.model || "—";
+      const immatriculation = v.immatriculation || v.registration || v.id?.slice?.(0, 8) || "—";
+      return {
         ...v,
-        marque: v.marque!,
-        modele: v.modele!,
-        immatriculation: v.immatriculation!,
-      }))
+        marque,
+        modele,
+        immatriculation,
+      };
+    })
   , [allVehicles]);
 
   const [filters, setFilters] = useState<FilterState>({
@@ -649,20 +641,20 @@ const Reports = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="bg-card rounded-lg shadow-lg p-6 mb-8">
-          <div className="flex items-center justify-between">
+        <div className="bg-card rounded-xl border shadow-sm p-4 sm:p-6 mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-foreground mb-2">Rapports et Analyses</h1>
-              <p className="text-muted-foreground">Rapports financiers et analyses de performance opérationnelle</p>
+              <h1 className="text-2xl sm:text-3xl font-black text-foreground mb-1">Rapports et Analyses</h1>
+              <p className="text-muted-foreground text-sm">Rapports financiers et analyses de performance opérationnelle</p>
             </div>
             <Link to="/">
-              <Button variant="outline">Retour à l'Accueil</Button>
+              <Button variant="outline" className="w-full sm:w-auto">Retour à l'Accueil</Button>
             </Link>
           </div>
         </div>
 
-        <Card className="mb-8 border-none shadow-card rounded-[2rem] overflow-hidden bg-card">
-          <CardHeader className="pb-4">
+        <Card className="mb-8 border-none shadow-card rounded-2xl sm:rounded-[2rem] overflow-hidden bg-card">
+          <CardHeader className="p-4 sm:p-6 pb-2">
             <CardTitle className="text-lg font-bold flex items-center gap-2">
               <Filter className="h-5 w-5 text-accent" />
               Filtres intelligents
@@ -671,11 +663,12 @@ const Reports = () => {
               Affichez les rapports par période, statut, véhicule et client sans perdre les données existantes
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-wrap gap-2">
+          <CardContent className="p-4 sm:p-6 pt-2 space-y-4">
+            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none md:flex-wrap w-full">
               <Button
                 variant="outline"
                 size="sm"
+                className="shrink-0"
                 onClick={() => {
                   const now = new Date();
                   const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
@@ -688,6 +681,7 @@ const Reports = () => {
               <Button
                 variant="outline"
                 size="sm"
+                className="shrink-0"
                 onClick={() => {
                   const end = new Date();
                   const start = new Date();
@@ -706,6 +700,7 @@ const Reports = () => {
               <Button
                 variant="outline"
                 size="sm"
+                className="shrink-0"
                 onClick={() =>
                   setFilters((prev) => ({
                     ...prev,
@@ -718,19 +713,19 @@ const Reports = () => {
               >
                 Réinitialiser
               </Button>
-              <Button variant="outline" size="sm" onClick={() => refetchContracts()}>
+              <Button variant="outline" size="sm" className="shrink-0" onClick={() => refetchContracts()}>
                 <RefreshCw className="h-4 w-4 mr-1.5" />
                 Actualiser
               </Button>
-              <Button size="sm" onClick={handleExportPDF}>
+              <Button size="sm" className="shrink-0" onClick={handleExportPDF}>
                 <FileText className="h-4 w-4 mr-1.5" />
                 Export PDF
               </Button>
-              <Button size="sm" variant="secondary" onClick={handleExportExcel}>
+              <Button size="sm" variant="secondary" className="shrink-0" onClick={handleExportExcel}>
                 <FileSpreadsheet className="h-4 w-4 mr-1.5" />
                 Export XLSX
               </Button>
-              <Button size="sm" variant="outline" onClick={handleExportCSV}>
+              <Button size="sm" variant="outline" className="shrink-0" onClick={handleExportCSV}>
                 <Download className="h-4 w-4 mr-1.5" />
                 Export CSV
               </Button>
@@ -1001,52 +996,81 @@ const Reports = () => {
           </Card>
         </div>
 
-        <Card className="mb-8 border-none shadow-card rounded-[2rem] overflow-hidden bg-card">
-          <CardHeader>
+        <Card className="mb-8 border-none shadow-card rounded-2xl sm:rounded-[2rem] overflow-hidden bg-card">
+          <CardHeader className="p-4 sm:p-6 pb-2">
             <CardTitle className="text-lg font-bold">Tableau des meilleurs contrats</CardTitle>
             <CardDescription>Classement par montant selon les filtres appliqués</CardDescription>
           </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <table className="w-full table-striped">
-              <thead>
-                <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
-                  <th className="py-3 px-3">Contrat</th>
-                  <th className="py-3 px-3">Client</th>
-                  <th className="py-3 px-3">Véhicule</th>
-                  <th className="py-3 px-3">Période</th>
-                  <th className="py-3 px-3">Statut</th>
-                  <th className="py-3 px-3 text-right">Montant</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topContractsTable.length > 0 ? (
-                  topContractsTable.map((contract) => (
-                    <tr key={contract.id} className="border-b border-border/40">
-                      <td className="py-3 px-3 font-bold">{(contract as any).contract_number || (contract as any).contractNumber || "N/A"}</td>
-                      <td className="py-3 px-3">{contract.customer_name || contract.customerName || "Client"}</td>
-                      <td className="py-3 px-3">{contract.vehicle || "Véhicule"}</td>
-                      <td className="py-3 px-3 text-sm text-muted-foreground">
-                        {formatDate(contract.start_date)} → {formatDate(contract.end_date)}
-                      </td>
-                      <td className="py-3 px-3">
-                        <span className={`inline-flex px-2 py-1 rounded-md text-xs font-bold ${statusClass(contract.status)}`}>
-                          {statusLabel(contract.status)}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-right font-black">
-                        {Math.round(Number(contract.total_amount) || 0).toLocaleString()} DH
+          <CardContent className="p-4 sm:p-6 pt-2">
+            <div className="overflow-x-auto">
+              <table className="w-full table-striped hidden md:table">
+                <thead>
+                  <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                    <th className="py-3 px-3">Contrat</th>
+                    <th className="py-3 px-3">Client</th>
+                    <th className="py-3 px-3">Véhicule</th>
+                    <th className="py-3 px-3">Période</th>
+                    <th className="py-3 px-3">Statut</th>
+                    <th className="py-3 px-3 text-right">Montant</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {topContractsTable.length > 0 ? (
+                    topContractsTable.map((contract) => (
+                      <tr key={contract.id} className="border-b border-border/40">
+                        <td className="py-3 px-3 font-bold">{(contract as any).contract_number || (contract as any).contractNumber || "N/A"}</td>
+                        <td className="py-3 px-3">{contract.customer_name || contract.customerName || "Client"}</td>
+                        <td className="py-3 px-3">{contract.vehicle || "Véhicule"}</td>
+                        <td className="py-3 px-3 text-sm text-muted-foreground">
+                          {formatDate(contract.start_date)} → {formatDate(contract.end_date)}
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className={`inline-flex px-2 py-1 rounded-md text-xs font-bold ${statusClass(contract.status)}`}>
+                            {statusLabel(contract.status)}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right font-black">
+                          {Math.round(Number(contract.total_amount) || 0).toLocaleString()} DH
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td className="py-8 text-center text-muted-foreground" colSpan={6}>
+                        لا توجد بيانات حسب الفلاتر الحالية
                       </td>
                     </tr>
+                  )}
+                </tbody>
+              </table>
+              <div className="md:hidden space-y-3">
+                {topContractsTable.length > 0 ? (
+                  topContractsTable.map((contract) => (
+                    <div key={contract.id} className="p-4 rounded-xl border border-border/50 bg-background/40 space-y-2 text-xs">
+                      <div className="flex justify-between items-center">
+                        <span className="font-bold">{(contract as any).contract_number || (contract as any).contractNumber || "N/A"}</span>
+                        <span className={`inline-flex px-2 py-1 rounded-md text-[10px] font-bold ${statusClass(contract.status)}`}>
+                          {statusLabel(contract.status)}
+                        </span>
+                      </div>
+                      <div className="space-y-1">
+                        <p><strong>Client:</strong> {contract.customer_name || contract.customerName || "Client"}</p>
+                        <p><strong>Véhicule:</strong> {contract.vehicle || "Véhicule"}</p>
+                        <p className="text-muted-foreground text-[10px] mt-1">
+                          {formatDate(contract.start_date)} → {formatDate(contract.end_date)}
+                        </p>
+                      </div>
+                      <div className="border-t border-border/20 pt-2 flex justify-between items-center">
+                        <span className="text-muted-foreground">Montant</span>
+                        <span className="font-black text-accent">{Math.round(Number(contract.total_amount) || 0).toLocaleString()} DH</span>
+                      </div>
+                    </div>
                   ))
                 ) : (
-                  <tr>
-                    <td className="py-8 text-center text-muted-foreground" colSpan={6}>
-                      لا توجد بيانات حسب الفلاتر الحالية
-                    </td>
-                  </tr>
+                  <div className="text-center py-6 text-muted-foreground text-sm">لا توجد بيانات حسب الفلاتر الحالية</div>
                 )}
-              </tbody>
-            </table>
+              </div>
+            </div>
           </CardContent>
         </Card>
 

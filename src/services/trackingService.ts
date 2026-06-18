@@ -1,37 +1,23 @@
-type Position = {
-  timestamp: number;
-  lat: number;
-  lng: number;
-  speed?: number;
-};
+import { trackingRepository, Position } from "@/repositories/trackingRepository";
 
-const key = (vehicleId: string) => `rental_app_tracking_${vehicleId}`;
-
-function getPositions(vehicleId: string): Position[] {
-  try {
-    const raw = localStorage.getItem(key(vehicleId));
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+async function getPositions(vehicleId: string): Promise<Position[]> {
+  return trackingRepository.getPositions(vehicleId);
 }
 
-function setPositions(vehicleId: string, positions: Position[]) {
-  localStorage.setItem(key(vehicleId), JSON.stringify(positions));
+async function setPositions(vehicleId: string, positions: Position[]) {
+  return trackingRepository.setPositions(vehicleId, positions);
 }
 
-function addPosition(vehicleId: string, p: Position) {
-  const arr = getPositions(vehicleId);
-  arr.push(p);
-  setPositions(vehicleId, arr);
+async function addPosition(vehicleId: string, p: Position) {
+  return trackingRepository.addPosition(vehicleId, p);
 }
 
-function lastPosition(vehicleId: string): Position | null {
-  const arr = getPositions(vehicleId);
+async function lastPosition(vehicleId: string): Promise<Position | null> {
+  const arr = await getPositions(vehicleId);
   return arr.length ? arr[arr.length - 1] : null;
 }
 
-function seedDemoPositions(vehicleId: string) {
+async function seedDemoPositions(vehicleId: string) {
   const base = { lat: 33.5731, lng: -7.5898 };
   const now = Date.now();
   const pts: Position[] = [];
@@ -45,15 +31,15 @@ function seedDemoPositions(vehicleId: string) {
       speed: Math.round(30 + Math.random() * 40),
     });
   }
-  setPositions(vehicleId, pts);
+  await setPositions(vehicleId, pts);
 }
 
-function clearPositions(vehicleId: string) {
-  localStorage.removeItem(key(vehicleId));
+async function clearPositions(vehicleId: string) {
+  return trackingRepository.clearPositions(vehicleId);
 }
 
-function isOffline(vehicleId: string, maxAgeMs = 24 * 3600 * 1000): boolean {
-  const last = lastPosition(vehicleId);
+async function isOffline(vehicleId: string, maxAgeMs = 24 * 3600 * 1000): Promise<boolean> {
+  const last = await lastPosition(vehicleId);
   if (!last) return true;
   return Date.now() - last.timestamp > maxAgeMs;
 }

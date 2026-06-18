@@ -2,12 +2,27 @@ import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
 import ErrorBoundary from './components/ErrorBoundary'
-import { applyBrandColorFromStorage } from './utils/brandTheme'
+import { applyBrandColor, DEFAULT_BRAND_COLOR } from './utils/brandTheme'
+import { settingsRepository } from './repositories/settingsRepository'
 
-applyBrandColorFromStorage();
+const root = createRoot(document.getElementById("root")!);
 
-createRoot(document.getElementById("root")!).render(
-  <ErrorBoundary>
-    <App />
-  </ErrorBoundary>
-);
+const renderApp = () => {
+  root.render(
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  );
+};
+
+const bootstrap = async () => {
+  applyBrandColor(DEFAULT_BRAND_COLOR);
+  try {
+    const companySettings = await settingsRepository.getCompanySettings();
+    applyBrandColor(companySettings.brandColor || DEFAULT_BRAND_COLOR);
+  } catch {
+  }
+  renderApp();
+};
+
+bootstrap();

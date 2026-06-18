@@ -12,7 +12,7 @@ interface AuthState {
   isAuthenticated: boolean;
   isReady: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -88,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { success: false, message: "Erreur inattendue." };
   };
 
-  const logout = async () => {
+  const logout: AuthState["logout"] = async () => {
     const supabase = getSupabaseClient();
     if (supabase) {
       await supabase.auth.signOut();

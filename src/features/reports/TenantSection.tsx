@@ -2,7 +2,7 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import TenantReport from "@/components/TenantReport";
 import type { FilterState } from "@/pages/Reports";
-import { Contract } from "@/services/localStorageService";
+import { Contract } from "@/types/appData";
 
 interface TenantSectionProps {
   contracts: Contract[];

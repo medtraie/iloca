@@ -7,6 +7,7 @@ import { Search, Filter, X, Plus } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export interface FilterOption {
   key: string;
@@ -50,6 +51,8 @@ export function EnhancedSearchBar({
   className = ""
 }: EnhancedSearchBarProps) {
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const isMobile = useIsMobile();
+  const displayPlaceholder = isMobile && placeholder.length > 20 ? "Rechercher..." : placeholder;
 
   return (
     <motion.div
@@ -64,15 +67,15 @@ export function EnhancedSearchBar({
         <CardContent className="p-6">
           <div className="space-y-6">
             {/* Ligne principale: recherche + bouton principal */}
-            <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center">
+            <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
               {/* Barre de recherche */}
               <div className="relative flex-1 group">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground h-5 w-5 transition-colors group-focus-within:text-primary" />
+                <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4 sm:h-5 sm:w-5 transition-colors group-focus-within:text-primary" />
                 <Input
-                  placeholder={placeholder}
+                  placeholder={displayPlaceholder}
                   value={searchTerm}
                   onChange={(e) => onSearchChange(e.target.value)}
-                  className="pl-12 h-14 text-base bg-background/50 border-2 border-transparent focus:border-primary/50 focus:bg-background transition-all duration-300 rounded-2xl shadow-inner"
+                  className="pl-11 pr-4 h-12 sm:h-14 text-sm sm:text-base bg-background/50 border-2 border-transparent focus:border-primary/50 focus:bg-background transition-all duration-300 rounded-xl sm:rounded-2xl shadow-inner"
                 />
                 <AnimatePresence>
                   {searchTerm && (
@@ -96,15 +99,15 @@ export function EnhancedSearchBar({
               </div>
 
               {/* Boutons filtres et action */}
-              <div className="flex gap-3">
+              <div className="flex gap-2 w-full sm:w-auto">
                 {filters.length > 0 && (
                   <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
                     <PopoverTrigger asChild>
                       <Button 
                         variant="outline" 
-                        className="h-14 px-6 relative border-2 border-muted hover:border-primary/50 hover:bg-primary/5 transition-all duration-300 rounded-2xl font-bold uppercase tracking-wider text-xs"
+                        className="h-12 sm:h-14 px-3 sm:px-6 flex-1 sm:flex-initial relative border-2 border-muted hover:border-primary/50 hover:bg-primary/5 transition-all duration-300 rounded-xl sm:rounded-2xl font-bold uppercase tracking-wider text-[10px] sm:text-xs"
                       >
-                        <Filter className="h-4 w-4 mr-2" />
+                        <Filter className="h-4 w-4 mr-1.5" />
                         Filtres
                         <AnimatePresence>
                           {activeFilters.length > 0 && (
@@ -184,9 +187,9 @@ export function EnhancedSearchBar({
                 {primaryAction && (
                   <Button 
                     onClick={primaryAction.onClick}
-                    className="h-14 px-8 bg-primary hover:bg-primary/90 text-primary-foreground font-black uppercase tracking-widest text-xs shadow-lg hover:shadow-primary/20 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 rounded-2xl"
+                    className="h-12 sm:h-14 px-4 sm:px-8 flex-1 sm:flex-initial bg-primary hover:bg-primary/90 text-primary-foreground font-black uppercase tracking-widest text-[10px] sm:text-xs shadow-lg hover:shadow-primary/20 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 rounded-xl sm:rounded-2xl"
                   >
-                    {primaryAction.icon || <Plus className="h-5 w-5 mr-2" />}
+                    {primaryAction.icon || <Plus className="h-4 w-4 mr-1.5" />}
                     {primaryAction.label}
                   </Button>
                 )}

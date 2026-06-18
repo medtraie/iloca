@@ -378,7 +378,7 @@ const InvoicesTable = ({ userRole = "Comptable" }: InvoicesTableProps) => {
       </motion.div>
 
       <motion.div
-        className="flex flex-wrap gap-2"
+        className="flex overflow-x-auto gap-2 pb-1 scrollbar-none w-full"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, delay: 0.03 }}
@@ -389,6 +389,7 @@ const InvoicesTable = ({ userRole = "Comptable" }: InvoicesTableProps) => {
             size="sm"
             variant={activeSavedView === view.id ? "default" : "outline"}
             onClick={() => applySavedView(view.id)}
+            className="shrink-0"
           >
             {view.label}
           </Button>
@@ -684,10 +685,11 @@ const InvoicesTable = ({ userRole = "Comptable" }: InvoicesTableProps) => {
                         <p className="flex items-center gap-2"><Euro className="h-4 w-4" />{invoice.totalTTC.toFixed(2)} DH</p>
                         <p className="flex items-center gap-2"><CreditCard className="h-4 w-4" />{invoice.paymentMethod}</p>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 items-center">
                         <Checkbox
                           checked={selectedInvoices.includes(invoice.id)}
                           onCheckedChange={(checked) => handleSelectInvoice(invoice.id, checked === true)}
+                          className="mr-1"
                         />
                         <Button size="sm" variant="outline" className="flex-1" onClick={() => setSelectedInvoiceForPreview(invoice)}>
                           <Eye className="h-4 w-4 mr-1" />
@@ -696,6 +698,18 @@ const InvoicesTable = ({ userRole = "Comptable" }: InvoicesTableProps) => {
                         <Button size="sm" variant="outline" className="flex-1" onClick={() => handleDownloadInvoice(invoice)}>
                           <Download className="h-4 w-4 mr-1" />
                           PDF
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => {
+                            if (window.confirm("Êtes-vous sûr de vouloir supprimer cette facture ?")) {
+                              deleteInvoice(invoice.id);
+                            }
+                          }}
+                          className="px-2 shrink-0"
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
                     </CardContent>

@@ -144,13 +144,45 @@ const VehicleFormDialog = ({ open, onOpenChange, onSave, vehicle }: VehicleFormD
     const urls: string[] = [];
 
     for (const file of files) {
-      // Create data URL for local storage
-      const reader = new FileReader();
-      const dataUrl = await new Promise<string>((resolve) => {
-        reader.onload = (event) => resolve(event.target?.result as string);
+      // Compress image before creating data URL to avoid payload limits
+      const compressedDataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            const maxDim = 800; // Resize to max 800px
+            
+            if (width > height && width > maxDim) {
+              height *= maxDim / width;
+              width = maxDim;
+            } else if (height > maxDim) {
+              width *= maxDim / height;
+              height = maxDim;
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx?.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.7)); // Compress as JPEG
+          };
+          img.onerror = () => {
+            // Fallback to original data URL if image cannot be loaded (e.g. HEIC or non-image)
+            resolve(event.target?.result as string);
+          };
+          img.src = event.target?.result as string;
+        };
+        reader.onerror = () => {
+          resolve(""); // Avoid hanging
+        };
         reader.readAsDataURL(file);
       });
-      urls.push(dataUrl);
+      if (compressedDataUrl) {
+        urls.push(compressedDataUrl);
+      }
     }
     
     setPhotos((prev) => [...prev, ...urls]);

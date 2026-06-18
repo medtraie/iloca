@@ -77,9 +77,27 @@ const Vehicles = () => {
   };
 
   const handleAddVehicle = async (vehicleData, docUploads) => {
+    // Integrate docUploads into vehicleData.documents if available
+    const finalVehicleData = { ...vehicleData };
+    if (docUploads && docUploads.length > 0) {
+      finalVehicleData.documents = docUploads.map(doc => {
+        // If it's an object with 'file' or 'url', handle it appropriately. 
+        // For simplicity if we just store the dataUrl or name:
+        return doc.url || doc.name || JSON.stringify(doc);
+      });
+    }
+
+    // #region debug-point B:vehicles-page-submit
+    fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"vehicle-save-supabase",runId:"pre-fix",hypothesisId:"B",location:"Vehicles.tsx:handleAddVehicle",msg:"[DEBUG] submit vehicle from page",data:{editing:Boolean(editingVehicle),brand:finalVehicleData.marque||finalVehicleData.brand||"",registration:finalVehicleData.immatriculation||finalVehicleData.registration||"",photosCount:Array.isArray(finalVehicleData.photos)?finalVehicleData.photos.length:-1,documentsCount:Array.isArray(finalVehicleData.documents)?finalVehicleData.documents.length:-1},ts:Date.now()})}).catch(()=>{});
+    // #endregion
+
     const result = editingVehicle
-      ? await updateVehicle(editingVehicle.id, vehicleData)
-      : await addVehicle(vehicleData);
+      ? await updateVehicle(editingVehicle.id, finalVehicleData)
+      : await addVehicle(finalVehicleData);
+
+    // #region debug-point E:vehicles-page-result
+    fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"vehicle-save-supabase",runId:"pre-fix",hypothesisId:"E",location:"Vehicles.tsx:handleAddVehicle",msg:"[DEBUG] vehicle page save result",data:{editing:Boolean(editingVehicle),success:Boolean(result),resultId:result?.id||null},ts:Date.now()})}).catch(()=>{});
+    // #endregion
 
     if (result) {
       setFormDialogOpen(false);

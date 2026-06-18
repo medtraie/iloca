@@ -11,17 +11,19 @@ export type AlertItem = {
   contractId?: string;
 };
 
-import { localStorageService, Vehicle, Contract } from "@/services/localStorageService";
 import { trackingService } from "./trackingService";
 import { fuelService } from "./fuelService";
+import { vehiclesRepository } from "@/repositories/vehiclesRepository";
+import { contractsRepository } from "@/repositories/contractsRepository";
 
-function compute(): AlertItem[] {
+async function compute(): Promise<AlertItem[]> {
   const alerts: AlertItem[] = [];
-  const vehicles = localStorageService.getAll<Vehicle>("vehicles");
-  const contracts = localStorageService.getAll<Contract>("contracts");
+  const vehicles = await vehiclesRepository.listVehicles();
+  const contracts = await contractsRepository.getAll();
   const now = new Date();
-  vehicles.forEach((v) => {
-    const offline = trackingService.isOffline(v.id);
+  
+  for (const v of vehicles) {
+    const offline = await trackingService.isOffline(v.id);
     if (offline) {
       alerts.push({
         id: `offline_${v.id}`,
@@ -61,7 +63,8 @@ function compute(): AlertItem[] {
         });
       }
     }
-  });
+  }
+  
   contracts.forEach((c) => {
     const end = new Date(c.end_date);
     const diff = Math.ceil((end.getTime() - now.getTime()) / (1000 * 3600 * 24));
@@ -77,9 +80,10 @@ function compute(): AlertItem[] {
       });
     }
   });
+  
   const y = now.getFullYear();
   const m = now.getMonth();
-  const cons = fuelService.consumptionPerVehicle(y, m);
+  const cons = await fuelService.consumptionPerVehicle(y, m);
   Object.keys(cons).forEach((vid) => {
     if (cons[vid] > 200) {
       alerts.push({

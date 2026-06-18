@@ -1,4 +1,5 @@
 
+import { useState, useEffect } from "react";
 import { DashboardStats } from "@/components/DashboardStats";
 import { QuickActions } from "@/components/QuickActions";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,9 +7,9 @@ import { Calendar, Clock, TrendingUp, Users, FileText, Wrench, AlertTriangle, Do
 import { useDashboardStats } from "@/hooks/useDashboardStats";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { localStorageService } from "@/services/localStorageService";
 import { alertsService } from "@/services/alertsService";
 import { fuelService } from "@/services/fuelService";
+import { contractsRepository } from "@/repositories/contractsRepository";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LineChart, Line, PieChart, Pie, Cell } from "recharts";
 import { motion, useReducedMotion } from "framer-motion";
 
@@ -78,7 +79,11 @@ const Index = () => {
   const occupancyRate = stats.totalVehicles > 0 ? Math.round((stats.rentedVehicles / stats.totalVehicles) * 100) : 0;
   const customerSatisfaction = 94; // This could be calculated from feedback data
 
-  const contracts = localStorageService.getAll<any>('contracts');
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [counts, setCounts] = useState<any>({});
+  const [fuelMonthly, setFuelMonthly] = useState(0);
+  const [contracts, setContracts] = useState<any[]>([]);
+
   const now = new Date();
   const byMonthMap: Record<string, number> = {};
   const dailyMap: Record<string, number> = {};
@@ -124,9 +129,14 @@ const Index = () => {
   ];
   const pieColors = ["#2563EB", "#22C55E", "#F59E0B"];
 
-  const alerts = alertsService.compute();
-  const counts = alertsService.groupCount(alerts);
-  const fuelMonthly = fuelService.monthlyCost(now.getFullYear(), now.getMonth());
+  useEffect(() => {
+    alertsService.compute().then(a => {
+      setAlerts(a);
+      setCounts(alertsService.groupCount(a));
+    });
+    fuelService.monthlyCost(now.getFullYear(), now.getMonth()).then(c => setFuelMonthly(c));
+    contractsRepository.getAll().then(c => setContracts(c));
+  }, []);
   const monthlyCosts = stats.monthlyExpenses + stats.monthlyRepairs;
   const netMonthlyResult = stats.monthlyRevenue - monthlyCosts;
   const coverageRate = monthlyCosts > 0 ? Math.round((stats.monthlyRevenue / monthlyCosts) * 100) : 100;

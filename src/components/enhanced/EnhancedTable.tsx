@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChevronUp, ChevronDown, Search, Filter, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface Column<T> {
   key: keyof T | string;
@@ -53,6 +54,7 @@ export function EnhancedTable<T extends { id: string | number }>({
   tableHeightClass = "h-[60vh] md:h-[600px]"
 }: EnhancedTableProps<T>) {
   const [searchTerm, setSearchTerm] = useState("");
+  const isMobile = useIsMobile();
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [currentPage, setCurrentPage] = useState(1);
@@ -191,102 +193,159 @@ export function EnhancedTable<T extends { id: string | number }>({
             </div>
           </div>
 
-          {/* Tableau */}
-          <ScrollArea className={tableHeightClass}>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-b-2 border-muted/30 bg-muted/10 hover:bg-muted/10">
-                    {columns.map((column, index) => (
-                      <TableHead
-                        key={index}
-                        className={cn(
-                          "px-6 py-5 h-auto font-black text-[11px] uppercase tracking-widest text-muted-foreground transition-colors",
-                          column.className,
-                          column.sortable && "cursor-pointer hover:text-foreground select-none"
-                        )}
-                        onClick={() => column.sortable && handleSort(String(column.key))}
-                      >
-                        <div className="flex items-center gap-2">
-                          {column.label}
-                          {column.sortable && (
-                            <div className="flex flex-col opacity-50 group-hover:opacity-100 transition-opacity">
-                              <ChevronUp 
-                                className={cn("h-3 w-3", 
-                                  sortColumn === column.key && sortDirection === 'asc' ? "text-primary opacity-100" : "text-muted-foreground"
-                                )} 
-                              />
-                              <ChevronDown 
-                                className={cn("h-3 w-3 -mt-1", 
-                                  sortColumn === column.key && sortDirection === 'desc' ? "text-primary opacity-100" : "text-muted-foreground"
-                                )} 
-                              />
-                            </div>
-                          )}
-                        </div>
-                      </TableHead>
-                    ))}
-                    {actions && (
-                      <TableHead className="px-6 py-5 h-auto font-black text-[11px] uppercase tracking-widest text-muted-foreground text-right">Actions</TableHead>
-                    )}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <AnimatePresence mode="popLayout">
-                    {paginatedData.length === 0 ? (
-                      <TableRow>
-                        <TableCell 
-                          colSpan={columns.length + (actions ? 1 : 0)} 
-                          className="text-center py-20"
-                        >
-                          <motion.div
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            className="flex flex-col items-center gap-3"
-                          >
-                            <div className="p-4 bg-muted/20 rounded-full">
-                              <Search className="h-8 w-8 text-muted-foreground opacity-20" />
-                            </div>
-                            <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">{emptyMessage}</p>
-                          </motion.div>
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      paginatedData.map((item, index) => (
-                        <motion.tr
-                          key={item.id}
-                          layout
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: index * 0.03 }}
+          {/* Tableau - desktop only */}
+          <div className="hidden md:block">
+            <ScrollArea className={tableHeightClass}>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-b-2 border-muted/30 bg-muted/10 hover:bg-muted/10">
+                      {columns.map((column, index) => (
+                        <TableHead
+                          key={index}
                           className={cn(
-                            "group transition-all duration-200 border-b border-muted/10 hover:bg-primary/5",
-                            index % 2 === 0 ? 'bg-background/30' : 'bg-muted/5'
+                            "px-6 py-5 h-auto font-black text-[11px] uppercase tracking-widest text-muted-foreground transition-colors",
+                            column.className,
+                            column.sortable && "cursor-pointer hover:text-foreground select-none"
                           )}
+                          onClick={() => column.sortable && handleSort(String(column.key))}
                         >
-                          {columns.map((column, colIndex) => (
-                            <TableCell key={colIndex} className={cn("px-6 py-5 text-sm font-medium", column.className)}>
-                              {column.render 
-                                ? column.render(item) 
-                                : <span className="text-foreground/80 group-hover:text-foreground transition-colors">{String(item[column.key as keyof T] || '')}</span>
-                              }
-                            </TableCell>
-                          ))}
-                          {actions && (
-                            <TableCell className="px-6 py-5 text-right">
-                              <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                {actions(item)}
+                          <div className="flex items-center gap-2">
+                            {column.label}
+                            {column.sortable && (
+                              <div className="flex flex-col opacity-50 group-hover:opacity-100 transition-opacity">
+                                <ChevronUp 
+                                  className={cn("h-3 w-3", 
+                                    sortColumn === column.key && sortDirection === 'asc' ? "text-primary opacity-100" : "text-muted-foreground"
+                                  )} 
+                                />
+                                <ChevronDown 
+                                  className={cn("h-3 w-3 -mt-1", 
+                                    sortColumn === column.key && sortDirection === 'desc' ? "text-primary opacity-100" : "text-muted-foreground"
+                                  )} 
+                                />
                               </div>
-                            </TableCell>
-                          )}
-                        </motion.tr>
-                      ))
-                    )}
-                  </AnimatePresence>
-                </TableBody>
-              </Table>
-            </div>
-          </ScrollArea>
+                            )}
+                          </div>
+                        </TableHead>
+                      ))}
+                      {actions && (
+                        <TableHead className="px-6 py-5 h-auto font-black text-[11px] uppercase tracking-widest text-muted-foreground text-right">Actions</TableHead>
+                      )}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <AnimatePresence mode="popLayout">
+                      {paginatedData.length === 0 ? (
+                        <TableRow>
+                          <TableCell 
+                            colSpan={columns.length + (actions ? 1 : 0)} 
+                            className="text-center py-20"
+                          >
+                            <motion.div
+                              initial={{ opacity: 0, scale: 0.9 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              className="flex flex-col items-center gap-3"
+                            >
+                              <div className="p-4 bg-muted/20 rounded-full">
+                                <Search className="h-8 w-8 text-muted-foreground opacity-20" />
+                              </div>
+                              <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">{emptyMessage}</p>
+                            </motion.div>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        paginatedData.map((item, index) => (
+                          <motion.tr
+                            key={item.id}
+                            layout
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: index * 0.03 }}
+                            className={cn(
+                              "group transition-all duration-200 border-b border-muted/10 hover:bg-primary/5",
+                              index % 2 === 0 ? 'bg-background/30' : 'bg-muted/5'
+                            )}
+                          >
+                            {columns.map((column, colIndex) => (
+                              <TableCell key={colIndex} className={cn("px-6 py-5 text-sm font-medium", column.className)}>
+                                {column.render 
+                                  ? column.render(item) 
+                                  : <span className="text-foreground/80 group-hover:text-foreground transition-colors">{String(item[column.key as keyof T] || '')}</span>
+                                }
+                              </TableCell>
+                            ))}
+                            {actions && (
+                              <TableCell className="px-6 py-5 text-right">
+                                <div className="flex justify-end gap-2 opacity-100 transition-opacity">
+                                  {actions(item)}
+                                </div>
+                              </TableCell>
+                            )}
+                          </motion.tr>
+                        ))
+                      )}
+                    </AnimatePresence>
+                  </TableBody>
+                </Table>
+              </div>
+            </ScrollArea>
+          </div>
+
+          {/* Cards view - mobile only */}
+          <div className="block md:hidden">
+            <ScrollArea className={tableHeightClass}>
+              <div className="p-4 space-y-4">
+                <AnimatePresence mode="popLayout">
+                  {paginatedData.length === 0 ? (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="flex flex-col items-center justify-center gap-3 py-16"
+                    >
+                      <div className="p-4 bg-muted/20 rounded-full">
+                        <Search className="h-8 w-8 text-muted-foreground opacity-20" />
+                      </div>
+                      <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest text-center">{emptyMessage}</p>
+                    </motion.div>
+                  ) : (
+                    paginatedData.map((item, index) => (
+                      <motion.div
+                        key={item.id}
+                        layout
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.03 }}
+                        className={cn(
+                          "p-4 rounded-xl border border-muted/50 shadow-sm space-y-3 bg-card/65",
+                          index % 2 === 0 ? 'bg-background/20' : 'bg-muted/10'
+                        )}
+                      >
+                        <div className="space-y-2">
+                          {columns.map((column, colIndex) => (
+                            <div key={colIndex} className="flex justify-between items-start gap-3 border-b border-muted/10 pb-2 last:border-0 last:pb-0">
+                              <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground pt-0.5">{column.label}</span>
+                              <div className="text-sm font-medium text-right">
+                                {column.render 
+                                  ? column.render(item) 
+                                  : <span className="text-foreground/90">{String(item[column.key as keyof T] || '')}</span>
+                                }
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {actions && (
+                          <div className="pt-2 border-t border-muted/20 flex justify-end gap-1.5 flex-wrap">
+                            {actions(item)}
+                          </div>
+                        )}
+                      </motion.div>
+                    ))
+                  )}
+                </AnimatePresence>
+              </div>
+            </ScrollArea>
+          </div>
 
           {/* Pagination */}
           {totalPages > 1 && (

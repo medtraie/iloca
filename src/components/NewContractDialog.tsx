@@ -15,6 +15,7 @@ import ContractVehicleFields from "./contracts/ContractVehicleFields";
 import ContractFacturationFields from "./contracts/ContractFacturationFields";
 import ContractSignatureFields from "./contracts/ContractSignatureFields";
 import { Payment } from "@/types/payment";
+import { paymentsRepository } from "@/repositories/paymentsRepository";
 
 // Refactoring: centralisation de la logique état du contrat
 import { useNewContractState } from "./new-contract-dialog/useNewContractState";
@@ -195,45 +196,9 @@ const NewContractDialog = ({ onAddContract, open: externalOpen, onOpenChange: ex
       customerLicenseImageUrl: selectedTenantId ? tenants.find(t => t.id === selectedTenantId)?.permisImageUrl : undefined,
     };
 
-    console.log('[NewContractDialog] PDF data signatures being passed:');
-    console.log('- delivery_agent_signature:', pdfData.delivery_agent_signature ? `Present (${pdfData.delivery_agent_signature.length} chars)` : 'MISSING');
-    console.log('- delivery_tenant_signature:', pdfData.delivery_tenant_signature ? `Present (${pdfData.delivery_tenant_signature.length} chars)` : 'MISSING');
-    console.log('- return_agent_signature:', pdfData.return_agent_signature ? `Present (${pdfData.return_agent_signature.length} chars)` : 'MISSING');
-    console.log('- return_tenant_signature:', pdfData.return_tenant_signature ? `Present (${pdfData.return_tenant_signature.length} chars)` : 'MISSING');
-
-    // Créer un paiement pour tous les modes de règlement (Espèces, Chèque, Virement)
-    if (formData.paymentMethod && parseFloat(formData.advance) > 0) {
-      const payment: Payment = {
-        id: crypto.randomUUID(),
-        contractId: newContract.contractNumber || "",
-        contractNumber: contractNumber,
-        customerName: newContract.customerName,
-        amount: parseFloat(formData.advance),
-        paymentMethod: formData.paymentMethod as 'Espèces' | 'Virement' | 'Chèque',
-        paymentDate: new Date().toISOString().split('T')[0],
-        createdAt: new Date().toISOString(),
-        // Ajouter les détails du chèque seulement si c'est un chèque
-        ...(formData.paymentMethod === 'Chèque' && {
-          checkName: newContract.customerName,
-          checkReference: '', // À remplir manuellement
-          checkDirection: 'reçu' as const,
-          checkDepositStatus: 'non encaissé' as const
-        })
-      };
-      
-      // Sauvegarder dans localStorage
-      const existingPayments = JSON.parse(localStorage.getItem('payments') || '[]');
-      existingPayments.push(payment);
-      localStorage.setItem('payments', JSON.stringify(existingPayments));
-      
-      console.log('[NewContractDialog] Payment created:', payment);
-    }
-
     const pdfSuccess = await generatePDF(pdfData, `Contrat_${contractNumber}.pdf`);
 
-    console.log('[NewContractDialog] About to call onAddContract with:', newContract);
     onAddContract(newContract);
-    console.log('[NewContractDialog] onAddContract called successfully');
     resetForm();
     setOpen(false);
 

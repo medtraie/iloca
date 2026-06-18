@@ -16,19 +16,43 @@ import {
   Pie,
   Cell
 } from "recharts";
-import { localStorageService, Vehicle, Contract } from "@/services/localStorageService";
+import { vehiclesRepository } from "@/repositories/vehiclesRepository";
+import { contractsRepository } from "@/repositories/contractsRepository";
+import { Vehicle, Contract } from "@/types/appData";
 import { useGPSwoxVehicles } from "@/hooks/useGPSwoxVehicles";
 import { gpswoxService, GpswoxEvent, GpswoxFuelRecord } from "@/services/gpswoxService";
 import { toast } from "@/components/ui/sonner";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function Analytics() {
-  const vehicles = localStorageService.getAll<Vehicle>("vehicles");
-  const contracts = localStorageService.getAll<Contract>("contracts");
+  const isMobile = useIsMobile();
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [contracts, setContracts] = useState<Contract[]>([]);
   const [fuelRecords, setFuelRecords] = useState<GpswoxFuelRecord[]>([]);
   const [events, setEvents] = useState<GpswoxEvent[]>([]);
   const [gpsDetailsLoading, setGpsDetailsLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchBaseData = async () => {
+      try {
+        setLoading(true);
+        const [v, c] = await Promise.all([
+          vehiclesRepository.listVehicles(),
+          contractsRepository.getAll()
+        ]);
+        setVehicles(v);
+        setContracts(c);
+      } catch (error) {
+        console.error("Analytics fetch error", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchBaseData();
+  }, []);
   const {
     data: gpsVehicles = [],
     isFetching: gpsSyncing,
@@ -257,8 +281,8 @@ export default function Analytics() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-4">
+    <div className="space-y-4 safe-pt safe-pb">
+      <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
         <Card>
           <CardHeader>
             <CardTitle>Devices GPS</CardTitle>
@@ -298,10 +322,10 @@ export default function Analytics() {
       </div>
 
       <Tabs defaultValue="fleet">
-        <TabsList className="mb-4">
-          <TabsTrigger value="fleet">Flotte</TabsTrigger>
-          <TabsTrigger value="financial">Finance</TabsTrigger>
-          <TabsTrigger value="operational">Opérationnel</TabsTrigger>
+        <TabsList className="mb-4 flex overflow-x-auto w-full scrollbar-none justify-start gap-1 p-1 h-auto bg-muted">
+          <TabsTrigger value="fleet" className="shrink-0 whitespace-nowrap text-xs md:text-sm flex-1 md:flex-none">Flotte</TabsTrigger>
+          <TabsTrigger value="financial" className="shrink-0 whitespace-nowrap text-xs md:text-sm flex-1 md:flex-none">Finance</TabsTrigger>
+          <TabsTrigger value="operational" className="shrink-0 whitespace-nowrap text-xs md:text-sm flex-1 md:flex-none">Opérationnel</TabsTrigger>
         </TabsList>
 
         <TabsContent value="fleet">
@@ -362,7 +386,7 @@ export default function Analytics() {
         </TabsContent>
 
         <TabsContent value="operational">
-          <div className="flex justify-between items-center mb-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
             <div className="text-sm text-muted-foreground">
               Analytics GPS basées sur les données en temps réel et l'historique Supabase
             </div>
@@ -426,42 +450,71 @@ export default function Analytics() {
             <CardHeader>
               <CardTitle>Tableau des véhicules GPS</CardTitle>
             </CardHeader>
-            <CardContent className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-muted-foreground">
-                    <th className="py-2 text-left">Véhicule</th>
-                    <th className="py-2 text-left">Plaque / IMEI</th>
-                    <th className="py-2 text-left">Statut</th>
-                    <th className="py-2 text-right">Vitesse</th>
-                    <th className="py-2 text-right">Distance jour</th>
-                  </tr>
-                </thead>
-                <tbody>
+            <CardContent className={isMobile ? "p-3 space-y-3" : "overflow-x-auto"}>
+              {isMobile ? (
+                <div className="space-y-3">
                   {gpsTableData.map((row) => (
-                    <tr key={row.id} className="border-b last:border-0">
-                      <td className="py-1">{row.name}</td>
-                      <td className="py-1 text-muted-foreground">{row.plate}</td>
-                      <td className="py-1">
-                        {row.status === "moving"
-                          ? "Mouvement"
-                          : row.status === "online"
-                            ? "En ligne"
-                            : "Arrêt"}
-                      </td>
-                      <td className="py-1 text-right">{row.speed} km/h</td>
-                      <td className="py-1 text-right">{row.distance} km</td>
-                    </tr>
+                    <div key={row.id} className="p-3 rounded-xl border border-border bg-background/50 space-y-2 text-xs">
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold text-foreground">{row.name}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] ${
+                          row.status === "moving"
+                            ? "bg-sky-100 text-sky-700"
+                            : row.status === "online"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-rose-100 text-rose-700"
+                        }`}>
+                          {row.status === "moving" ? "Mouvement" : row.status === "online" ? "En ligne" : "Arrêt"}
+                        </span>
+                      </div>
+                      <p className="text-muted-foreground text-[10px]">IMEI/Plaque: {row.plate}</p>
+                      <div className="border-t pt-2 flex justify-between text-muted-foreground">
+                        <span>Vitesse: {row.speed} km/h</span>
+                        <span>Distance: {row.distance} km</span>
+                      </div>
+                    </div>
                   ))}
                   {!gpsTableData.length ? (
-                    <tr>
-                      <td colSpan={5} className="py-4 text-center text-muted-foreground">
-                        Aucune donnée GPS disponible
-                      </td>
-                    </tr>
+                    <div className="text-center py-6 text-muted-foreground text-sm">Aucune donnée GPS disponible</div>
                   ) : null}
-                </tbody>
-              </table>
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-muted-foreground">
+                      <th className="py-2 text-left">Véhicule</th>
+                      <th className="py-2 text-left">Plaque / IMEI</th>
+                      <th className="py-2 text-left">Statut</th>
+                      <th className="py-2 text-right">Vitesse</th>
+                      <th className="py-2 text-right">Distance jour</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {gpsTableData.map((row) => (
+                      <tr key={row.id} className="border-b last:border-0">
+                        <td className="py-1">{row.name}</td>
+                        <td className="py-1 text-muted-foreground">{row.plate}</td>
+                        <td className="py-1">
+                          {row.status === "moving"
+                            ? "Mouvement"
+                            : row.status === "online"
+                              ? "En ligne"
+                              : "Arrêt"}
+                        </td>
+                        <td className="py-1 text-right">{row.speed} km/h</td>
+                        <td className="py-1 text-right">{row.distance} km</td>
+                      </tr>
+                    ))}
+                    {!gpsTableData.length ? (
+                      <tr>
+                        <td colSpan={5} className="py-4 text-center text-muted-foreground">
+                          Aucune donnée GPS disponible
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              )}
             </CardContent>
           </Card>
           <div className="grid gap-6 lg:grid-cols-2 mt-6">
@@ -479,7 +532,7 @@ export default function Analytics() {
                     <Bar dataKey="quantity" fill="#22C55E" radius={[8, 8, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
-                <div className="mt-4 grid grid-cols-3 gap-3 text-xs text-muted-foreground">
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-muted-foreground">
                   <div>
                     <div className="font-semibold text-foreground">
                       {fuelAggregates.totalQuantity} L

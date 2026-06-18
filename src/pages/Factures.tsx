@@ -42,7 +42,7 @@ const Factures = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background p-4">
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background p-4 safe-pt safe-pb">
       <div className="max-w-7xl mx-auto">
         <motion.div
           className="bg-card rounded-xl border shadow-sm p-6 mb-6"

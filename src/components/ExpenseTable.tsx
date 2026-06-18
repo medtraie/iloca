@@ -126,7 +126,8 @@ const ExpenseTable = ({ expenses, vehicles, filters }: ExpenseTableProps) => {
       </div>
 
       {/* Expenses Table */}
-      <Table>
+      <div className="overflow-x-auto rounded-xl border border-border/40 bg-card">
+        <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Date</TableHead>
@@ -155,7 +156,8 @@ const ExpenseTable = ({ expenses, vehicles, filters }: ExpenseTableProps) => {
             </TableRow>
           ))}
         </TableBody>
-      </Table>
+        </Table>
+      </div>
 
       {filteredExpenses.length === 0 && (
         <div className="text-center py-8 text-gray-500">

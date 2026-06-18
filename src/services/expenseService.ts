@@ -1,11 +1,6 @@
 
-import { localStorageService } from "@/services/localStorageService";
+import { expensesRepository } from "@/repositories/expensesRepository";
 import { Expense, ExpenseAuditLog, ExpenseBudget, MonthlyExpense } from "@/types/expense";
-
-const EXPENSE_DATA_TYPE = "expenses";
-const MONTHLY_EXPENSE_DATA_TYPE = "monthly_expenses";
-const EXPENSE_BUDGET_DATA_TYPE = "expense_budgets";
-const EXPENSE_AUDIT_LOG_DATA_TYPE = "expense_audit_logs";
 
 const addMonths = (date: Date, months: number) => {
   const next = new Date(date);
@@ -17,24 +12,24 @@ const toMonthYear = (date: Date) => `${date.getFullYear()}-${String(date.getMont
 
 export const expenseService = {
   async fetchExpenses(): Promise<Expense[]> {
-    return localStorageService.getAll<Expense>(EXPENSE_DATA_TYPE);
+    return expensesRepository.getAllExpenses();
   },
 
   async fetchMonthlyExpenses(): Promise<MonthlyExpense[]> {
-    return localStorageService.getAll<MonthlyExpense>(MONTHLY_EXPENSE_DATA_TYPE);
+    return expensesRepository.getAllMonthlyExpenses();
   },
 
   async fetchBudgets(): Promise<ExpenseBudget[]> {
-    return localStorageService.getAll<ExpenseBudget>(EXPENSE_BUDGET_DATA_TYPE);
+    return expensesRepository.getAllBudgets();
   },
 
   async fetchAuditLogs(): Promise<ExpenseAuditLog[]> {
-    return localStorageService.getAll<ExpenseAuditLog>(EXPENSE_AUDIT_LOG_DATA_TYPE);
+    return expensesRepository.getAllAuditLogs();
   },
 
   async addExpense(expenseData: Omit<Expense, "id" | "created_at" | "updated_at">): Promise<Expense> {
     const monthlyExpense = expenseData.total_cost / (expenseData.period_months || 1);
-    const newExpense = localStorageService.add<Expense>(EXPENSE_DATA_TYPE, {
+    const newExpense = await expensesRepository.createExpense({
       ...expenseData,
       monthly_cost: monthlyExpense,
       archived: Boolean(expenseData.archived),
@@ -55,7 +50,8 @@ export const expenseService = {
   },
 
   async updateExpense(id: string, expenseData: Partial<Expense>): Promise<Expense> {
-    const existingExpense = localStorageService.get<Expense>(EXPENSE_DATA_TYPE, id);
+    const allExpenses = await expensesRepository.getAllExpenses();
+    const existingExpense = allExpenses.find((e) => e.id === id);
     if (!existingExpense) {
       throw new Error("Expense not found");
     }
@@ -68,10 +64,7 @@ export const expenseService = {
       updateData.monthly_cost = totalCost / (periodMonths || 1);
     }
 
-    const updatedExpense = localStorageService.update<Expense>(EXPENSE_DATA_TYPE, updateData);
-    if (!updatedExpense) {
-      throw new Error("Expense update failed");
-    }
+    const updatedExpense = await expensesRepository.updateExpense(id, updateData);
 
     if (
       expenseData.total_cost !== undefined ||
@@ -79,7 +72,7 @@ export const expenseService = {
       expenseData.start_date !== undefined ||
       expenseData.end_date !== undefined
     ) {
-      await localStorageService.deleteWhere(MONTHLY_EXPENSE_DATA_TYPE, "expense_id", id);
+      await expensesRepository.deleteMonthlyExpensesByExpenseId(id);
       await this.createMonthlyExpenseRecords(updatedExpense);
     }
 
@@ -94,9 +87,10 @@ export const expenseService = {
   },
 
   async deleteExpense(id: string): Promise<void> {
-    const target = localStorageService.get<Expense>(EXPENSE_DATA_TYPE, id);
-    localStorageService.delete(EXPENSE_DATA_TYPE, id);
-    await localStorageService.deleteWhere(MONTHLY_EXPENSE_DATA_TYPE, "expense_id", id);
+    const allExpenses = await expensesRepository.getAllExpenses();
+    const target = allExpenses.find((e) => e.id === id);
+    await expensesRepository.deleteExpense(id);
+    await expensesRepository.deleteMonthlyExpensesByExpenseId(id);
     await this.appendAuditLog({
       expense_id: id,
       action: "expense_deleted",
@@ -106,23 +100,23 @@ export const expenseService = {
   },
 
   async archiveExpense(id: string): Promise<Expense | null> {
-    const expense = localStorageService.get<Expense>(EXPENSE_DATA_TYPE, id);
+    const allExpenses = await expensesRepository.getAllExpenses();
+    const expense = allExpenses.find((e) => e.id === id);
     if (!expense) {
       return null;
     }
-    const updated = localStorageService.update<Expense>(EXPENSE_DATA_TYPE, id, { archived: true });
-    if (updated) {
-      await this.appendAuditLog({
-        expense_id: id,
-        action: "expense_archived",
-        details: "Archivage de dépense"
-      });
-    }
+    const updated = await expensesRepository.updateExpense(id, { archived: true });
+    await this.appendAuditLog({
+      expense_id: id,
+      action: "expense_archived",
+      details: "Archivage de dépense"
+    });
     return updated;
   },
 
   async duplicateExpense(id: string): Promise<Expense | null> {
-    const source = localStorageService.get<Expense>(EXPENSE_DATA_TYPE, id);
+    const allExpenses = await expensesRepository.getAllExpenses();
+    const source = allExpenses.find((e) => e.id === id);
     if (!source) {
       return null;
     }
@@ -143,19 +137,17 @@ export const expenseService = {
       parent_expense_id: source.id,
       next_due_date: source.next_due_date
     });
-    if (duplicated) {
-      await this.appendAuditLog({
-        expense_id: duplicated.id,
-        action: "expense_duplicated",
-        details: "Duplication de dépense",
-        payload: { source_expense_id: source.id }
-      });
-    }
+    await this.appendAuditLog({
+      expense_id: duplicated.id,
+      action: "expense_duplicated",
+      details: "Duplication de dépense",
+      payload: { source_expense_id: source.id }
+    });
     return duplicated;
   },
 
   async upsertBudget(input: Omit<ExpenseBudget, "id" | "created_at" | "updated_at">): Promise<ExpenseBudget> {
-    const budgets = localStorageService.getAll<ExpenseBudget>(EXPENSE_BUDGET_DATA_TYPE);
+    const budgets = await expensesRepository.getAllBudgets();
     const existing = budgets.find(
       (b) =>
         b.vehicle_id === input.vehicle_id &&
@@ -164,12 +156,9 @@ export const expenseService = {
     );
 
     if (existing) {
-      const updated = localStorageService.update<ExpenseBudget>(EXPENSE_BUDGET_DATA_TYPE, existing.id, {
+      const updated = await expensesRepository.updateBudget(existing.id, {
         budget_amount: input.budget_amount
       });
-      if (!updated) {
-        throw new Error("Budget update failed");
-      }
       await this.appendAuditLog({
         action: "budget_updated",
         details: "Mise à jour budget",
@@ -178,7 +167,7 @@ export const expenseService = {
       return updated;
     }
 
-    const created = localStorageService.add<ExpenseBudget>(EXPENSE_BUDGET_DATA_TYPE, input);
+    const created = await expensesRepository.createBudget(input);
     await this.appendAuditLog({
       action: "budget_updated",
       details: "Création budget",
@@ -188,7 +177,7 @@ export const expenseService = {
   },
 
   async generateRecurringExpenses(referenceDate: Date = new Date()): Promise<Expense[]> {
-    const expenses = localStorageService.getAll<Expense>(EXPENSE_DATA_TYPE);
+    const expenses = await expensesRepository.getAllExpenses();
     const recurring = expenses.filter((expense) => expense.recurring_enabled && !expense.archived);
     const knownExpenses = [...expenses];
     const generated: Expense[] = [];
@@ -216,7 +205,7 @@ export const expenseService = {
         );
 
         if (!duplicate) {
-          const newExpense = localStorageService.add<Expense>(EXPENSE_DATA_TYPE, {
+          const newExpense = await expensesRepository.createExpense({
             vehicle_id: template.vehicle_id,
             type: template.type,
             total_cost: template.total_cost,
@@ -249,7 +238,7 @@ export const expenseService = {
       }
 
       if (iterations > 0) {
-        localStorageService.update<Expense>(EXPENSE_DATA_TYPE, template.id, {
+        await expensesRepository.updateExpense(template.id, {
           next_due_date: cursorDate.toISOString().slice(0, 10)
         });
       }
@@ -261,14 +250,13 @@ export const expenseService = {
   async createMonthlyExpenseRecords(expense: Expense): Promise<void> {
     const startDate = new Date(expense.start_date);
     const endDate = new Date(expense.end_date);
-    const monthlyRecords: Omit<MonthlyExpense, "id" | "created_at" | "updated_at">[] = [];
 
     const currentDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
 
     while (currentDate <= endDate) {
       const monthYear = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`;
 
-      monthlyRecords.push({
+      await expensesRepository.createMonthlyExpense({
         expense_id: expense.id,
         vehicle_id: expense.vehicle_id,
         month_year: monthYear,
@@ -278,16 +266,10 @@ export const expenseService = {
 
       currentDate.setMonth(currentDate.getMonth() + 1);
     }
-
-    if (monthlyRecords.length > 0) {
-      monthlyRecords.forEach((record) => {
-        localStorageService.add(MONTHLY_EXPENSE_DATA_TYPE, record);
-      });
-    }
   },
 
   async appendAuditLog(log: Omit<ExpenseAuditLog, "id" | "created_at" | "updated_at">): Promise<ExpenseAuditLog> {
-    return localStorageService.add<ExpenseAuditLog>(EXPENSE_AUDIT_LOG_DATA_TYPE, log);
+    return expensesRepository.createAuditLog(log);
   },
 
   computeBudgetActual(

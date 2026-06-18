@@ -19,28 +19,16 @@ const defaults: CompanyInfo = {
   logo: null,
 };
 
-const safeRead = (key: string): string => {
-  try {
-    const v = localStorage.getItem(key);
-    if (!v) return "";
-    try {
-      return JSON.parse(v);
-    } catch {
-      return v;
-    }
-  } catch {
-    return "";
-  }
-};
-
 export const getCompanyInfo = (): CompanyInfo => {
-  const name = safeRead("companyName") || defaults.name;
-  const logo = safeRead("companyLogo") || null;
-  const address = safeRead("companyAddress") || defaults.address;
-  const phone = safeRead("companyPhone") || defaults.phone;
-  const fax = safeRead("companyFax") || defaults.fax;
-  const gsm = safeRead("companyGsm") || defaults.gsm;
-  const email = safeRead("companyEmail") || defaults.email;
+  const raw = (globalThis as any).__iloca_company_settings as any;
+
+  const name = (typeof raw?.companyName === "string" && raw.companyName.trim()) ? raw.companyName.trim() : defaults.name;
+  const logo = (typeof raw?.companyLogo === "string" ? raw.companyLogo : null) ?? null;
+  const address = (typeof raw?.companyAddress === "string" && raw.companyAddress.trim()) ? raw.companyAddress.trim() : defaults.address;
+  const phone = (typeof raw?.companyPhone === "string" && raw.companyPhone.trim()) ? raw.companyPhone.trim() : defaults.phone;
+  const fax = (typeof raw?.companyFax === "string" && raw.companyFax.trim()) ? raw.companyFax.trim() : defaults.fax;
+  const gsm = (typeof raw?.companyGsm === "string" && raw.companyGsm.trim()) ? raw.companyGsm.trim() : defaults.gsm;
+  const email = (typeof raw?.companyEmail === "string" && raw.companyEmail.trim()) ? raw.companyEmail.trim() : defaults.email;
   return { name, logo, address, phone, fax, gsm, email };
 };
 

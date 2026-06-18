@@ -2,6 +2,7 @@
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { useCallback } from 'react';
+import { getCompanyContactLines, getCompanyInfo } from '@/utils/companyInfo';
 
 export interface ContractPDFData {
   contractNumber: string;
@@ -367,26 +368,9 @@ export const usePDFGeneration = () => {
     },
     opts?: { vehicleDiagramDataUrl?: string }
   ) => {
-    const readValue = (key: string): string => {
-      try {
-        const v = localStorage.getItem(key);
-        if (!v) return '';
-        try { return JSON.parse(v); } catch { return v; }
-      } catch { return ''; }
-    };
-    const companyName = readValue('companyName') || 'SFTLOCATION';
-    const companyLogo = readValue('companyLogo');
-    const companyAddress = readValue('companyAddress');
-    const companyPhone = readValue('companyPhone');
-    const companyFax = readValue('companyFax');
-    const companyGsm = readValue('companyGsm');
-    const companyEmail = readValue('companyEmail');
-    const lineAddress = companyAddress || '10 Avenue des Far, 3ème Étage - Bureau N° 308 - Casablanca - Maroc';
-    const linePhoneFax = (companyPhone || companyFax)
-      ? `${companyPhone ? `Tél: ${companyPhone}` : ''}${companyPhone && companyFax ? ' - ' : ''}${companyFax ? `Fax: ${companyFax}` : ''}`
-      : 'Tél: 0522228704 - Fax: 05 22 47 17 80';
-    const lineGsm = companyGsm ? `GSM: ${companyGsm}` : 'GSM: 06 62 59 63 07';
-    const lineEmail = companyEmail ? `E-mail: ${companyEmail}` : 'E-mail: bonatours308@gmail.com';
+    const { name: companyName, logo: companyLogo } = getCompanyInfo();
+    const { addressLine: lineAddress, phoneFaxLine: linePhoneFax, gsmLine: lineGsm, emailLine: lineEmail } =
+      getCompanyContactLines();
     const diagramSrc = opts?.vehicleDiagramDataUrl || '/lovable-uploads/b28228b7-89d0-46f1-88ae-39cdf67d2bde.png';
     return `
     <div class="pdf-root">

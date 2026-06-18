@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FileText, Share2 } from "lucide-react";
+import { FileText, Share2, CreditCard, PenTool } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import VehicleDiagram from "./VehicleDiagram";
 import FuelGauge from "./FuelGauge";
@@ -23,6 +23,7 @@ import { Customer } from "@/hooks/useCustomers";
 import { Vehicle } from "@/hooks/useVehicles";
 import { Contract } from "@/hooks/useContracts";
 import { computeContractSummary, computeTotal, daysBetween } from "@/utils/contractMath";
+import { getCompanyDisplayName } from "@/utils/companyInfo";
 import { format } from "date-fns";
 
 interface ContractFormDialogProps {
@@ -670,12 +671,7 @@ const EnhancedContractFormDialog = ({ contract, open, onOpenChange, onSave, mode
         });
       } else {
         const url = URL.createObjectURL(blob);
-        const company = (() => {
-          try {
-            const v = localStorage.getItem('companyName');
-            return v ? JSON.parse(v) : 'SFTLOCATION';
-          } catch { return 'SFTLOCATION'; }
-        })();
+        const company = getCompanyDisplayName();
         const text = encodeURIComponent(`Contrat ${company} ${pdfData.contractNumber}\n${url}`);
         window.open(`https://api.whatsapp.com/send?text=${text}`, "_blank");
         setTimeout(() => URL.revokeObjectURL(url), 60000);
@@ -692,13 +688,6 @@ const EnhancedContractFormDialog = ({ contract, open, onOpenChange, onSave, mode
 
   const handleSave = () => {
     if (!contract || !onSave) return;
-
-    // Log all signatures before saving
-    console.log('[EnhancedContractFormDialog] About to save contract - Current signature status:');
-    console.log('- delivery_agent_signature:', formData.delivery_agent_signature ? `Present (${formData.delivery_agent_signature.length} chars)` : 'MISSING');
-    console.log('- delivery_tenant_signature:', formData.delivery_tenant_signature ? `Present (${formData.delivery_tenant_signature.length} chars)` : 'MISSING');  
-    console.log('- return_agent_signature:', formData.return_agent_signature ? `Present (${formData.return_agent_signature.length} chars)` : 'MISSING');
-    console.log('- return_tenant_signature:', formData.return_tenant_signature ? `Present (${formData.return_tenant_signature.length} chars)` : 'MISSING');
 
     // Calculate total amount using centralized function if dailyRate and dates are provided
     let totalAmount = contract.total_amount;
@@ -719,12 +708,6 @@ const EnhancedContractFormDialog = ({ contract, open, onOpenChange, onSave, mode
       status = "ouvert"; // Keep as open when creating or not ready to close
     }
 
-    console.log(`[EnhancedContractFormDialog] Saving contract with interactive data:`);
-    console.log(`- Delivery fuel: ${deliveryFuelLevel}`);
-    console.log(`- Return fuel: ${returnFuelLevel}`);
-    console.log(`- Delivery damages:`, deliveryDamages);
-    console.log(`- Return damages:`, returnDamages);
-
     const updatedContract: Contract = {
       ...contract,
       customer_name: `${formData.customerFirstName} ${formData.customerLastName}`.trim(),
@@ -735,12 +718,7 @@ const EnhancedContractFormDialog = ({ contract, open, onOpenChange, onSave, mode
       end_date: formData.returnDateTime ? formData.returnDateTime.split('T')[0] : contract.end_date,
       daily_rate: parseFloat(formData.dailyPrice) || contract.daily_rate,
       total_amount: totalAmount,
-      advance_payment: parseFloat(formData.advance) || 0, // 🚨 CRITICAL FIX: Save advance from form
-      // DEBUG: Log advance payment being saved
-      ...(() => {
-        console.log(`[💾 SAVING CONTRACT] Advance from form: ${formData.advance} DH -> Parsed: ${parseFloat(formData.advance) || 0} DH`);
-        return {};
-      })(),
+      advance_payment: parseFloat(formData.advance) || 0,
       status,
       payment_method: formData.paymentMethod as 'Espèces' | 'Chèque' | 'Virement' || undefined,
       notes: formData.observationsDelivery,
@@ -759,12 +737,6 @@ const EnhancedContractFormDialog = ({ contract, open, onOpenChange, onSave, mode
         return_damages: returnDamages
       }
     };
-
-    console.log('[EnhancedContractFormDialog] Contract being saved with signature data:');
-    console.log('- delivery_agent_signature in contract_data:', updatedContract.contract_data?.delivery_agent_signature ? `Present (${updatedContract.contract_data.delivery_agent_signature.length} chars)` : 'MISSING');
-    console.log('- delivery_tenant_signature in contract_data:', updatedContract.contract_data?.delivery_tenant_signature ? `Present (${updatedContract.contract_data.delivery_tenant_signature.length} chars)` : 'MISSING');
-    console.log('- return_agent_signature in contract_data:', updatedContract.contract_data?.return_agent_signature ? `Present (${updatedContract.contract_data.return_agent_signature.length} chars)` : 'MISSING'); 
-    console.log('- return_tenant_signature in contract_data:', updatedContract.contract_data?.return_tenant_signature ? `Present (${updatedContract.contract_data.return_tenant_signature.length} chars)` : 'MISSING');
 
     onSave(updatedContract);
     onOpenChange(false);
@@ -1328,11 +1300,14 @@ const EnhancedContractFormDialog = ({ contract, open, onOpenChange, onSave, mode
                 <Input 
                   id="remaining" 
                   name="remaining" 
-                  value={calculateRemaining() || formData.remaining} 
+                  value={calculateRemaining()} 
                   className="bg-destructive/5 border-destructive/20 h-11 rounded-[var(--radius)] font-black text-destructive text-lg" 
                   type="number" 
                   readOnly 
                 />
+                <p className="text-xs text-muted-foreground mt-1 text-right">
+                  Ce montant ne tient compte que de l'avance initiale. Pour régler ou voir le reste à payer réel, utilisez le bouton "Régler" dans le tableau.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="paymentMethod" className="text-xs font-bold uppercase text-muted-foreground">Mode de Règlement</Label>

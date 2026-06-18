@@ -1,13 +1,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Repair, RepairFormData, RepairPayment, RepairUpdate } from "@/types/repair";
-import { Vehicle } from "@/hooks/useVehicles";
-import { localStorageService } from "@/services/localStorageService";
+import { Vehicle } from "@/types/appData";
+import { repairsRepository } from "@/repositories/repairsRepository";
+import { vehiclesRepository } from "@/repositories/vehiclesRepository";
+import { contractsRepository } from "@/repositories/contractsRepository";
+import { paymentsRepository } from "@/repositories/paymentsRepository";
 import { useToast } from "@/hooks/use-toast";
-
-const REPAIR_DATA_TYPE = "repairs";
-const VEHICLE_DATA_TYPE = "vehicles";
-const REPAIR_PAYMENT_DATA_TYPE = "repairPayments";
 
 const getSlaTargetDays = (typeReparation: Repair["typeReparation"]) => {
   if (typeReparation === "Électrique") return 5;
@@ -54,30 +53,33 @@ export const useRepairs = (vehicleId?: string) => {
   const [repairs, setRepairs] = useState<Repair[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const syncVehicleStatus = (vehicleIdToSync: string, operationalStatus?: Repair["operationalStatus"]) => {
-    const vehicle = localStorageService.get<Vehicle>(VEHICLE_DATA_TYPE, vehicleIdToSync);
-    if (!vehicle) return;
-    localStorageService.update<Vehicle>(VEHICLE_DATA_TYPE, {
-      ...vehicle,
-      etat_vehicule: toVehicleState(operationalStatus)
-    });
+  const syncVehicleStatus = async (vehicleIdToSync: string, operationalStatus?: Repair["operationalStatus"]) => {
+    try {
+      const vehicles = await vehiclesRepository.listVehicles();
+      const vehicle = vehicles.find(v => v.id === vehicleIdToSync);
+      if (!vehicle) return;
+      await vehiclesRepository.updateVehicle(vehicleIdToSync, {
+        etat_vehicule: toVehicleState(operationalStatus)
+      });
+    } catch (e) {
+      console.error("Failed to sync vehicle status", e);
+    }
   };
 
-  const pushTreasuryPayment = (repair: Repair, payment: RepairPayment) => {
-    if (payment.amount <= 0) return;
-    const treasuryMovement = {
-      id: `repair-payment-${repair.id}-${payment.id}`,
-      repairId: repair.id,
-      date: payment.date,
-      type: "reparation",
-      amount: payment.amount,
-      paymentMethod: payment.method,
-      reference: `Réparation ${repair.typeReparation} - ${repair.vehicleInfo.marque} ${repair.vehicleInfo.modele}`,
-      description: payment.note || repair.note,
-      vehicleInfo: `${repair.vehicleInfo.immatriculation}`,
-      created_at: new Date().toISOString()
-    };
-    localStorageService.addItemToArray(REPAIR_PAYMENT_DATA_TYPE, treasuryMovement);
+  const pushTreasuryPayment = async (repair: Repair, payment: RepairPayment) => {
+    try {
+      await paymentsRepository.create({
+        repairId: repair.id,
+        amount: payment.amount,
+        paymentDate: payment.date,
+        paymentMethod: payment.method as any,
+        customerName: `Réparation: ${repair.typeReparation}`,
+        contractNumber: `REP-${repair.vehicleInfo?.registration || repair.vehicleId.slice(0, 8)}`,
+        notes: payment.note
+      });
+    } catch (error) {
+      console.error("Failed to push repair payment to treasury", error);
+    }
   };
 
   const normalizeRepair = useCallback((repair: Repair) => {
@@ -113,8 +115,8 @@ export const useRepairs = (vehicleId?: string) => {
   const fetchRepairs = useCallback(async () => {
     setLoading(true);
     try {
-      const allRepairs = localStorageService.getAll<Repair>(REPAIR_DATA_TYPE);
-      const normalized = allRepairs.map((repair) => {
+      const allRepairs = vehicleId ? await repairsRepository.getByVehicleId(vehicleId) : await repairsRepository.getAll();
+      const normalized = await Promise.all(allRepairs.map(async (repair) => {
         const nextRepair = normalizeRepair(repair);
         const changed =
           nextRepair.paye !== repair.paye ||
@@ -124,28 +126,19 @@ export const useRepairs = (vehicleId?: string) => {
           nextRepair.operationalStatus !== repair.operationalStatus ||
           (repair.payments || []).length !== (nextRepair.payments || []).length;
         if (changed) {
-          localStorageService.update<Repair>(REPAIR_DATA_TYPE, nextRepair);
+          await repairsRepository.update(repair.id, {
+            paye: nextRepair.paye,
+            dette: nextRepair.dette,
+            dueDate: nextRepair.dueDate,
+            slaTargetDays: nextRepair.slaTargetDays,
+            operationalStatus: nextRepair.operationalStatus,
+            payments: nextRepair.payments,
+            updates: nextRepair.updates
+          });
         }
         return nextRepair;
-      });
-      const latestByVehicle = new Map<string, Repair>();
-      normalized.forEach((repair) => {
-        const existing = latestByVehicle.get(repair.vehicleId);
-        if (!existing) {
-          latestByVehicle.set(repair.vehicleId, repair);
-          return;
-        }
-        const existingTime = new Date(existing.updated_at).getTime();
-        const currentTime = new Date(repair.updated_at).getTime();
-        if (currentTime >= existingTime) {
-          latestByVehicle.set(repair.vehicleId, repair);
-        }
-      });
-      latestByVehicle.forEach((repair) => {
-        syncVehicleStatus(repair.vehicleId, repair.operationalStatus);
-      });
-      const filteredRepairs = vehicleId ? normalized.filter((r) => r.vehicleId === vehicleId) : normalized;
-      setRepairs(filteredRepairs);
+      }));
+      setRepairs(normalized);
     } catch (error) {
       console.error("Error fetching repairs:", error);
       toast({ title: "Erreur", description: "Une erreur s'est produite lors du chargement des réparations.", variant: "destructive" });
@@ -161,7 +154,8 @@ export const useRepairs = (vehicleId?: string) => {
   const addRepair = async (repairData: RepairFormData, file: File | null) => {
     setLoading(true);
     try {
-      const vehicle = localStorageService.get<Vehicle>(VEHICLE_DATA_TYPE, repairData.vehicleId);
+      const vehicles = await vehiclesRepository.listVehicles();
+      const vehicle = vehicles.find(v => v.id === repairData.vehicleId);
       if (!vehicle) throw new Error("Véhicule introuvable");
       const payments = (repairData.payments || []).filter((payment) => payment.amount > 0);
       const hasLegacyPaid = (repairData.paye || 0) > 0 && payments.length === 0;
@@ -170,7 +164,7 @@ export const useRepairs = (vehicleId?: string) => {
             id: `${Date.now().toString(36)}-initial`,
             amount: repairData.paye || 0,
             date: repairData.dateReparation,
-            method: repairData.paymentMethod,
+            method: repairData.paymentMethod as any,
             note: "Paiement initial"
           }]
         : payments;
@@ -189,14 +183,13 @@ export const useRepairs = (vehicleId?: string) => {
         vehicleInfo: { marque: vehicle.marque || vehicle.brand || "N/A", modele: vehicle.modele || vehicle.model || "N/A", immatriculation: vehicle.immatriculation || vehicle.registration || "N/A" },
         pieceJointe: file ? { fileName: file.name, fileUrl: URL.createObjectURL(file), fileType: file.type } : undefined
       };
-      const newRepair = localStorageService.add<Repair>(REPAIR_DATA_TYPE, repairToSave);
-      syncVehicleStatus(newRepair.vehicleId, operationalStatus);
+      const newRepair = await repairsRepository.create(repairToSave);
+      await syncVehicleStatus(newRepair.vehicleId, operationalStatus);
       normalizedPayments.forEach((payment) => pushTreasuryPayment(newRepair, payment));
-      fetchRepairs();
+      await fetchRepairs();
       const debtMessage = dette > 0 ? ` Une dette de ${dette.toFixed(2)} MAD a été enregistrée.` : "";
       toast({ title: "Succès", description: `Réparation ajoutée avec succès. Le véhicule est maintenant en maintenance.${debtMessage}` });
     } catch (error: any) {
-      console.error("=== Error adding repair ===", error);
       toast({ title: "Erreur", description: `Une erreur s'est produite lors de l'ajout de la réparation: ${error?.message || error?.toString()}` });
     } finally {
       setLoading(false);
@@ -206,10 +199,11 @@ export const useRepairs = (vehicleId?: string) => {
   const updateRepair = async (id: string, repairData: RepairFormData, file: File | null) => {
     setLoading(true);
     try {
-      const vehicle = localStorageService.get<Vehicle>(VEHICLE_DATA_TYPE, repairData.vehicleId);
+      const vehicles = await vehiclesRepository.listVehicles();
+      const vehicle = vehicles.find(v => v.id === repairData.vehicleId);
       if (!vehicle) throw new Error("Véhicule introuvable");
 
-      const existingRepair = localStorageService.get<Repair>(REPAIR_DATA_TYPE, id);
+      const existingRepair = await repairsRepository.getById(id);
       if (!existingRepair) throw new Error("Réparation introuvable");
 
       const rawPayments = (repairData.payments || existingRepair.payments || []).filter((payment) => payment.amount > 0);
@@ -220,14 +214,13 @@ export const useRepairs = (vehicleId?: string) => {
               id: `legacy-${id}`,
               amount: repairData.paye || existingRepair.paye || 0,
               date: repairData.dateReparation,
-              method: repairData.paymentMethod,
+              method: repairData.paymentMethod as any,
               note: "Paiement initial"
             }]
           : [];
       const { paye, dette } = calculateTotals(repairData.cout || 0, normalizedPayments);
       const operationalStatus = getOperationalStatus(repairData.dateReparation, dette, repairData.operationalStatus);
       const updateData = {
-        ...existingRepair,
         ...repairData,
         paye,
         dette,
@@ -240,13 +233,11 @@ export const useRepairs = (vehicleId?: string) => {
         ...(file && { pieceJointe: { fileName: file.name, fileUrl: URL.createObjectURL(file), fileType: file.type } })
       };
 
-      const updatedRepair = localStorageService.update<Repair>(REPAIR_DATA_TYPE, updateData);
-      if (!updatedRepair) throw new Error("Réparation introuvable");
-      syncVehicleStatus(updatedRepair.vehicleId, operationalStatus);
-      fetchRepairs();
+      const updatedRepair = await repairsRepository.update(id, updateData);
+      await syncVehicleStatus(updatedRepair.vehicleId, operationalStatus);
+      await fetchRepairs();
       toast({ title: "Mis à jour", description: "Réparation mise à jour avec succès." });
     } catch (error) {
-      console.error("Error updating repair:", error);
       toast({ title: "Erreur", description: "Échec de la mise à jour de la réparation.", variant: "destructive" });
     } finally {
       setLoading(false);
@@ -255,28 +246,27 @@ export const useRepairs = (vehicleId?: string) => {
 
   const deleteRepair = async (id: string) => {
     try {
-      const repair = localStorageService.get<Repair>(REPAIR_DATA_TYPE, id);
-      const deleted = localStorageService.delete(REPAIR_DATA_TYPE, id);
-      if (!deleted) throw new Error("Réparation introuvable");
+      const repair = await repairsRepository.getById(id);
+      if (!repair) throw new Error("Réparation introuvable");
+      
+      await repairsRepository.delete(id);
 
-      if (repair) {
-        const otherRepairs = localStorageService.getAll<Repair>(REPAIR_DATA_TYPE).filter((r) => r.id !== id && r.vehicleId === repair.vehicleId);
-        if (otherRepairs.length === 0) {
-          const contracts = localStorageService.getAll("contracts");
-          const hasActiveContract = contracts.some((c: any) => c.vehicleId === repair.vehicleId && ["ouvert", "draft", "sent", "signed"].includes(c.status));
-          if (!hasActiveContract) {
-            const vehicle = localStorageService.get<Vehicle>(VEHICLE_DATA_TYPE, repair.vehicleId);
-            if (vehicle) {
-              localStorageService.update<Vehicle>(VEHICLE_DATA_TYPE, { ...vehicle, etat_vehicule: "disponible" });
-            }
+      const otherRepairs = await repairsRepository.getByVehicleId(repair.vehicleId);
+      if (otherRepairs.length === 0) {
+        const contracts = await contractsRepository.getAll();
+        const hasActiveContract = contracts.some((c: any) => c.vehicleId === repair.vehicleId && ["ouvert", "draft", "sent", "signed"].includes(c.status));
+        if (!hasActiveContract) {
+          const vehicles = await vehiclesRepository.listVehicles();
+          const vehicle = vehicles.find(v => v.id === repair.vehicleId);
+          if (vehicle) {
+            await vehiclesRepository.updateVehicle(repair.vehicleId, { etat_vehicule: "disponible" });
           }
         }
       }
 
-      fetchRepairs();
+      await fetchRepairs();
       toast({ title: "Supprimé", description: "Réparation supprimée avec succès." });
     } catch (error) {
-      console.error("Error deleting repair:", error);
       toast({ title: "Erreur", description: "Échec de la suppression de la réparation.", variant: "destructive" });
     }
   };
@@ -287,7 +277,7 @@ export const useRepairs = (vehicleId?: string) => {
     options?: { markSettled?: boolean }
   ) => {
     try {
-      const repair = localStorageService.get<Repair>(REPAIR_DATA_TYPE, repairId);
+      const repair = await repairsRepository.getById(repairId);
       if (!repair) throw new Error("Réparation introuvable");
       const normalizedRepair = normalizeRepair(repair);
       const payment: RepairPayment = {
@@ -303,29 +293,27 @@ export const useRepairs = (vehicleId?: string) => {
         options?.markSettled || dette <= 0
           ? "pret_pour_retour"
           : getOperationalStatus(normalizedRepair.dateReparation, dette, normalizedRepair.operationalStatus);
-      const nextRepair: Repair = {
-        ...normalizedRepair,
+      
+      const nextRepair = await repairsRepository.update(repairId, {
         payments,
         paye,
         dette,
         operationalStatus,
         updates: [...(normalizedRepair.updates || []), createUpdate(`Paiement ajouté: ${payment.amount.toLocaleString()} DH`)]
-      };
-      const updated = localStorageService.update<Repair>(REPAIR_DATA_TYPE, nextRepair);
-      if (!updated) throw new Error("Échec de mise à jour");
+      });
+      
       pushTreasuryPayment(nextRepair, payment);
-      syncVehicleStatus(nextRepair.vehicleId, operationalStatus);
-      fetchRepairs();
+      await syncVehicleStatus(nextRepair.vehicleId, operationalStatus);
+      await fetchRepairs();
       toast({ title: "Paiement enregistré", description: "Le paiement a été ajouté à la réparation." });
     } catch (error) {
-      console.error("Error adding payment:", error);
       toast({ title: "Erreur", description: "Impossible d'ajouter le paiement.", variant: "destructive" });
     }
   };
 
   const markRepairAsSettled = async (repairId: string) => {
     try {
-      const repair = localStorageService.get<Repair>(REPAIR_DATA_TYPE, repairId);
+      const repair = await repairsRepository.getById(repairId);
       if (!repair) throw new Error("Réparation introuvable");
       const normalizedRepair = normalizeRepair(repair);
       const remaining = Math.max(0, normalizedRepair.cout - normalizedRepair.paye);
@@ -333,35 +321,34 @@ export const useRepairs = (vehicleId?: string) => {
         await addRepairPayment(repairId, {
           amount: remaining,
           date: new Date().toISOString().split("T")[0],
-          method: normalizedRepair.paymentMethod,
+          method: normalizedRepair.paymentMethod as any,
           note: "Solde automatique"
         }, { markSettled: true });
         return;
       }
-      const nextRepair: Repair = {
-        ...normalizedRepair,
+      
+      const nextRepair = await repairsRepository.update(repairId, {
         operationalStatus: "pret_pour_retour",
         updates: [...(normalizedRepair.updates || []), createUpdate("Dossier marqué comme soldé")]
-      };
-      localStorageService.update<Repair>(REPAIR_DATA_TYPE, nextRepair);
-      syncVehicleStatus(nextRepair.vehicleId, "pret_pour_retour");
-      fetchRepairs();
+      });
+      
+      await syncVehicleStatus(nextRepair.vehicleId, "pret_pour_retour");
+      await fetchRepairs();
       toast({ title: "Dossier soldé", description: "La réparation est prête pour retour." });
     } catch (error) {
-      console.error("Error settling repair:", error);
       toast({ title: "Erreur", description: "Impossible de solder cette réparation.", variant: "destructive" });
     }
   };
 
   const reactivateVehicle = async (vehicleId: string) => {
     try {
-      const vehicle = localStorageService.get<Vehicle>(VEHICLE_DATA_TYPE, vehicleId);
+      const vehicles = await vehiclesRepository.listVehicles();
+      const vehicle = vehicles.find(v => v.id === vehicleId);
       if (vehicle) {
-        localStorageService.update<Vehicle>(VEHICLE_DATA_TYPE, { ...vehicle, etat_vehicule: "disponible" });
+        await vehiclesRepository.updateVehicle(vehicleId, { etat_vehicule: "disponible" });
         toast({ title: "Succès", description: "Le véhicule a été réactivé et est maintenant disponible. Tous les enregistrements de maintenance sont conservés." });
       }
     } catch (error) {
-      console.error("Error reactivating vehicle:", error);
       toast({ title: "Erreur", description: "Impossible de réactiver le véhicule.", variant: "destructive" });
     }
   };

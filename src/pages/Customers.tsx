@@ -5,6 +5,7 @@ import { Plus, Sparkles, Users, Globe2, UserCheck, CalendarClock, Download, File
 import { Link } from "react-router-dom";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useToast } from "@/hooks/use-toast";
+import { useTenants, type Tenant } from "@/hooks/useTenants";
 import TenantFormDialog from "@/components/TenantFormDialog";
 import TenantDetailsDialog from "@/components/TenantDetailsDialog";
 import TenantsStatsBar from "@/components/tenants/TenantsStatsBar";
@@ -14,31 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import JSZip from "jszip";
-
 import { motion } from "framer-motion";
-
-export interface Tenant {
-  id: string;
-  nom: string;
-  prenom: string;
-  adresse: string;
-  telephone: string;
-  cin: string;
-  dateCin: string;
-  permis: string;
-  datePermis: string;
-  dateNaissance: string;
-  passeport?: string;
-  nationalite: string;
-  type: "Locataire Principal" | "Chauffeur secondaire";
-  createdAt: string;
-  updatedAt: string;
-  // New fields:
-  cinImageUrl?: string;
-  permisImageUrl?: string;
-  passeportImageUrl?: string;
-  tenantImageUrl?: string; // Correcting field name if needed
-}
 
 type CustomersViewMode = "table" | "cards" | "kanban";
 type KanbanColumnKey = "principal" | "international" | "secondary";
@@ -62,6 +39,7 @@ const Customers = () => {
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const { toast } = useToast();
+  const { tenants, loading, addTenant, updateTenant, deleteTenant } = useTenants();
 
   useEffect(() => {
     const handleKeydown = (event: KeyboardEvent) => {
@@ -84,60 +62,6 @@ const Customers = () => {
     window.addEventListener("keydown", handleKeydown);
     return () => window.removeEventListener("keydown", handleKeydown);
   }, [viewMode]);
-
-  const defaultTenants: Tenant[] = [
-    {
-      id: "T001",
-      nom: "Bennani",
-      prenom: "Ahmed",
-      adresse: "Rue Hassan II, Casablanca",
-      telephone: "+212 612-345678",
-      cin: "AB123456",
-      dateCin: "2021-08-12",
-      permis: "P1234567",
-      datePermis: "2020-03-10",
-      dateNaissance: "1992-06-15",
-      nationalite: "Marocaine",
-      type: "Locataire Principal",
-      createdAt: "2024-01-10",
-      updatedAt: "2024-01-10"
-    },
-    {
-      id: "T002",
-      nom: "El Alami",
-      prenom: "Fatima",
-      adresse: "Avenue Mohammed V, Rabat",
-      telephone: "+212 661-789012",
-      cin: "CD789012",
-      dateCin: "2020-05-15",
-      permis: "P2345678",
-      datePermis: "2019-12-20",
-      dateNaissance: "1988-03-22",
-      nationalite: "Marocaine",
-      type: "Locataire Principal",
-      createdAt: "2024-01-15",
-      updatedAt: "2024-01-15"
-    },
-    {
-      id: "T003",
-      nom: "Dubois",
-      prenom: "Pierre",
-      adresse: "Résidence Marina, Agadir",
-      telephone: "+212 524-567890",
-      cin: "FR345678",
-      dateCin: "2022-01-10",
-      permis: "P3456789",
-      datePermis: "2021-06-15",
-      dateNaissance: "1985-11-08",
-      passeport: "P00123456",
-      nationalite: "Française",
-      type: "Locataire Principal",
-      createdAt: "2024-01-20",
-      updatedAt: "2024-01-20"
-    }
-  ];
-
-  const [tenants, setTenants] = useLocalStorage<Tenant[]>("tenants", defaultTenants);
 
   const nationalities = useMemo(() => Array.from(new Set(tenants.map((t) => t.nationalite))).sort(), [tenants]);
 
@@ -270,7 +194,7 @@ const Customers = () => {
     return columns;
   }, [filteredTenants, kanbanAssignments]);
 
-  const handleAddTenant = (tenant: Omit<Tenant, "id" | "createdAt" | "updatedAt">) => {
+  const handleAddTenant = async (tenant: Omit<Tenant, "id" | "createdAt" | "updatedAt">) => {
     // Check for duplicate CIN or Permis
     const existingCin = tenants.find(t => t.cin === tenant.cin);
     const existingPermis = tenants.find(t => t.permis === tenant.permis);
@@ -293,22 +217,14 @@ const Customers = () => {
       return false;
     }
 
-    const newTenant: Tenant = {
-      ...tenant,
-      id: `T${String(tenants.length + 1).padStart(3, '0')}`,
-      createdAt: new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0]
-    };
-
-    setTenants(prev => [newTenant, ...prev]);
-    toast({
-      title: "Succès",
-      description: "Locataire ajouté avec succès"
-    });
+    const newTenant = await addTenant(tenant);
+    if (!newTenant) {
+      return false;
+    }
     return true;
   };
 
-  const handleUpdateTenant = (updatedTenantData: Omit<Tenant, "id" | "createdAt" | "updatedAt">) => {
+  const handleUpdateTenant = async (updatedTenantData: Omit<Tenant, "id" | "createdAt" | "updatedAt">) => {
     if (!editingTenant) return false;
 
     // Check for duplicate CIN or Permis (excluding current tenant)
@@ -333,30 +249,16 @@ const Customers = () => {
       return false;
     }
 
-    const updatedTenant: Tenant = {
-      ...updatedTenantData,
-      id: editingTenant.id,
-      createdAt: editingTenant.createdAt,
-      updatedAt: new Date().toISOString().split('T')[0]
-    };
-
-    setTenants(prev => prev.map(tenant => 
-      tenant.id === updatedTenant.id ? updatedTenant : tenant
-    ));
-    
-    toast({
-      title: "Succès",
-      description: "Locataire mis à jour avec succès"
-    });
+    const updatedTenant = await updateTenant(editingTenant.id, updatedTenantData);
+    if (!updatedTenant) {
+      return false;
+    }
     return true;
   };
 
-  const handleDeleteTenant = (tenantId: string) => {
-    setTenants(prev => prev.filter(tenant => tenant.id !== tenantId));
-    toast({
-      title: "Succès",
-      description: "Locataire supprimé avec succès"
-    });
+  const handleDeleteTenant = async (tenantId: string) => {
+    const deleted = await deleteTenant(tenantId);
+    if (!deleted) return;
   };
 
   const handleEditTenant = (tenant: Tenant) => {
@@ -413,6 +315,20 @@ const Customers = () => {
       description: "Disposition Kanban réinitialisée",
     });
   };
+
+  if (loading) {
+    return (
+      <div className="p-6 flex items-center justify-center h-[60vh]">
+        <div className="text-center space-y-4">
+          <div className="relative w-16 h-16 mx-auto">
+            <div className="absolute inset-0 rounded-full border-4 border-accent/20"></div>
+            <div className="absolute inset-0 rounded-full border-4 border-accent border-t-transparent animate-spin"></div>
+          </div>
+          <p className="text-muted-foreground font-bold animate-pulse">Chargement des locataires...</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleExportCustomersCSV = () => {
     const headers = ["ID", "Nom complet", "Téléphone", "CIN", "Permis", "Nationalité", "Type", "Adresse", "Créé le", "Mis à jour le"];

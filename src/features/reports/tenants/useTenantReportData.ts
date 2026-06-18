@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { FilterState, TenantData } from "./types";
 import { recalculateContractFinancials } from "@/utils/contractFinancialStatus";
-import { Contract } from "@/services/localStorageService";
+import { Contract } from "@/types/appData";
 
 export const useTenantReportData = (contracts: Contract[], filters: FilterState) => {
   // Process contracts and recalculate financial data

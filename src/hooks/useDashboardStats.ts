@@ -1,5 +1,10 @@
 import { useState, useEffect } from 'react';
-import { localStorageService, Vehicle, Contract, Customer } from '@/services/localStorageService';
+import { vehiclesRepository } from '@/repositories/vehiclesRepository';
+import { contractsRepository } from '@/repositories/contractsRepository';
+import { customersRepository } from '@/repositories/customersRepository';
+import { expensesRepository } from '@/repositories/expensesRepository';
+import { repairsRepository } from '@/repositories/repairsRepository';
+import { Vehicle, Contract, Customer } from '@/types/appData';
 import { useToast } from '@/hooks/use-toast';
 
 export interface DashboardStats {
@@ -52,8 +57,14 @@ export const useDashboardStats = () => {
     try {
       setLoading(true);
 
-      // Fetch vehicles stats from localStorage
-      const vehicles = localStorageService.getAll<Vehicle>('vehicles');
+      const [vehicles, customers, contracts, expenses, repairs] = await Promise.all([
+        vehiclesRepository.listVehicles(),
+        customersRepository.listCustomers(),
+        contractsRepository.getAll(),
+        expensesRepository.getAllExpenses(),
+        repairsRepository.getAll()
+      ]);
+
       const vehicleStats = vehicles.reduce((acc, vehicle) => {
         acc.total++;
         if (vehicle.etat_vehicule === 'disponible') acc.available++;
@@ -62,12 +73,8 @@ export const useDashboardStats = () => {
         return acc;
       }, { total: 0, available: 0, rented: 0, maintenance: 0 });
 
-      // Fetch customers count
-      const customers = localStorageService.getAll<Customer>('customers');
       const customersCount = customers.length;
 
-      // Fetch contracts stats
-      const contracts = localStorageService.getAll<Contract>('contracts');
       const now = new Date();
       const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -75,14 +82,14 @@ export const useDashboardStats = () => {
       const contractStats = contracts.reduce((acc, contract) => {
         acc.total++;
         
-        if (['signed', 'sent'].includes(contract.status)) {
+        if (['signed', 'sent', 'ouvert'].includes(contract.status)) {
           acc.active++;
         }
-        if (contract.status === 'completed') {
+        if (contract.status === 'completed' || contract.status === 'ferme') {
           acc.completed++;
         }
 
-        const contractDate = new Date(contract.created_at);
+        const contractDate = new Date(contract.created_at || now);
         const contractDay = new Date(contractDate.getFullYear(), contractDate.getMonth(), contractDate.getDate());
         
         if (contractDate >= currentMonth) {
@@ -103,10 +110,6 @@ export const useDashboardStats = () => {
         todayContracts: 0, 
         todayRevenue: 0 
       });
-
-      // Calculate monthly expenses and repairs
-      const expenses = localStorageService.getAll('expenses') as any[];
-      const repairs = localStorageService.getAll('repairs') as any[];
       
       const totalMonthlyExpenses = expenses
         .filter((expense: any) => {
@@ -138,10 +141,60 @@ export const useDashboardStats = () => {
         todayRevenue: contractStats.todayRevenue,
       });
 
+      // Prepare recent activity
+      const activities: RecentActivity[] = [];
+
+      contracts.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()).slice(0, 2).forEach(contract => {
+        activities.push({
+          id: contract.id,
+          type: 'contract',
+          title: 'Nouveau contrat créé',
+          description: `Contrat ${contract.contract_number} - ${contract.customer_name}`,
+          timestamp: contract.created_at || now.toISOString(),
+          icon: 'file-text'
+        });
+      });
+
+      customers.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()).slice(0, 2).forEach(customer => {
+        activities.push({
+          id: customer.id,
+          type: 'customer',
+          title: 'Nouveau client enregistré',
+          description: `${customer.first_name || ''} ${customer.last_name}`,
+          timestamp: customer.created_at || now.toISOString(),
+          icon: 'users'
+        });
+      });
+
+      expenses.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()).slice(0, 2).forEach((expense: any) => {
+        activities.push({
+          id: expense.id,
+          type: 'expense',
+          title: 'Nouvelle dépense ajoutée',
+          description: `${expense.type} - ${Number(expense.monthly_cost || expense.total_cost).toLocaleString()} DH`,
+          timestamp: expense.created_at || now.toISOString(),
+          icon: 'file-text'
+        });
+      });
+
+      repairs.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()).slice(0, 2).forEach((repair: any) => {
+        activities.push({
+          id: repair.id,
+          type: 'repair',
+          title: 'Nouvelle réparation enregistrée',
+          description: `${repair.typeReparation} - ${Number(repair.cout).toLocaleString()} DH`,
+          timestamp: repair.created_at || now.toISOString(),
+          icon: 'wrench'
+        });
+      });
+
+      activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setRecentActivity(activities.slice(0, 6));
+
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
       toast({
-        title: "خطأ",
+        title: "Erreur",
         description: "حدث خطأ أثناء جلب إحصائيات لوحة التحكم",
         variant: "destructive"
       });
@@ -150,112 +203,14 @@ export const useDashboardStats = () => {
     }
   };
 
-  const fetchRecentActivity = async () => {
-    try {
-      const activities: RecentActivity[] = [];
-
-      // Recent contracts
-      const recentContracts = localStorageService.getAll<Contract>('contracts')
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        .slice(0, 2);
-
-      recentContracts.forEach(contract => {
-        activities.push({
-          id: contract.id,
-          type: 'contract',
-          title: 'Nouveau contrat créé',
-          description: `Contrat ${contract.contract_number} - ${contract.customer_name}`,
-          timestamp: contract.created_at,
-          icon: 'file-text'
-        });
-      });
-
-      // Recent customers
-      const recentCustomers = localStorageService.getAll<Customer>('customers')
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        .slice(0, 2);
-
-      recentCustomers.forEach(customer => {
-        activities.push({
-          id: customer.id,
-          type: 'customer',
-          title: 'Nouveau client enregistré',
-          description: `${customer.first_name || ''} ${customer.last_name}`,
-          timestamp: customer.created_at,
-          icon: 'users'
-        });
-      });
-
-      // Recent expenses
-      const recentExpenses = (localStorageService.getAll('expenses') as any[])
-        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        .slice(0, 2);
-
-      recentExpenses.forEach((expense: any) => {
-        activities.push({
-          id: expense.id,
-          type: 'expense',
-          title: 'Nouvelle dépense ajoutée',
-          description: `${expense.type} - ${Number(expense.monthly_cost || expense.total_cost).toLocaleString()} DH`,
-          timestamp: expense.created_at,
-          icon: 'file-text'
-        });
-      });
-
-      // Recent repairs
-      const recentRepairs = (localStorageService.getAll('repairs') as any[])
-        .sort((a: any, b: any) => new Date(b.created_at || b.date_reparation).getTime() - new Date(a.created_at || a.date_reparation).getTime())
-        .slice(0, 2);
-
-      recentRepairs.forEach((repair: any) => {
-        activities.push({
-          id: repair.id,
-          type: 'repair',
-          title: 'Nouvelle réparation enregistrée',
-          description: `${repair.typeReparation} - ${Number(repair.cout).toLocaleString()} DH`,
-          timestamp: repair.created_at || repair.date_reparation,
-          icon: 'wrench'
-        });
-      });
-
-      // Recent vehicles
-      const recentVehicles = localStorageService.getAll<Vehicle>('vehicles')
-        .sort((a, b) => new Date(b.created_at || Date.now()).getTime() - new Date(a.created_at || Date.now()).getTime())
-        .slice(0, 1);
-
-      recentVehicles.forEach(vehicle => {
-        activities.push({
-          id: vehicle.id,
-          type: 'vehicle',
-          title: 'Nouveau véhicule ajouté',
-          description: `${vehicle.marque} ${vehicle.modele} - ${vehicle.immatriculation}`,
-          timestamp: vehicle.created_at || new Date().toISOString(),
-          icon: 'users'
-        });
-      });
-
-      // Sort all activities by timestamp and limit to 6
-      activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      
-      setRecentActivity(activities.slice(0, 6));
-
-    } catch (error) {
-      console.error('Error fetching recent activity:', error);
-    }
-  };
-
   useEffect(() => {
     fetchStats();
-    fetchRecentActivity();
   }, []);
 
   return {
     stats,
     recentActivity,
     loading,
-    refetch: () => {
-      fetchStats();
-      fetchRecentActivity();
-    }
+    refetch: fetchStats
   };
 };

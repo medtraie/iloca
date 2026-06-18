@@ -1,27 +1,37 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { localStorageService, Vehicle } from "@/services/localStorageService";
-import { fuelService } from "@/services/fuelService";
+import { Vehicle } from "@/types/appData";
+import { vehiclesRepository } from "@/repositories/vehiclesRepository";
+import { fuelService, FuelLog } from "@/services/fuelService";
 import { gpswoxService, GpswoxFuelRecord } from "@/services/gpswoxService";
 import { toast } from "@/components/ui/sonner";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell } from "recharts";
 
 export default function Fuel() {
-  const vehicles = localStorageService.getAll<Vehicle>("vehicles");
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [logs, setLogs] = useState<FuelLog[]>([]);
+  const [cons, setCons] = useState<Record<string, number>>({});
+  const [monthlyCost, setMonthlyCost] = useState(0);
+
   const [open, setOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [gpsFuel, setGpsFuel] = useState<GpswoxFuelRecord[]>([]);
   const [form, setForm] = useState({ vehicleId: "", driver: "", quantity: "", price: "", station: "", date: "", odometer: "" });
-  const logs = fuelService.all();
+  
   const now = new Date();
-  const monthlyCost = fuelService.monthlyCost(now.getFullYear(), now.getMonth());
-  const cons = fuelService.consumptionPerVehicle(now.getFullYear(), now.getMonth());
   const currentMonth = now.getMonth();
   const currentYear = now.getFullYear();
+
+  useEffect(() => {
+    vehiclesRepository.listVehicles().then(setVehicles);
+    fuelService.all().then(setLogs);
+    fuelService.monthlyCost(currentYear, currentMonth).then(setMonthlyCost);
+    fuelService.consumptionPerVehicle(currentYear, currentMonth).then(setCons);
+  }, []);
 
   const dataBar = useMemo(() => {
     return Object.keys(cons).map((vid) => {
@@ -147,12 +157,12 @@ export default function Fuel() {
     }));
   }, [gpsFuel]);
 
-  const add = () => {
+  const add = async () => {
     if (!form.vehicleId || !form.quantity || !form.price || !form.date) {
       toast.error("Champs requis manquants");
       return;
     }
-    fuelService.add({
+    await fuelService.add({
       vehicleId: form.vehicleId,
       driver: form.driver || undefined,
       quantity: Number(form.quantity),
@@ -160,10 +170,14 @@ export default function Fuel() {
       station: form.station || undefined,
       date: form.date,
       odometer: form.odometer ? Number(form.odometer) : undefined,
-      id: "" as any,
-    } as any);
+    });
     setOpen(false);
     toast.success("Enregistrement ajouté");
+    
+    // Refresh Data
+    fuelService.all().then(setLogs);
+    fuelService.monthlyCost(currentYear, currentMonth).then(setMonthlyCost);
+    fuelService.consumptionPerVehicle(currentYear, currentMonth).then(setCons);
   };
 
   const syncGpsFuel = async () => {

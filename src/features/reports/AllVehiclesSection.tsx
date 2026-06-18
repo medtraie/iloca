@@ -38,21 +38,21 @@ const AllVehiclesSection = ({ vehicles, onRefresh }: AllVehiclesSectionProps) =>
 
   return (
     <>
-      <Card className="mb-8">
+      <Card className="mb-8 border-none shadow-card rounded-2xl sm:rounded-[2rem] overflow-hidden bg-card">
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <CardTitle className="flex items-center gap-2">
               <Car className="h-5 w-5" />
               Tous les véhicules
             </CardTitle>
-            <Button onClick={() => setIsAddDialogOpen(true)} className="gap-2">
+            <Button onClick={() => setIsAddDialogOpen(true)} className="w-full sm:w-auto gap-2">
               <Plus className="h-4 w-4" />
               Nouveau véhicule
             </Button>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
+          <div className="rounded-md border overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>

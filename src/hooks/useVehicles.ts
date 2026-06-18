@@ -1,7 +1,8 @@
-
 import { useState, useEffect } from 'react';
-import { localStorageService, Vehicle, Contract } from '@/services/localStorageService';
 import { useToast } from '@/hooks/use-toast';
+import { vehiclesRepository } from '@/repositories/vehiclesRepository';
+import { contractsRepository } from '@/repositories/contractsRepository';
+import type { Vehicle, Contract } from '@/types/appData';
 
 export type { Vehicle };
 
@@ -39,15 +40,19 @@ export const useVehicles = () => {
   const fetchVehicles = async () => {
     try {
       setLoading(true);
-      const allVehicles = localStorageService.getAll<Vehicle>('vehicles');
-      const openContracts = localStorageService.getAll<Contract>('contracts').filter(
+      const allVehicles = await vehiclesRepository.listVehicles();
+      const allContracts = await contractsRepository.getAll();
+      
+      const openContracts = allContracts.filter(
         contract => contract.status === 'ouvert' || ['draft', 'sent', 'signed'].includes(contract.status)
       );
 
       const rentedVehicleIds = new Set<string>();
       if (openContracts.length > 0 && allVehicles.length > 0) {
         for (const contract of openContracts) {
-          if (contract.vehicle) {
+          if (contract.vehicleId) {
+            rentedVehicleIds.add(contract.vehicleId);
+          } else if (contract.vehicle) {
             const matchedVehicle = findMatchingVehicle(contract.vehicle, allVehicles);
             if (matchedVehicle) {
               rentedVehicleIds.add(matchedVehicle.id);
@@ -56,7 +61,7 @@ export const useVehicles = () => {
         }
       }
 
-      const syncedVehicles = allVehicles.map(vehicle => {
+      const syncedVehicles = await Promise.all(allVehicles.map(async (vehicle) => {
         const isRented = rentedVehicleIds.has(vehicle.id);
         const currentStatus = vehicle.etat_vehicule || 'disponible';
         let newStatus = currentStatus;
@@ -68,18 +73,20 @@ export const useVehicles = () => {
         }
 
         if (newStatus !== currentStatus) {
-          const updatedVehicle = localStorageService.update<Vehicle>('vehicles', vehicle.id, { etat_vehicule: newStatus });
-          return updatedVehicle || { ...vehicle, etat_vehicule: newStatus };
+          try {
+            return await vehiclesRepository.updateVehicle(vehicle.id, { etat_vehicule: newStatus });
+          } catch {
+            return { ...vehicle, etat_vehicule: newStatus };
+          }
         }
         return vehicle;
-      });
+      }));
 
       setVehicles(syncedVehicles);
     } catch (error) {
-      console.error('Error in fetchVehicles:', error);
       toast({
         title: "Erreur",
-        description: "Une erreur s'est produite lors de la récupération et synchronisation des véhicules",
+        description: error instanceof Error ? error.message : "Une erreur s'est produite lors de la récupération et synchronisation des véhicules",
         variant: "destructive"
       });
     } finally {
@@ -89,7 +96,13 @@ export const useVehicles = () => {
 
   const addVehicle = async (vehicleData: Omit<Vehicle, 'id' | 'created_at' | 'updated_at'>) => {
     try {
-      const newVehicle = localStorageService.create<Vehicle>('vehicles', vehicleData);
+      // #region debug-point C:usevehicles-before-create
+      fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"vehicle-save-supabase",runId:"pre-fix",hypothesisId:"C",location:"useVehicles.ts:addVehicle",msg:"[DEBUG] addVehicle before repository create",data:{brand:vehicleData.marque||vehicleData.brand||"",registration:vehicleData.immatriculation||vehicleData.registration||"",status:vehicleData.etat_vehicule||null},ts:Date.now()})}).catch(()=>{});
+      // #endregion
+      const newVehicle = await vehiclesRepository.createVehicle(vehicleData);
+      // #region debug-point E:usevehicles-create-success
+      fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"vehicle-save-supabase",runId:"pre-fix",hypothesisId:"E",location:"useVehicles.ts:addVehicle",msg:"[DEBUG] addVehicle repository success",data:{id:newVehicle.id,brand:newVehicle.marque||newVehicle.brand||""},ts:Date.now()})}).catch(()=>{});
+      // #endregion
       setVehicles(prev => [...prev, newVehicle]);
       toast({
         title: "Succès",
@@ -97,10 +110,12 @@ export const useVehicles = () => {
       });
       return newVehicle;
     } catch (error) {
-      console.error('Error:', error);
+      // #region debug-point D:usevehicles-create-error
+      fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"vehicle-save-supabase",runId:"pre-fix",hypothesisId:"D",location:"useVehicles.ts:addVehicle",msg:"[DEBUG] addVehicle repository error",data:{message:error instanceof Error ? error.message : String(error),code:(error as { code?: string } | null)?.code || null},ts:Date.now()})}).catch(()=>{});
+      // #endregion
       toast({
         title: "Erreur",
-        description: "Une erreur s'est produite lors de l'ajout du véhicule",
+        description: error instanceof Error ? error.message : "Une erreur s'est produite lors de l'ajout du véhicule",
         variant: "destructive"
       });
       return null;
@@ -109,15 +124,7 @@ export const useVehicles = () => {
 
   const updateVehicle = async (id: string, vehicleData: Partial<Vehicle>) => {
     try {
-      const updatedVehicle = localStorageService.update<Vehicle>('vehicles', id, vehicleData);
-      if (!updatedVehicle) {
-        toast({
-          title: "Erreur",
-          description: "Véhicule introuvable",
-          variant: "destructive"
-        });
-        return null;
-      }
+      const updatedVehicle = await vehiclesRepository.updateVehicle(id, vehicleData);
 
       setVehicles(prev => prev.map(v => v.id === id ? updatedVehicle : v));
       toast({
@@ -126,10 +133,9 @@ export const useVehicles = () => {
       });
       return updatedVehicle;
     } catch (error) {
-      console.error('Error:', error);
       toast({
         title: "Erreur",
-        description: "Une erreur s'est produite lors de la mise à jour du véhicule",
+        description: error instanceof Error ? error.message : "Une erreur s'est produite lors de la mise à jour du véhicule",
         variant: "destructive"
       });
       return null;
@@ -138,16 +144,7 @@ export const useVehicles = () => {
 
   const deleteVehicle = async (id: string) => {
     try {
-      const deleted = localStorageService.delete('vehicles', id);
-      if (!deleted) {
-        toast({
-          title: "Erreur",
-          description: "Véhicule introuvable",
-          variant: "destructive"
-        });
-        return false;
-      }
-
+      await vehiclesRepository.deleteVehicle(id);
       setVehicles(prev => prev.filter(v => v.id !== id));
       toast({
         title: "Succès",
@@ -155,10 +152,9 @@ export const useVehicles = () => {
       });
       return true;
     } catch (error) {
-      console.error('Error:', error);
       toast({
         title: "Erreur",
-        description: "Une erreur s'est produite lors de la suppression du véhicule",
+        description: error instanceof Error ? error.message : "Une erreur s'est produite lors de la suppression du véhicule",
         variant: "destructive"
       });
       return false;

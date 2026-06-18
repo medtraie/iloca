@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { miscellaneousExpensesRepository } from '@/repositories/miscellaneousExpensesRepository';
 
 export interface MiscellaneousExpense {
   id: string;
@@ -23,41 +24,28 @@ export const EXPENSE_TYPES = [
   'Autre'
 ];
 
-const STORAGE_KEY = 'miscellaneous_expenses';
-
 export const useMiscellaneousExpenses = () => {
   const [expenses, setExpenses] = useState<MiscellaneousExpense[]>([]);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
-  const fetchExpenses = () => {
+  const fetchExpenses = async () => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      const data = stored ? JSON.parse(stored) : [];
-      setExpenses(data.sort((a: MiscellaneousExpense, b: MiscellaneousExpense) => 
-        new Date(b.expense_date).getTime() - new Date(a.expense_date).getTime()
-      ));
+      setLoading(true);
+      const data = await miscellaneousExpensesRepository.getAll();
+      setExpenses(data);
     } catch (error) {
       console.error('Error fetching miscellaneous expenses:', error);
       setExpenses([]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const addExpense = (expenseData: Omit<MiscellaneousExpense, 'id' | 'created_at'>) => {
+  const addExpense = async (expenseData: Omit<MiscellaneousExpense, 'id' | 'created_at'>) => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      const currentExpenses = stored ? JSON.parse(stored) : [];
-      
-      const newExpense: MiscellaneousExpense = {
-        ...expenseData,
-        id: `exp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        created_at: new Date().toISOString()
-      };
-      
-      const updatedExpenses = [...currentExpenses, newExpense];
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedExpenses));
-      
-      fetchExpenses();
+      const newExpense = await miscellaneousExpensesRepository.create(expenseData);
+      setExpenses(prev => [newExpense, ...prev]);
       
       toast({
         title: "Succès",
@@ -75,23 +63,16 @@ export const useMiscellaneousExpenses = () => {
     }
   };
 
-  const updateExpense = (id: string, updates: Partial<MiscellaneousExpense>) => {
+  const updateExpense = async (id: string, updates: Partial<MiscellaneousExpense>) => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      const currentExpenses = stored ? JSON.parse(stored) : [];
-      
-      const updatedExpenses = currentExpenses.map((exp: MiscellaneousExpense) =>
-        exp.id === id ? { ...exp, ...updates } : exp
-      );
-      
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedExpenses));
-      fetchExpenses();
+      const updatedExpense = await miscellaneousExpensesRepository.update(id, updates);
+      setExpenses(prev => prev.map(exp => exp.id === id ? updatedExpense : exp));
       
       toast({
         title: "Succès",
         description: "Dépense diverse mise à jour"
       });
-      return updatedExpenses.find((exp: MiscellaneousExpense) => exp.id === id);
+      return updatedExpense;
     } catch (error: any) {
       console.error('Error updating expense:', error);
       toast({
@@ -103,15 +84,10 @@ export const useMiscellaneousExpenses = () => {
     }
   };
 
-  const deleteExpense = (id: string) => {
+  const deleteExpense = async (id: string) => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      const currentExpenses = stored ? JSON.parse(stored) : [];
-      
-      const updatedExpenses = currentExpenses.filter((exp: MiscellaneousExpense) => exp.id !== id);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedExpenses));
-      
-      fetchExpenses();
+      await miscellaneousExpensesRepository.delete(id);
+      setExpenses(prev => prev.filter(exp => exp.id !== id));
       
       toast({
         title: "Succès",

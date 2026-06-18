@@ -103,8 +103,6 @@ const VehicleGanttChart = ({ vehicles, contracts, filters }: VehicleGanttChartPr
         contract: contract
       }));
     } catch (error) {
-      console.warn("Erreur lors de la génération des segments:", error);
-      
       // Fallback vers l'ancienne méthode si generateGanttSegments échoue
       const getField = (...names: string[]) => {
         for (const name of names) {
@@ -136,18 +134,11 @@ const VehicleGanttChart = ({ vehicles, contracts, filters }: VehicleGanttChartPr
     return filteredVehicles.map(vehicle => {
       const vehicleContracts = contracts.filter(contract => {
         const contractVehicleId = matchContractToVehicleId(contract, vehicles);
-        // DEBUG LOG: show what contract links to what vehicle
-        if (!contractVehicleId || contractVehicleId !== vehicle.id) {
-          console.log(`[GANTT-match] Contract ${contract.id} — expected vehicle ${vehicle.id} — got ${contractVehicleId} — contract.vehicle =`, contract.vehicle, contract.vehicleId);
-        }
         if (contractVehicleId !== vehicle.id) return false;
         if (filters.tenantName && filters.tenantName !== "all" && !contract.customerName?.includes?.(filters.tenantName)) return false;
         if (filters.contractStatus && filters.contractStatus !== "all" && contract.status !== filters.contractStatus) return false;
         return true;
       });
-
-      // DEBUG: which contracts were matched to this vehicle
-      console.log(`[GANTT-vehicleContracts] For vehicle ${vehicle.id} => contracts:`, vehicleContracts);
 
       let contractIntervals: Array<{ contract: Contract; start: Date; end: Date; segmentType: 'main' | 'extension' | 'overdue' }> = [];
       for (const contract of vehicleContracts) {
@@ -175,8 +166,6 @@ const VehicleGanttChart = ({ vehicles, contracts, filters }: VehicleGanttChartPr
         const found = contractIntervals.find(({ start, end }) => isSameOrWithin(currentDayDate, start, end));
         coveredDays[day] = found ? { contractId: found.contract.id, segmentType: found.segmentType } : null;
       });
-      console.log("Vehicle", vehicle.id, vehicle.marque, "contract intervals", contractIntervals.map(a=>({start:a.start, end:a.end, type: a.segmentType})));
-      console.log("Vehicle", vehicle.id, vehicle.marque, "covered days", coveredDays);
 
       // بناء سكجويل الأيام: أي عقد يغطي كل يوم
       const schedule = days.map(({ day }) => {

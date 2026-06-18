@@ -1,4 +1,4 @@
-import { Contract } from "@/services/localStorageService";
+import { Contract } from "@/types/appData";
 import { format, parseISO, isAfter, isBefore, isToday } from "date-fns";
 import { fr } from "date-fns/locale";
 import { daysBetween } from "./contractMath";

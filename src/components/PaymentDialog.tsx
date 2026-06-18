@@ -152,6 +152,10 @@ export const PaymentDialog = ({
       partiallyCollectedAmount: paymentMethod === 'Chèque' && checkDepositStatus === "partiellement encaissé" ? parseFloat(partiallyCollectedAmount) : undefined
     };
 
+    // #region debug-point B:payment-dialog-submit
+    fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"recette-payment-refresh",runId:"pre-fix",hypothesisId:"B",location:"PaymentDialog.tsx:handleSubmit",msg:"[DEBUG] payment dialog submit",data:{contractId,contractNumber,paymentAmount,paymentMethod,remainingAmount,isFullPayment:paymentAmount===remainingAmount},ts:Date.now()})}).catch(()=>{});
+    // #endregion
+
     onPayment(contractId, paymentData);
     
     // Reset form and close dialog
@@ -177,7 +181,7 @@ export const PaymentDialog = ({
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CreditCard className="w-5 h-5" />

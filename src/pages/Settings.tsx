@@ -29,26 +29,23 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { localStorageService } from '@/services/localStorageService';
 import { useSettings } from '@/hooks/useSettings';
+import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useLocalStorage } from '@/hooks/useLocalStorage';
-import { applyBrandColor, BRAND_COLOR_STORAGE_KEY, DEFAULT_BRAND_COLOR } from '@/utils/brandTheme';
-import { createClient } from "@supabase/supabase-js";
+import { applyBrandColor, DEFAULT_BRAND_COLOR } from '@/utils/brandTheme';
+import { settingsRepository } from '@/repositories/settingsRepository';
+import type { CompanySettings, GpsSettings } from '@/types/appData';
 
 type AutoBackupFrequency = 'disabled' | 'daily' | 'weekly' | 'monthly';
 import { usePDFGeneration } from '@/hooks/usePDFGeneration';
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
-const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
 const Settings = () => {
   const { toast } = useToast();
   const [isChecking, setIsChecking] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isBackingUp, setIsBackingUp] = useState(false);
+  const [isClearingAllData, setIsClearingAllData] = useState(false);
   const { generatePDF } = usePDFGeneration();
   const { 
     autoBackupFrequency, 
@@ -58,15 +55,9 @@ const Settings = () => {
     performRestore,
     clearAllData 
   } = useSettings();
-  const [companyName, setCompanyName] = useLocalStorage<string>('companyName', '');
-  const [companyLogo, setCompanyLogo] = useLocalStorage<string | null>('companyLogo', null);
+  const [companySettings, setCompanySettings] = useState<CompanySettings>(settingsRepository.DEFAULT_COMPANY_SETTINGS);
+  const [companySettingsReady, setCompanySettingsReady] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
-  const [companyAddress, setCompanyAddress] = useLocalStorage<string>('companyAddress', '');
-  const [companyPhone, setCompanyPhone] = useLocalStorage<string>('companyPhone', '');
-  const [companyFax, setCompanyFax] = useLocalStorage<string>('companyFax', '');
-  const [companyGsm, setCompanyGsm] = useLocalStorage<string>('companyGsm', '');
-  const [companyEmail, setCompanyEmail] = useLocalStorage<string>('companyEmail', '');
-  const [brandColor, setBrandColor] = useLocalStorage<string>(BRAND_COLOR_STORAGE_KEY, DEFAULT_BRAND_COLOR);
   const [gpsApiUrl, setGpsApiUrl] = useState("sf-tracker.pro");
   const [gpsEmail, setGpsEmail] = useState("");
   const [gpsPassword, setGpsPassword] = useState("");
@@ -74,30 +65,32 @@ const Settings = () => {
   const [gpsSaving, setGpsSaving] = useState(false);
   const [showGpsPassword, setShowGpsPassword] = useState(false);
   const importCompanyFileRef = useRef<HTMLInputElement | null>(null);
+  const { companyName, companyLogo, companyAddress, companyPhone, companyFax, companyGsm, companyEmail, brandColor } = companySettings;
+
+  const updateCompanySettings = (patch: Partial<CompanySettings>) => {
+    setCompanySettings((prev) => ({ ...prev, ...patch }));
+  };
 
   useEffect(() => {
     applyBrandColor(brandColor || DEFAULT_BRAND_COLOR);
   }, [brandColor]);
 
   useEffect(() => {
-    const loadGpsSettings = async () => {
-      if (!supabase) return;
+    let active = true;
+    const loadSettings = async () => {
       setGpsLoading(true);
       try {
-        const { data, error } = await supabase
-          .from("gpswox_settings")
-          .select("api_url,email,password")
-          .is("company_id", null)
-          .order("updated_at", { ascending: false })
-          .limit(1);
-        if (error) {
-          throw error;
-        }
-        const row = data?.[0];
-        if (row) {
-          setGpsApiUrl(row.api_url || "");
-          setGpsEmail(row.email || "");
-          setGpsPassword(row.password || "");
+        const [loadedCompanySettings, gpsSettings] = await Promise.all([
+          settingsRepository.getCompanySettings(),
+          settingsRepository.getGpsSettings(),
+        ]);
+        if (!active) return;
+
+        setCompanySettings(loadedCompanySettings);
+        if (gpsSettings) {
+          setGpsApiUrl(gpsSettings.api_url || "");
+          setGpsEmail(gpsSettings.email || "");
+          setGpsPassword(gpsSettings.password || "");
         } else {
           setGpsApiUrl("sf-tracker.pro");
           setGpsEmail("");
@@ -105,26 +98,33 @@ const Settings = () => {
         }
       } catch (error: any) {
         toast({
-          title: "Erreur chargement GPS",
-          description: error?.message || "Impossible de charger les paramètres GPSwox",
+          title: "Erreur chargement paramètres",
+          description: error?.message || "Impossible de charger les paramètres Supabase",
           variant: "destructive"
         });
       } finally {
+        if (active) {
+          setCompanySettingsReady(true);
+        }
         setGpsLoading(false);
       }
     };
-    loadGpsSettings();
+    loadSettings();
+    return () => {
+      active = false;
+    };
   }, [toast]);
 
+  useEffect(() => {
+    if (!companySettingsReady) return;
+    const timeoutId = window.setTimeout(() => {
+      settingsRepository.saveCompanySettings(companySettings).catch(() => {});
+    }, 350);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [companySettings, companySettingsReady]);
+
   const handleSaveGpsSettings = async () => {
-    if (!supabase) {
-      toast({
-        title: "Configuration manquante",
-        description: "VITE_SUPABASE_URL ou VITE_SUPABASE_PUBLISHABLE_KEY n'est pas configuré",
-        variant: "destructive"
-      });
-      return;
-    }
     if (!gpsApiUrl || !gpsEmail || !gpsPassword) {
       toast({
         title: "Champs requis",
@@ -135,32 +135,12 @@ const Settings = () => {
     }
     setGpsSaving(true);
     try {
-      const payload = {
-        company_id: null,
+      const payload: GpsSettings = {
         api_url: gpsApiUrl.trim(),
         email: gpsEmail.trim(),
         password: gpsPassword
       };
-
-      const { data: existing, error: existingError } = await supabase
-        .from("gpswox_settings")
-        .select("id")
-        .is("company_id", null)
-        .order("updated_at", { ascending: false })
-        .limit(1);
-      if (existingError) throw existingError;
-
-      const existingId = existing?.[0]?.id;
-      if (existingId) {
-        const { error: updateError } = await supabase
-          .from("gpswox_settings")
-          .update(payload)
-          .eq("id", existingId);
-        if (updateError) throw updateError;
-      } else {
-        const { error: insertError } = await supabase.from("gpswox_settings").insert(payload);
-        if (insertError) throw insertError;
-      }
+      await settingsRepository.saveGpsSettings(payload);
       toast({
         title: "✅ GPS Tracker",
         description: "Les parametres GPSwox ont ete enregistres avec succes"
@@ -182,7 +162,7 @@ const Settings = () => {
     setLogoUploading(true);
     const reader = new FileReader();
     reader.onload = () => {
-      setCompanyLogo(reader.result as string);
+      updateCompanySettings({ companyLogo: reader.result as string });
       toast({
         title: "Logo enregistré",
         description: "Le logo de l'entreprise a été mis à jour",
@@ -193,7 +173,7 @@ const Settings = () => {
   };
 
   const handleRemoveLogo = () => {
-    setCompanyLogo(null as any);
+    updateCompanySettings({ companyLogo: null });
     toast({
       title: "Logo supprimé",
       description: "Le logo a été supprimé",
@@ -229,13 +209,15 @@ const Settings = () => {
       const text = await file.text();
       const obj = JSON.parse(text || '{}');
       if (typeof obj !== 'object') throw new Error('invalid');
-      if ('companyName' in obj) setCompanyName(obj.companyName || '');
-      if ('companyLogo' in obj) setCompanyLogo(obj.companyLogo || null);
-      if ('companyAddress' in obj) setCompanyAddress(obj.companyAddress || '');
-      if ('companyPhone' in obj) setCompanyPhone(obj.companyPhone || '');
-      if ('companyFax' in obj) setCompanyFax(obj.companyFax || '');
-      if ('companyGsm' in obj) setCompanyGsm(obj.companyGsm || '');
-      if ('companyEmail' in obj) setCompanyEmail(obj.companyEmail || '');
+      updateCompanySettings({
+        companyName: 'companyName' in obj ? String(obj.companyName || '') : companySettings.companyName,
+        companyLogo: 'companyLogo' in obj ? (obj.companyLogo ? String(obj.companyLogo) : null) : companySettings.companyLogo,
+        companyAddress: 'companyAddress' in obj ? String(obj.companyAddress || '') : companySettings.companyAddress,
+        companyPhone: 'companyPhone' in obj ? String(obj.companyPhone || '') : companySettings.companyPhone,
+        companyFax: 'companyFax' in obj ? String(obj.companyFax || '') : companySettings.companyFax,
+        companyGsm: 'companyGsm' in obj ? String(obj.companyGsm || '') : companySettings.companyGsm,
+        companyEmail: 'companyEmail' in obj ? String(obj.companyEmail || '') : companySettings.companyEmail,
+      });
       toast({ title: "Import identité", description: "Identité de l'entreprise importée" });
     } catch {
       toast({ title: "Import échoué", description: "Fichier invalide", variant: "destructive" });
@@ -245,13 +227,15 @@ const Settings = () => {
   };
 
   const resetCompanyIdentity = () => {
-    setCompanyName('');
-    setCompanyLogo(null as any);
-    setCompanyAddress('');
-    setCompanyPhone('');
-    setCompanyFax('');
-    setCompanyGsm('');
-    setCompanyEmail('');
+    updateCompanySettings({
+      companyName: '',
+      companyLogo: null,
+      companyAddress: '',
+      companyPhone: '',
+      companyFax: '',
+      companyGsm: '',
+      companyEmail: '',
+    });
     toast({ title: "Réinitialisé", description: "Identité de l'entreprise réinitialisée" });
   };
 
@@ -270,9 +254,10 @@ const Settings = () => {
   const handleExportAllContracts = async () => {
     setIsExporting(true);
     try {
-      const contracts = localStorageService.getAll('contracts');
+      const { data: contracts, error } = await supabase.from('contracts').select('*');
+      if (error) throw error;
       
-      if (contracts.length === 0) {
+      if (!contracts || contracts.length === 0) {
         toast({
           title: "Aucun contrat",
           description: "Il n'y a aucun contrat à exporter",
@@ -420,66 +405,86 @@ const Settings = () => {
     }
   };
 
-  const handleBackupData = async () => {
-    setIsBackingUp(true);
-    try {
-      await performBackup();
-      toast({
-        title: "✅ Sauvegarde réussie",
-        description: "Toutes les données ont été sauvegardées",
-      });
-    } catch (error) {
-      toast({
-        title: "❌ Erreur de sauvegarde",
-        description: "Impossible de sauvegarder les données",
-        variant: "destructive"
-      });
-    } finally {
-      setIsBackingUp(false);
-    }
+  const handleExportData = () => {
+    toast({
+      title: "Export désactivé",
+      description: "Les données sont désormais sauvegardées de façon centralisée sur Supabase.",
+    });
   };
 
-  const handleRestoreData = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    toast({
+      title: "Import désactivé",
+      description: "Veuillez utiliser les outils de migration Supabase.",
+      variant: "destructive"
+    });
+  };
+
+  const handleBackupData = () => {
+    toast({
+      title: "Sauvegarde désactivée",
+      description: "Les données sont désormais sauvegardées de façon centralisée sur Supabase.",
+    });
+  };
+
+  const handleRestoreData = (event: React.ChangeEvent<HTMLInputElement>) => {
+    toast({
+      title: "Restauration désactivée",
+      description: "Veuillez utiliser les outils de migration Supabase.",
+      variant: "destructive"
+    });
+  };
+
+  const clearDeviceData = async () => {
+    try {
+      localStorage.clear();
+    } catch {}
+    try {
+      sessionStorage.clear();
+    } catch {}
 
     try {
-      const text = await file.text();
-      const success = await performRestore(text);
-      
-      if (success) {
-        toast({
-          title: "✅ Restauration réussie",
-          description: "Les données ont été restaurées avec succès",
-        });
-        // Recharger la page pour refléter les nouvelles données
-        setTimeout(() => window.location.reload(), 1000);
-      } else {
-        throw new Error('Fichier invalide');
+      if ("caches" in window) {
+        const names = await caches.keys();
+        await Promise.all(names.map((name) => caches.delete(name)));
       }
-    } catch (error) {
-      toast({
-        title: "❌ Erreur de restauration",
-        description: "Le fichier de sauvegarde est invalide",
-        variant: "destructive"
-      });
-    }
+    } catch {}
+
+    try {
+      if ("serviceWorker" in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((registration) => registration.unregister()));
+      }
+    } catch {}
+
+    try {
+      const databases = await (indexedDB as unknown as { databases?: () => Promise<Array<{ name?: string }>> }).databases?.();
+      if (Array.isArray(databases)) {
+        await Promise.all(
+          databases
+            .map((db) => db?.name)
+            .filter((name): name is string => Boolean(name))
+            .map(
+              (name) =>
+                new Promise<void>((resolve) => {
+                  const request = indexedDB.deleteDatabase(name);
+                  request.onsuccess = () => resolve();
+                  request.onerror = () => resolve();
+                  request.onblocked = () => resolve();
+                })
+            )
+        );
+      }
+    } catch {}
   };
 
-  const handleClearAllData = async () => {
-    try {
-      await clearAllData();
+  const handleClearData = () => {
+    if (window.confirm("Êtes-vous sûr de vouloir effacer le cache local ? Les données Supabase ne seront pas affectées.")) {
+      const keys = Object.keys(localStorage).filter(key => key.startsWith('rental_app_'));
+      keys.forEach(key => localStorage.removeItem(key));
       toast({
-        title: "✅ Données supprimées",
-        description: "Toutes les données ont été supprimées",
-      });
-      // Recharger la page pour refléter les changements
-      setTimeout(() => window.location.reload(), 1000);
-    } catch (error) {
-      toast({
-        title: "❌ Erreur",
-        description: "Impossible de supprimer les données",
-        variant: "destructive"
+        title: "Cache vidé",
+        description: "Le cache local a été vidé."
       });
     }
   };
@@ -488,22 +493,76 @@ const Settings = () => {
     try {
       localStorage.clear();
       toast({
-        title: "✅ LocalStorage vidé",
-        description: "Le localStorage du navigateur a été complètement vidé",
+        title: "Succès",
+        description: "Le LocalStorage a été vidé avec succès.",
       });
-      // Recharger la page pour refléter les changements
-      setTimeout(() => window.location.reload(), 1000);
+      setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
+      console.error("Error clearing localStorage:", error);
       toast({
-        title: "❌ Erreur",
-        description: "Impossible de vider le localStorage",
+        title: "Erreur",
+        description: "Une erreur s'est produite lors du vidage du LocalStorage.",
         variant: "destructive"
       });
     }
   };
 
+  const handleClearAllData = async () => {
+    if (isClearingAllData) return;
+    setIsClearingAllData(true);
+    try {
+      const confirmPhrase = window.prompt(
+        'Action dangereuse.\nTapez "EFFACER" pour supprimer toutes vos données (Supabase + appareil).'
+      );
+
+      if (confirmPhrase !== "EFFACER") {
+        toast({
+          title: "Annulé",
+          description: "Aucune donnée n'a été supprimée.",
+        });
+        return;
+      }
+
+      const { error } = await supabase.rpc("clear_all_app_data");
+
+      if (error) {
+        if (error.code === "PGRST202") {
+          toast({
+            title: "Configuration Supabase requise",
+            description: "La fonction clear_all_app_data() n'existe pas encore dans votre projet Supabase. Exécutez la migration SQL correspondante puis réessayez.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        toast({
+          title: "Erreur",
+          description: error.message || "Une erreur s'est produite lors de la suppression des données.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      await supabase.auth.signOut().catch(() => {});
+      await clearDeviceData();
+      toast({
+        title: "Succès",
+        description: "Toutes les données ont été supprimées (Supabase + appareil).",
+      });
+      setTimeout(() => window.location.reload(), 800);
+    } catch {
+      toast({
+        title: "Erreur",
+        description: "Une erreur s'est produite.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsClearingAllData(false);
+    }
+  };
+
   const handleResetOfficialColor = () => {
-    setBrandColor(DEFAULT_BRAND_COLOR);
+    updateCompanySettings({ brandColor: DEFAULT_BRAND_COLOR });
     toast({
       title: "✅ Couleur officielle activee",
       description: "La couleur jaune officielle de l'application a ete appliquee",
@@ -592,7 +651,7 @@ const Settings = () => {
               <Input
                 id="companyName"
                 value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
+                onChange={(e) => updateCompanySettings({ companyName: e.target.value })}
                 placeholder="Ex: SFTLOCATION"
               />
             </div>
@@ -601,7 +660,7 @@ const Settings = () => {
               <Input
                 id="companyAddress"
                 value={companyAddress}
-                onChange={(e) => setCompanyAddress(e.target.value)}
+                onChange={(e) => updateCompanySettings({ companyAddress: e.target.value })}
                 placeholder="10 Avenue des Far, 3ème Étage - Bureau N° 308 - Casablanca - Maroc"
               />
             </div>
@@ -611,7 +670,7 @@ const Settings = () => {
                 <Input
                   id="companyPhone"
                   value={companyPhone}
-                  onChange={(e) => setCompanyPhone(e.target.value)}
+                  onChange={(e) => updateCompanySettings({ companyPhone: e.target.value })}
                   placeholder="0522228704"
                 />
               </div>
@@ -620,7 +679,7 @@ const Settings = () => {
                 <Input
                   id="companyFax"
                   value={companyFax}
-                  onChange={(e) => setCompanyFax(e.target.value)}
+                  onChange={(e) => updateCompanySettings({ companyFax: e.target.value })}
                   placeholder="05 22 47 17 80"
                 />
               </div>
@@ -631,7 +690,7 @@ const Settings = () => {
                 <Input
                   id="companyGsm"
                   value={companyGsm}
-                  onChange={(e) => setCompanyGsm(e.target.value)}
+                  onChange={(e) => updateCompanySettings({ companyGsm: e.target.value })}
                   placeholder="06 62 59 63 07"
                 />
               </div>
@@ -641,7 +700,7 @@ const Settings = () => {
                   id="companyEmail"
                   type="email"
                   value={companyEmail}
-                  onChange={(e) => setCompanyEmail(e.target.value)}
+                  onChange={(e) => updateCompanySettings({ companyEmail: e.target.value })}
                   placeholder="exemple@domaine.com"
                 />
               </div>
@@ -737,7 +796,7 @@ const Settings = () => {
                   id="brandColor"
                   type="color"
                   value={brandColor || DEFAULT_BRAND_COLOR}
-                  onChange={(e) => setBrandColor(e.target.value)}
+                  onChange={(e) => updateCompanySettings({ brandColor: e.target.value })}
                   className="w-16 h-10 p-1 cursor-pointer"
                 />
                 <Input
@@ -947,9 +1006,10 @@ const Settings = () => {
                   <AlertDialogCancel>Annuler</AlertDialogCancel>
                   <AlertDialogAction 
                     onClick={handleClearAllData}
+                    disabled={isClearingAllData}
                     className="bg-destructive hover:bg-destructive/90"
                   >
-                    Oui, supprimer toutes les données
+                    {isClearingAllData ? "Suppression..." : "Oui, supprimer toutes les données"}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>

@@ -15,12 +15,15 @@ interface TenantSelectorProps {
 export const TenantSelector = ({ selectedTenant, onTenantSelect }: TenantSelectorProps) => {
   const [open, setOpen] = useState(false);
   const [showTenantDialog, setShowTenantDialog] = useState(false);
-  const { tenants } = useTenants();
+  const { tenants, addTenant } = useTenants();
 
-  const handleTenantCreate = async (tenant: Tenant) => {
+  const handleTenantCreate = async (tenantData: Omit<Tenant, "id" | "createdAt" | "updatedAt">) => {
+    const tenant = await addTenant(tenantData);
+    if (!tenant) return false;
     onTenantSelect(tenant);
     setShowTenantDialog(false);
     setOpen(false);
+    return true;
   };
 
   return (
@@ -88,18 +91,7 @@ export const TenantSelector = ({ selectedTenant, onTenantSelect }: TenantSelecto
       <TenantFormDialog
         isOpen={showTenantDialog}
         onClose={() => setShowTenantDialog(false)}
-        onSubmit={(tenantData) => {
-          // Convert the form data to a Tenant object with id and timestamps
-          const newTenant = {
-            ...tenantData,
-            id: Date.now().toString(),
-            createdAt: new Date().toISOString().split('T')[0],
-            updatedAt: new Date().toISOString().split('T')[0]
-          } as Tenant;
-          
-          handleTenantCreate(newTenant);
-          return true;
-        }}
+        onSubmit={handleTenantCreate}
       />
     </>
   );

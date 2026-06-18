@@ -8,8 +8,8 @@ interface InvoiceFormHeaderProps {
 }
 
 const InvoiceFormHeader: React.FC<InvoiceFormHeaderProps> = ({ form, handleChange }) => (
-  <div className="flex items-center justify-between gap-4">
-    <div>
+  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 w-full">
+    <div className="w-full">
       <Input
         name="companyName"
         value={form.companyName}
@@ -26,38 +26,38 @@ const InvoiceFormHeader: React.FC<InvoiceFormHeaderProps> = ({ form, handleChang
           className="w-28"
         />
       </div>
-      <div className="flex gap-3 mt-2">
-        <div className="space-x-2 text-sm">
+      <div className="flex flex-wrap gap-3 mt-2">
+        <div className="space-x-2 text-sm flex items-center">
           <span>Numéro:</span>
           <Input
             name="invoiceNumber"
             value={form.invoiceNumber}
             onChange={handleChange}
-            className="inline w-24"
+            className="inline w-24 ml-1"
           />
         </div>
-        <div className="space-x-2 text-sm">
+        <div className="space-x-2 text-sm flex items-center">
           <span>Date:</span>
           <Input
             name="invoiceDate"
             type="date"
             value={form.invoiceDate}
             onChange={handleChange}
-            className="inline w-36"
+            className="inline w-36 ml-1"
           />
         </div>
-        <div className="space-x-2 text-sm">
+        <div className="space-x-2 text-sm flex items-center">
           <span>N° Client:</span>
           <Input
             name="customerNumber"
             value={form.customerNumber}
             onChange={handleChange}
-            className="inline w-20"
+            className="inline w-20 ml-1"
           />
         </div>
       </div>
     </div>
-    <div className="text-right border border-black p-2 rounded font-bold text-sm w-[230px]">
+    <div className="text-left md:text-right border border-black p-2 rounded font-bold text-sm w-full md:w-[230px] shrink-0">
       <Input
         name="beneficiaryName"
         value={form.beneficiaryName}
@@ -70,7 +70,7 @@ const InvoiceFormHeader: React.FC<InvoiceFormHeaderProps> = ({ form, handleChang
           name="beneficiaryICE"
           value={form.beneficiaryICE}
           onChange={handleChange}
-          className="inline w-[140px] ml-1 text-xs border-none p-0"
+          className="inline w-[140px] ml-1 text-xs border-none p-0 bg-transparent"
         />
       </div>
     </div>

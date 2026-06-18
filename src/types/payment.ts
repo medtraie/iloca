@@ -19,7 +19,8 @@ export interface PaymentAuditEntry {
 
 export interface Payment {
   id: string;
-  contractId: string;
+  contractId?: string;
+  repairId?: string;
   contractNumber: string;
   customerName: string;
   amount: number;

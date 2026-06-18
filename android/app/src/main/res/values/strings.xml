@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SFTLOCATION</string>
+    <string name="title_activity_main">SFTLOCATION</string>
+    <string name="package_name">com.sftlocation.app</string>
+    <string name="custom_url_scheme">com.sftlocation.app</string>
+</resources>

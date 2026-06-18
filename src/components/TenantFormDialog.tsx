@@ -17,7 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 interface TenantFormDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (tenantData: Omit<Tenant, 'id' | 'createdAt' | 'updatedAt'>) => boolean;
+  onSubmit: (tenantData: Omit<Tenant, 'id' | 'createdAt' | 'updatedAt'>) => boolean | Promise<boolean>;
   tenant?: Tenant | null;
   nationalities?: string[];
 }
@@ -138,7 +138,7 @@ const TenantFormDialog = ({
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!validateForm()) {
@@ -150,7 +150,7 @@ const TenantFormDialog = ({
       return;
     }
 
-    const success = onSubmit(formData);
+    const success = await onSubmit(formData);
     if (success) {
       onClose();
     }

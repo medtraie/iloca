@@ -1,3 +1,5 @@
+import { fuelRepository } from "@/repositories/fuelRepository";
+
 export type FuelLog = {
   id: string;
   vehicleId: string;
@@ -9,43 +11,27 @@ export type FuelLog = {
   odometer?: number;
 };
 
-const KEY = "rental_app_fuel_logs";
-
-function all(): FuelLog[] {
-  try {
-    const raw = localStorage.getItem(KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+async function all(): Promise<FuelLog[]> {
+  return fuelRepository.getAll();
 }
 
-function save(list: FuelLog[]) {
-  localStorage.setItem(KEY, JSON.stringify(list));
+async function add(log: Omit<FuelLog, "id">): Promise<FuelLog> {
+  return fuelRepository.create(log);
 }
 
-function add(log: Omit<FuelLog, "id">): FuelLog {
-  const item: FuelLog = { ...log, id: Date.now().toString(36) };
-  const list = all();
-  list.push(item);
-  save(list);
-  return item;
+async function byMonth(year: number, month: number): Promise<FuelLog[]> {
+  return fuelRepository.getByMonth(year, month);
 }
 
-function byMonth(year: number, month: number): FuelLog[] {
-  return all().filter((l) => {
-    const d = new Date(l.date);
-    return d.getFullYear() === year && d.getMonth() === month;
-  });
+async function monthlyCost(year: number, month: number): Promise<number> {
+  const logs = await byMonth(year, month);
+  return logs.reduce((s, l) => s + l.price, 0);
 }
 
-function monthlyCost(year: number, month: number): number {
-  return byMonth(year, month).reduce((s, l) => s + l.price, 0);
-}
-
-function consumptionPerVehicle(year: number, month: number): Record<string, number> {
+async function consumptionPerVehicle(year: number, month: number): Promise<Record<string, number>> {
   const map: Record<string, number> = {};
-  byMonth(year, month).forEach((l) => {
+  const logs = await byMonth(year, month);
+  logs.forEach((l) => {
     map[l.vehicleId] = (map[l.vehicleId] || 0) + l.quantity;
   });
   return map;

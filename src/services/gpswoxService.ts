@@ -1,6 +1,8 @@
-import { localStorageService, Vehicle } from "@/services/localStorageService";
 import { trackingService } from "@/services/trackingService";
 import { fuelService } from "@/services/fuelService";
+import { vehiclesRepository } from "@/repositories/vehiclesRepository";
+import { settingsRepository } from "@/repositories/settingsRepository";
+import { Vehicle } from "@/types/appData";
 import {
   getLatestCachedPayload,
   getLatestSnapshotPayload,
@@ -58,49 +60,62 @@ const HASH_TTL_MS = 1000 * 60 * 60 * 10;
 const DEFAULT_GPSWOX_BASE_URL = "https://trackpremierlocation.com";
 const DEFAULT_GPSWOX_API_URL = `${DEFAULT_GPSWOX_BASE_URL}/api`;
 const DEFAULT_LOCAL_API_URL = "http://127.0.0.1/api";
-const DEFAULT_GPSWOX_EMAIL = "Medorarlis93@gmail.com";
-const DEFAULT_GPSWOX_PASSWORD = "Tr198989";
 
-// #region debug-point B:reporter
-const reportTrackingDebug = (hypothesisId: string, location: string, msg: string, data: Record<string, unknown>) =>
-  fetch("http://127.0.0.1:7777/event", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      sessionId: "tracking-runtime",
-      runId: "post-fix",
-      hypothesisId,
-      location,
-      msg: `[DEBUG] ${msg}`,
-      data,
-      ts: Date.now()
-    })
-  }).catch(() => {});
-// #endregion
+const ensureUrl = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+};
 
-const getBaseUrl = () =>
+const getEnvBaseUrl = () =>
   (import.meta.env.VITE_GPSWOX_BASE_URL as string | undefined) ||
   (import.meta.env.VITE_GPSWOX_URL as string | undefined) ||
   DEFAULT_GPSWOX_BASE_URL;
 
-const getApiCandidates = () => {
+const getGpsConfig = async () => {
   const envApi = (import.meta.env.VITE_GPSWOX_API_URL as string | undefined) || "";
-  const envBaseApi = `${getBaseUrl().replace(/\/+$/, "")}/api`;
-  const candidates = [envApi, DEFAULT_LOCAL_API_URL, envBaseApi, DEFAULT_GPSWOX_API_URL]
-    .filter(Boolean)
-    .map((value) => value.replace(/\/+$/, ""));
-  return [...new Set(candidates)];
+  const envEmail = (import.meta.env.VITE_GPSWOX_EMAIL as string | undefined) || (import.meta.env.VITE_GPSWOX_USER as string | undefined) || "";
+  const envPassword =
+    (import.meta.env.VITE_GPSWOX_PASSWORD as string | undefined) ||
+    (import.meta.env.VITE_GPSWOX_MDPS as string | undefined) ||
+    "";
+
+  let db = null as Awaited<ReturnType<typeof settingsRepository.getGpsSettings>> | null;
+  try {
+    db = await settingsRepository.getGpsSettings();
+  } catch {
+    db = null;
+  }
+
+  const apiUrl = envApi || (db?.api_url ? ensureUrl(db.api_url) : "");
+  const email = envEmail || db?.email || "";
+  const password = envPassword || db?.password || "";
+
+  return { apiUrl, email, password };
 };
 
-const getEmail = () =>
-  (import.meta.env.VITE_GPSWOX_EMAIL as string | undefined) ||
-  (import.meta.env.VITE_GPSWOX_USER as string | undefined) ||
-  DEFAULT_GPSWOX_EMAIL;
+const getApiCandidates = async () => {
+  const envApi = (import.meta.env.VITE_GPSWOX_API_URL as string | undefined) || "";
+  const envBase = ensureUrl(getEnvBaseUrl());
+  const { apiUrl } = await getGpsConfig();
 
-const getPassword = () =>
-  (import.meta.env.VITE_GPSWOX_PASSWORD as string | undefined) ||
-  (import.meta.env.VITE_GPSWOX_MDPS as string | undefined) ||
-  DEFAULT_GPSWOX_PASSWORD;
+  const candidates: string[] = [];
+  if (envApi) candidates.push(ensureUrl(envApi));
+  candidates.push(DEFAULT_LOCAL_API_URL);
+  if (envBase) candidates.push(`${envBase.replace(/\/+$/, "")}/api`);
+
+  if (apiUrl) {
+    const normalized = apiUrl.replace(/\/+$/, "");
+    candidates.push(normalized);
+    if (!/\/api$/i.test(normalized)) {
+      candidates.push(`${normalized}/api`);
+    }
+  }
+
+  candidates.push(DEFAULT_GPSWOX_API_URL);
+  return [...new Set(candidates.filter(Boolean).map((value) => value.replace(/\/+$/, "")))];
+};
 
 const parseNumber = (v: any) => {
   const n = Number(v);
@@ -167,16 +182,43 @@ const normalizeCachedPayload = (payload: any): AnyRecord[] => {
   return [];
 };
 
-const readHashFromStorage = () => {
-  const hash = localStorage.getItem(USER_HASH_KEY);
-  const ts = Number(localStorage.getItem(USER_HASH_TS_KEY) || "0");
+const readHashFromSupabase = async () => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return "";
+
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData?.user) return "";
+
+  const { data, error } = await supabase
+    .from("app_settings")
+    .select("setting_key, setting_value")
+    .in("setting_key", [USER_HASH_KEY, USER_HASH_TS_KEY]);
+  if (error) return "";
+
+  const map = (data || []).reduce<Record<string, any>>((acc, row: any) => {
+    acc[String(row.setting_key)] = row.setting_value;
+    return acc;
+  }, {});
+
+  const hash = typeof map[USER_HASH_KEY] === "string" ? map[USER_HASH_KEY] : "";
+  const tsRaw = map[USER_HASH_TS_KEY];
+  const ts = typeof tsRaw === "number" ? tsRaw : Number(tsRaw || 0);
   if (!hash || !ts || Date.now() - ts > HASH_TTL_MS) return "";
   return hash;
 };
 
-const writeHashToStorage = (hash: string) => {
-  localStorage.setItem(USER_HASH_KEY, hash);
-  localStorage.setItem(USER_HASH_TS_KEY, String(Date.now()));
+const writeHashToSupabase = async (hash: string) => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData?.user) return;
+
+  const payload = [
+    { setting_key: USER_HASH_KEY, setting_value: hash },
+    { setting_key: USER_HASH_TS_KEY, setting_value: Date.now() }
+  ];
+  await supabase.from("app_settings").upsert(payload, { onConflict: "user_id,setting_key" });
 };
 
 const buildUrl = (base: string, path: string, params?: Record<string, string>) => {
@@ -267,21 +309,20 @@ async function fetchJson(url: string) {
 async function getUserApiHash() {
   const directHash = (import.meta.env.VITE_GPSWOX_USER_API_HASH as string | undefined) || "";
   if (directHash) return directHash;
-  const cached = readHashFromStorage();
+  const cached = await readHashFromSupabase();
   if (cached) return cached;
 
-  const email = getEmail();
-  const password = getPassword();
+  const { email, password } = await getGpsConfig();
   if (!email || !password) return "";
 
-  const apiCandidates = getApiCandidates();
+  const apiCandidates = await getApiCandidates();
   for (const base of apiCandidates) {
     const loginViaQuery = buildUrl(base, "/login", { email, password });
     try {
       const payload = await fetchJson(loginViaQuery);
       const hash = parseHash(payload);
       if (hash) {
-        writeHashToStorage(hash);
+        await writeHashToSupabase(hash);
         return hash;
       }
     } catch {
@@ -300,7 +341,7 @@ async function getUserApiHash() {
       const payload = await res.json();
       const hash = parseHash(payload);
       if (hash) {
-        writeHashToStorage(hash);
+        await writeHashToSupabase(hash);
         return hash;
       }
     } catch {
@@ -315,7 +356,7 @@ async function request(path: string, params?: Record<string, string>) {
     throw new Error("GPSWOX_MISSING_USER_API_HASH");
   }
   let lastError: unknown = null;
-  for (const base of getApiCandidates()) {
+  for (const base of await getApiCandidates()) {
     try {
       const url = buildUrl(base, path, { ...params, user_api_hash: userApiHash });
       return await fetchJson(url);
@@ -327,13 +368,12 @@ async function request(path: string, params?: Record<string, string>) {
 }
 
 async function requestViaSupabaseFunction(target: "devices" | "alerts" | "reports") {
-  const sbUrl =
-    (import.meta.env.VITE_SUPABASE_URL as string | undefined) || "https://wypifrsooooeejfckomg.supabase.co";
+  const sbUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined) || "";
   const sbKey =
     (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined) ||
     (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ||
     "";
-  if (!sbUrl) {
+  if (!sbUrl || !sbKey) {
     return null;
   }
 
@@ -390,8 +430,8 @@ async function getDevicesFromSupabaseCache(): Promise<GpswoxDevice[]> {
     .map(parseDevice)
     .filter((device) => device.id);
   if (!devices.length) return [];
-  syncDevicesInLocalStorage(devices);
-  syncTrackingFromDevices(devices);
+  await syncDevicesInLocalStorage(devices);
+  await syncTrackingFromDevices(devices);
   return devices;
 }
 
@@ -432,43 +472,43 @@ function mapDeviceToVehicle(device: GpswoxDevice): Omit<Vehicle, "id" | "created
   };
 }
 
-function syncDevicesInLocalStorage(devices: GpswoxDevice[]) {
-  const vehicles = localStorageService.getAll<Vehicle>("vehicles");
-  devices.forEach((device) => {
+async function syncDevicesInLocalStorage(devices: GpswoxDevice[]) {
+  const vehicles = await vehiclesRepository.listVehicles();
+  for (const device of devices) {
     const linked = vehicles.find(
       (vehicle) =>
         (vehicle.registration && vehicle.registration === device.plate) ||
         (vehicle.immatriculation && vehicle.immatriculation === device.plate)
     );
     if (!linked) {
-      localStorageService.create<Vehicle>("vehicles", mapDeviceToVehicle(device));
-      return;
+      await vehiclesRepository.createVehicle(mapDeviceToVehicle(device));
+      continue;
     }
-    localStorageService.update<Vehicle>("vehicles", linked.id, {
+    await vehiclesRepository.updateVehicle(linked.id, {
       etat_vehicule: device.online ? "loue" : "disponible",
       registration: linked.registration || device.plate,
       immatriculation: linked.immatriculation || device.plate
     } as Partial<Vehicle>);
-  });
+  }
 }
 
-function syncTrackingFromDevices(devices: GpswoxDevice[]) {
-  const vehicles = localStorageService.getAll<Vehicle>("vehicles");
-  devices.forEach((device) => {
-    if (!device.lat || !device.lng) return;
+async function syncTrackingFromDevices(devices: GpswoxDevice[]) {
+  const vehicles = await vehiclesRepository.listVehicles();
+  for (const device of devices) {
+    if (!device.lat || !device.lng) continue;
     const linked = vehicles.find(
       (vehicle) =>
         (vehicle.registration && vehicle.registration === device.plate) ||
         (vehicle.immatriculation && vehicle.immatriculation === device.plate)
     );
-    if (!linked) return;
-    trackingService.addPosition(linked.id, {
+    if (!linked) continue;
+    await trackingService.addPosition(linked.id, {
       lat: device.lat,
       lng: device.lng,
       speed: device.speed,
       timestamp: Date.now()
     });
-  });
+  }
 }
 
 async function getDevices(): Promise<GpswoxDevice[]> {
@@ -477,8 +517,8 @@ async function getDevices(): Promise<GpswoxDevice[]> {
     if (payload?.data) {
       const devices = pickArray(payload.data).map(parseDevice).filter((d) => d.id);
       if (devices.length) {
-        syncDevicesInLocalStorage(devices);
-        syncTrackingFromDevices(devices);
+        await syncDevicesInLocalStorage(devices);
+        await syncTrackingFromDevices(devices);
         await saveGpsSnapshot("devices", devices as any);
         await upsertGpsDevicesCache(
           devices.map((device) => ({
@@ -500,8 +540,8 @@ async function getDevices(): Promise<GpswoxDevice[]> {
       const payload = await request(endpoint);
       const devices = pickArray(payload).map(parseDevice).filter((d) => d.id);
       if (devices.length) {
-        syncDevicesInLocalStorage(devices);
-        syncTrackingFromDevices(devices);
+        await syncDevicesInLocalStorage(devices);
+        await syncTrackingFromDevices(devices);
         await saveGpsSnapshot("devices", devices as any);
         await upsertGpsDevicesCache(
           devices.map((device) => ({
@@ -537,16 +577,6 @@ async function getDeviceHistory(deviceId: string, from?: string, to?: string) {
   };
   const endpoints = ["/history", "/get_history"];
   let lastError: unknown = null;
-  // #region debug-point B:history-request
-  reportTrackingDebug("B", "gpswoxService.ts:getDeviceHistory:start", "GPSwox history requested", {
-    deviceId,
-    fromDate: params.from_date,
-    fromTime: params.from_time,
-    toDate: params.to_date,
-    toTime: params.to_time,
-    endpoints
-  });
-  // #endregion
   for (const endpoint of endpoints) {
     try {
       const payload = await request(endpoint, params);
@@ -560,16 +590,6 @@ async function getDeviceHistory(deviceId: string, from?: string, to?: string) {
         timestamp: Number(item.timestamp ?? new Date(item.time || item.raw_time || item.show || item.date || Date.now()).getTime()),
         speed: parseNumber(item.speed ?? item.current_speed)
       }));
-      // #region debug-point B:history-response
-      reportTrackingDebug("B", "gpswoxService.ts:getDeviceHistory:response", "GPSwox history payload parsed", {
-        endpoint,
-        rowsCount: rows.length,
-        recordsCount: records.length,
-        validCoords: records.filter((record) => Number.isFinite(record.lat) && Number.isFinite(record.lng) && (record.lat !== 0 || record.lng !== 0)).length,
-        first: records[0] || null,
-        last: records[records.length - 1] || null
-      });
-      // #endregion
       if (records.length) {
         return records.filter(
           (record) => Number.isFinite(record.lat) && Number.isFinite(record.lng) && (record.lat !== 0 || record.lng !== 0)
@@ -577,12 +597,6 @@ async function getDeviceHistory(deviceId: string, from?: string, to?: string) {
       }
     } catch (error) {
       lastError = error;
-      // #region debug-point B:history-error
-      reportTrackingDebug("B", "gpswoxService.ts:getDeviceHistory:error", "GPSwox history request failed", {
-        endpoint,
-        error: error instanceof Error ? error.message : String(error)
-      });
-      // #endregion
     }
   }
   if (lastError) {
@@ -682,23 +696,23 @@ async function getFuelRecords(): Promise<GpswoxFuelRecord[]> {
 
 async function syncFuelToLocalStorage(records: GpswoxFuelRecord[]) {
   if (!records.length) return;
-  const vehicles = localStorageService.getAll<Vehicle>("vehicles");
-  records.forEach((record) => {
+  const vehicles = await vehiclesRepository.listVehicles();
+  for (const record of records) {
     const linked = vehicles.find(
       (vehicle) =>
         vehicle.registration === record.deviceId ||
         vehicle.immatriculation === record.deviceId ||
         vehicle.id === record.deviceId
     );
-    if (!linked) return;
-    fuelService.add({
+    if (!linked) continue;
+    await fuelService.add({
       vehicleId: linked.id,
       quantity: record.quantity,
       price: record.price || 0,
       station: record.station,
       date: record.date
     });
-  });
+  }
 }
 
 async function getAnalytics(): Promise<GpswoxAnalytics> {

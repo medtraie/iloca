@@ -27,7 +27,14 @@ export default function Alerts() {
   const [gpsEvents, setGpsEvents] = useState<GpswoxEvent[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [gpsDebugError, setGpsDebugError] = useState<string | null>(null);
-  const localItems = alertsService.compute();
+  const [localItems, setLocalItems] = useState<any[]>([]);
+
+  useEffect(() => {
+    alertsService.compute().then(items => {
+      setLocalItems(items);
+    }).catch(console.error);
+  }, []);
+
   const items = [
     ...localItems,
     ...gpsEvents.map((event) => ({

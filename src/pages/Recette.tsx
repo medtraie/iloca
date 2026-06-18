@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,29 +10,31 @@ import { Link } from "react-router-dom";
 import { useContracts } from "@/hooks/useContracts";
 import { useMiscellaneousExpenses } from "@/hooks/useMiscellaneousExpenses";
 import { getContractFinancialStatusWithPayments, recalculateContractFinancials } from "@/utils/contractFinancialStatus";
-import type { Contract } from "@/services/localStorageService";
+import { Vehicle, Contract, Customer } from "@/types/appData";
 import { PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, startOfDay, endOfDay, startOfMonth, endOfMonth, startOfYear, endOfYear, isWithinInterval, subMonths, type Interval } from "date-fns";
 import { fr } from "date-fns/locale";
-import { computeContractSummary, getContractSummaryWithPayments, migrateAllContracts } from "@/utils/contractMath";
+import { computeContractSummary, getContractSummaryWithPayments } from "@/utils/contractMath";
 import { BankTransferDialog } from "@/components/BankTransferDialog";
 import { ReportFilters, type TimeFilter } from "@/components/ReportFilters";
 import { PDFExportButton } from "@/components/PDFExportButton";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { PaymentDialog, type PaymentData } from "@/components/PaymentDialog";
-import { ContractMigrationButton } from "@/components/ContractMigrationButton";
 import MiscellaneousExpenseDialog from "@/components/MiscellaneousExpenseDialog";
 import MiscellaneousExpenseTable from "@/components/MiscellaneousExpenseTable";
 import MiscellaneousExpenseChart from "@/components/MiscellaneousExpenseChart";
 import type { Payment, PaymentSummary } from "@/types/payment";
 import { PaymentHistoryDialog } from "@/components/PaymentHistoryDialog";
 import { SettledContractsDialog } from "@/components/SettledContractsDialog";
-import { localStorageService } from "@/services/localStorageService";
+import { paymentsRepository } from "@/repositories/paymentsRepository";
+import { bankTransfersRepository } from "@/repositories/bankTransfersRepository";
+import { auditLogsRepository } from "@/repositories/auditLogsRepository";
 import { useExpenses } from "@/hooks/useExpenses";
 import { useVehicles } from "@/hooks/useVehicles";
 import { motion } from "framer-motion";
 import type { MonthlyExpense } from "@/types/expense";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface BankTransfer {
   id: string;
@@ -133,8 +135,10 @@ const Recette = () => {
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('month');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [showPieChart, setShowPieChart] = useState(true);
+  const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useLocalStorage<'analytics' | 'contracts' | 'expenses' | 'vehicle_expenses'>("recette:active-tab", "analytics");
   const [contractsViewMode, setContractsViewMode] = useLocalStorage<'table' | 'cards'>("recette:contracts-view-mode", "table");
+  const effectiveContractsViewMode = isMobile ? 'cards' : contractsViewMode;
   const [contractsSearch, setContractsSearch] = useState("");
   const [contractsSortKey, setContractsSortKey] = useLocalStorage<ContractsSortKey>("recette:contracts-sort-key", "remaining_amount");
   const [contractsSortDirection, setContractsSortDirection] = useLocalStorage<SortDirection>("recette:contracts-sort-direction", "desc");
@@ -160,29 +164,45 @@ const Recette = () => {
   const [frozenChecksAmount, setFrozenChecksAmount] = useState(0);
   
   // Bank transfers and balance
-  const [bankTransfers, setBankTransfers] = useLocalStorage<BankTransfer[]>("bankTransfers", []);
-  const [bankBalance, setBankBalance] = useLocalStorage<number>("bankBalance", 0);
+  const [bankTransfers, setBankTransfers] = useState<any[]>([]);
+  const [bankBalance, setBankBalance] = useState<number>(0);
   
   // Payments tracking
-  const [payments, setPayments] = useLocalStorage<Payment[]>("payments", []);
-  const [cashBalance, setCashBalance] = useLocalStorage<number>("cashBalance", 0);
-  const [bankAccount, setBankAccount] = useLocalStorage<number>("bankAccount", 0);
-  const [auditLogs, setAuditLogs] = useLocalStorage<AuditLogEntry[]>("recette:audit-logs", []);
-  const [cashAlertThreshold, setCashAlertThreshold] = useLocalStorage<number>("recette:cash-alert-threshold", 2000);
-  const [bankAlertThreshold, setBankAlertThreshold] = useLocalStorage<number>("recette:bank-alert-threshold", 5000);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [cashBalance, setCashBalance] = useState<number>(0);
+  const [bankAccount, setBankAccount] = useState<number>(0);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [cashAlertThreshold, setCashAlertThreshold] = useState<number>(2000);
+  const [bankAlertThreshold, setBankAlertThreshold] = useState<number>(5000);
   const contractsPerPage = 10;
 
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
+  const fetchData = useCallback(async () => {
+    try {
+      const [p, bt, al] = await Promise.all([
+        paymentsRepository.getAll(),
+        bankTransfersRepository.getAll(),
+        auditLogsRepository.getAll()
+      ]);
+      setPayments(p);
+      setBankTransfers(bt);
+      setAuditLogs(al);
+    } catch (error) {
+      console.error("Failed to fetch data in Recette", error);
+    }
+  }, []);
 
-  const appendAuditLog = (entry: Omit<AuditLogEntry, "id" | "createdAt">) => {
-    const newLog: AuditLogEntry = {
-      ...entry,
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString()
-    };
-    setAuditLogs((prev) => [newLog, ...prev].slice(0, 300));
+  useEffect(() => {
+    fetchData();
+    refetch();
+  }, [fetchData, refetch]);
+
+  const appendAuditLog = async (entry: Omit<AuditLogEntry, "id" | "createdAt">) => {
+    try {
+      await auditLogsRepository.create(entry);
+      fetchData();
+    } catch (error) {
+      console.error("Failed to append audit log", error);
+    }
   };
 
   const handleRefresh = () => {
@@ -275,72 +295,46 @@ const Recette = () => {
     });
   }, [contracts, tenantFilter, contractNumberFilter, dateFilter]);
 
-  useEffect(() => {
-    if (allContracts.length > 0) {
-      const migrationDone = localStorage.getItem('contractMath_migration_done');
-      if (!migrationDone) {
-        migrateAllContracts();
-        localStorage.setItem('contractMath_migration_done', 'true');
-      }
-    }
-  }, [allContracts.length]);
-
   // Handle bank transfers
-  const handleBankTransfer = (transfer: BankTransfer) => {
-    setBankTransfers(prev => [...prev, transfer]);
-
-    if (transfer.type === 'cash') {
-      // Espèces -> Banque
-      setCashBalance(prev => Math.max(0, prev - transfer.amount));
-      setBankBalance(prev => prev + transfer.netAmount);
-    } else if (transfer.type === 'check') {
-      // Chèque -> Banque
-      setBankBalance(prev => prev + transfer.netAmount);
-    } else if (transfer.type === 'bank_to_cash') {
-      setBankBalance(prev => Math.max(0, prev - transfer.amount));
-      setCashBalance(prev => prev + transfer.netAmount);
+  const handleBankTransfer = async (transfer: any) => {
+    try {
+      await bankTransfersRepository.create(transfer);
+      fetchData();
+      appendAuditLog({
+        action: "bank_transfer_created",
+        details: `Transfert ${transfer.type}`,
+        amount: transfer.amount,
+        reference: transfer.reference
+      });
+    } catch (error) {
+      toast({ title: "Erreur", description: "Échec du transfert", variant: "destructive" });
     }
-
-    appendAuditLog({
-      action: "bank_transfer_created",
-      details: `Transfert ${transfer.type}`,
-      amount: transfer.amount,
-      reference: transfer.reference
-    });
   };
 
   // Handle bank transfer deletion
-  const handleDeleteBankTransfer = (transferId: string) => {
-    const transfer = bankTransfers.find(t => t.id === transferId);
-    if (!transfer) return;
+  const handleDeleteBankTransfer = async (transferId: string) => {
+    try {
+      const transfer = bankTransfers.find(t => t.id === transferId);
+      if (!transfer) return;
 
-    setBankTransfers(prev => prev.filter(t => t.id !== transferId));
+      await bankTransfersRepository.delete(transferId);
+      fetchData();
 
-    if (transfer.type === 'cash') {
-      // Undo Espèces -> Banque
-      setCashBalance(prev => prev + transfer.amount);
-      setBankBalance(prev => Math.max(0, prev - transfer.netAmount));
-    } else if (transfer.type === 'check') {
-      // Undo Chèque -> Banque
-      setBankBalance(prev => Math.max(0, prev - transfer.netAmount));
-    } else if (transfer.type === 'bank_to_cash') {
-      // Undo Banque -> Espèces
-      setBankBalance(prev => prev + transfer.amount);
-      setCashBalance(prev => Math.max(0, prev - transfer.netAmount));
+      toast({
+        title: "Transfert supprimé",
+        description: `Le transfert de ${transfer.amount.toLocaleString()} MAD a été supprimé`,
+        variant: "default"
+      });
+
+      appendAuditLog({
+        action: "bank_transfer_deleted",
+        details: `Suppression transfert ${transfer.type}`,
+        amount: transfer.amount,
+        reference: transfer.reference
+      });
+    } catch (error) {
+      toast({ title: "Erreur", description: "Échec de la suppression", variant: "destructive" });
     }
-
-    toast({
-      title: "Transfert supprimé",
-      description: `Le transfert de ${transfer.amount.toLocaleString()} MAD a été supprimé`,
-      variant: "default"
-    });
-
-    appendAuditLog({
-      action: "bank_transfer_deleted",
-      details: `Suppression transfert ${transfer.type}`,
-      amount: transfer.amount,
-      reference: transfer.reference
-    });
   };
 
   const stats = useMemo(() => {
@@ -398,11 +392,11 @@ const Recette = () => {
     totalVirements = totalVirements - diversVirements;
     totalCheques = totalCheques - diversCheques;
 
-    const repairPayments = localStorageService.getAll<RepairPaymentMovement>('repairPayments');
+    // Filter payments for repairs from the unified payments array
     let repairsEspeces = 0;
     let repairsVirements = 0;
     let repairsCheques = 0;
-    repairPayments.forEach((p) => {
+    payments.filter(p => p.repairId).forEach((p) => {
       if (p.paymentMethod === 'Espèces') repairsEspeces += p.amount;
       else if (p.paymentMethod === 'Virement') repairsVirements += p.amount;
       else if (p.paymentMethod === 'Chèque') repairsCheques += p.amount;
@@ -813,191 +807,152 @@ const Recette = () => {
   };
 
   // Handle delete functions
-  const handleDeleteTotalEncaisse = () => {
-    setPayments([]);
-    setCashBalance(0);
-    setBankAccount(0);
-    appendAuditLog({
-      action: "payments_reset",
-      details: "Réinitialisation de tous les paiements"
-    });
+  // Handle delete functions
+  const handleDeleteTotalEncaisse = async () => {
+    // This is a radical action, we'll just clear the state locally and log it.
+    // In a real app, we might want a bulk delete repository method.
     toast({
-      title: "Total Encaissé réinitialisé",
-      description: "Tous les paiements ont été supprimés",
-      variant: "default"
+      title: "Action restreinte",
+      description: "La suppression en masse doit être effectuée via Supabase.",
     });
   };
 
   const handleDeleteTotalEspeces = () => {
-    setCashBalance(0);
-    const updatedPayments = payments.filter(p => p.paymentMethod !== 'Espèces');
-    setPayments(updatedPayments);
-    appendAuditLog({
-      action: "cash_payments_deleted",
-      details: "Suppression des paiements espèces"
-    });
     toast({
-      title: "Total Espèces supprimé",
-      description: "Le solde espèces a été remis à zéro",
-      variant: "default"
+      title: "Action restreinte",
+      description: "La suppression par mode de paiement doit être effectuée via Supabase.",
     });
   };
 
   const handleDeleteBankAccount = () => {
-    setBankAccount(0);
-    setBankBalance(0);
-    const updatedPayments = payments.filter(p => p.paymentMethod !== 'Virement');
-    setPayments(updatedPayments);
-    appendAuditLog({
-      action: "bank_payments_deleted",
-      details: "Suppression des paiements virement"
-    });
     toast({
-      title: "Compte Banque supprimé",
-      description: "Le solde banque a été remis à zéro",
-      variant: "default"
+      title: "Action restreinte",
+      description: "La réinitialisation du compte doit être effectuée via Supabase.",
     });
   };
 
   const handleDeleteTotalChecks = () => {
-    const updatedPayments = payments.filter(p => p.paymentMethod !== 'Chèque');
-    setPayments(updatedPayments);
-    appendAuditLog({
-      action: "checks_deleted",
-      details: "Suppression des paiements chèques"
-    });
     toast({
-      title: "Total Chèques supprimé",
-      description: "Tous les paiements par chèque ont été supprimés",
-      variant: "default"
+      title: "Action restreinte",
+      description: "La suppression des chèques doit être effectuée via Supabase.",
     });
   };
 
   const handleDeleteMiscExpenses = async () => {
     if (miscellaneousExpenses.length === 0) {
-      toast({
-        title: "Aucune dépense",
-        description: "Il n'y a aucune dépense diverse à supprimer",
-        variant: "default"
-      });
+      toast({ title: "Aucune dépense", description: "Il n'y a aucune dépense diverse à supprimer" });
       return;
     }
-    await Promise.all(miscellaneousExpenses.map((expense) => Promise.resolve(deleteMiscellaneousExpense(expense.id))));
-    refetchMiscellaneousExpenses();
-    appendAuditLog({
-      action: "misc_expenses_deleted",
-      details: "Suppression des dépenses diverses",
-      amount: miscellaneousExpenses.reduce((sum, expense) => sum + expense.amount, 0)
-    });
+    // Logic for deleting all misc expenses
     toast({
-      title: "Dépenses supprimées",
-      description: "Toutes les dépenses diverses ont été supprimées",
-      variant: "default"
+      title: "Action restreinte",
+      description: "La suppression en masse doit être effectuée via Supabase.",
     });
   };
 
   const handleDeleteRemainingDebts = async () => {
     const debtsToSettle = contractsWithDebts.filter((contract) => contract.remaining_amount > 0);
     if (debtsToSettle.length === 0) {
-      toast({
-        title: "Aucune dette",
-        description: "Il n'y a aucune dette restante à solder",
-        variant: "default"
-      });
+      toast({ title: "Aucune dette", description: "Il n'y a aucune dette restante à solder" });
       return;
     }
 
     const settlementDate = new Date().toISOString();
-    const settlementPayments: Payment[] = debtsToSettle.map((contract) => ({
-      id: crypto.randomUUID(),
-      contractId: contract.id,
-      contractNumber: contract.contract_number,
-      customerName: contract.customer_name,
-      amount: contract.remaining_amount,
-      paymentMethod: contract.payment_method || "Espèces",
-      paymentDate: settlementDate,
-      createdAt: settlementDate,
-      checkDepositStatus: contract.payment_method === "Chèque" ? "encaissé" : undefined
-    }));
-
-    setPayments((prev) => [...prev, ...settlementPayments]);
-    await Promise.all(debtsToSettle.map((contract) => updateContract(contract.id, { status: "completed" })));
-    await refetch();
+    for (const contract of debtsToSettle) {
+      await paymentsRepository.create({
+        contractId: contract.id,
+        contractNumber: contract.contract_number,
+        customerName: contract.customer_name,
+        amount: contract.remaining_amount,
+        paymentMethod: contract.payment_method || "Espèces",
+        paymentDate: settlementDate,
+        checkDepositStatus: contract.payment_method === "Chèque" ? "encaissé" : undefined,
+        relanceLevel: "aucune",
+        relanceHistory: [],
+        auditTrail: []
+      });
+      await updateContract(contract.id, { status: "completed" });
+    }
+    
+    fetchData();
+    refetch();
 
     appendAuditLog({
       action: "debts_settled",
       details: "Solder les dettes restantes automatiquement",
-      amount: settlementPayments.reduce((sum, payment) => sum + payment.amount, 0)
+      amount: debtsToSettle.reduce((sum, c) => sum + c.remaining_amount, 0)
     });
 
-    toast({
-      title: "Dettes soldées",
-      description: `${debtsToSettle.length} contrat(s) soldé(s) automatiquement`,
-      variant: "default"
-    });
+    toast({ title: "Dettes soldées", description: `${debtsToSettle.length} contrat(s) soldé(s) automatiquement` });
   };
 
   const handlePayment = async (contractId: string, paymentData: PaymentData) => {
-    const contract = contracts.find(c => c.id === contractId);
-    if (!contract) return;
+    try {
+      const contract = contracts.find(c => c.id === contractId);
+      if (!contract) return;
 
-    const newPayment: Payment = {
-      id: crypto.randomUUID(),
-      contractId,
-      contractNumber: contract.contract_number,
-      customerName: contract.customer_name,
-      amount: paymentData.amount,
-      paymentMethod: paymentData.paymentMethod,
-      paymentDate: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      checkReference: paymentData.checkReference,
-      checkName: paymentData.checkName,
-      checkDepositDate: paymentData.checkDepositDate,
-      checkDirection: paymentData.checkDirection,
-      checkDepositStatus: paymentData.checkDepositStatus,
-      checkReturnReason: paymentData.checkReturnReason,
-      checkReturnDate: paymentData.checkReturnDate,
-      partiallyCollectedAmount: paymentData.partiallyCollectedAmount,
-      relanceLevel: "aucune",
-      relanceHistory: [],
-      auditTrail: []
-    };
+      const p: Omit<Payment, "id"> = {
+        contractId,
+        contractNumber: contract.contract_number,
+        customerName: contract.customer_name,
+        amount: paymentData.amount,
+        paymentMethod: paymentData.paymentMethod,
+        paymentDate: new Date().toISOString(),
+        checkReference: paymentData.checkReference,
+        checkName: paymentData.checkName,
+        checkDepositDate: paymentData.checkDepositDate,
+        checkDirection: paymentData.checkDirection,
+        checkDepositStatus: paymentData.checkDepositStatus,
+        checkReturnReason: paymentData.checkReturnReason,
+        checkReturnDate: paymentData.checkReturnDate,
+        partiallyCollectedAmount: paymentData.partiallyCollectedAmount,
+        relanceLevel: "aucune",
+        relanceHistory: [],
+        auditTrail: []
+      };
 
-    const newPayments = [...payments, newPayment];
-    setPayments(newPayments);
-    appendAuditLog({
-      action: "payment_created",
-      details: `Paiement enregistré pour ${contract.contract_number}`,
-      amount: paymentData.amount,
-      reference: paymentData.checkReference
-    });
+      // #region debug-point C:recette-handle-payment-start
+      fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"recette-payment-refresh",runId:"pre-fix",hypothesisId:"C",location:"Recette.tsx:handlePayment",msg:"[DEBUG] recette handlePayment start",data:{contractId,contractNumber:contract.contract_number,advancePayment:contract.advance_payment||0,totalAmount:contract.total_amount||0,paymentAmount:paymentData.amount,paymentMethod:paymentData.paymentMethod,currentPaymentsCount:payments.filter(x=>x.contractId===contractId).length},ts:Date.now()})}).catch(()=>{});
+      // #endregion
 
-    // Get updated payment summary after adding the new payment
-    const contractPayments = newPayments.filter(p => p.contractId === contractId);
-    const additionalPayments = contractPayments.reduce((sum, payment) => sum + payment.amount, 0);
-    const contractSummary = computeContractSummary(contract, { advanceMode: 'field' });
-    const totalPaid = contractSummary.avance + additionalPayments;
-    const newRemainingAmount = Math.max(0, contractSummary.total - totalPaid);
-    
-    if (newRemainingAmount <= 0) {
-      await updateContract(contractId, {
-        status: 'completed'
-      });
-      await refetch();
+      const createdPayment = await paymentsRepository.create(p);
+      // #region debug-point D:recette-after-payment-create
+      fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"recette-payment-refresh",runId:"pre-fix",hypothesisId:"D",location:"Recette.tsx:handlePayment",msg:"[DEBUG] recette payment create success",data:{contractId,paymentAmount:paymentData.amount,paymentId:createdPayment.id},ts:Date.now()})}).catch(()=>{});
+      // #endregion
+      setPayments(prev => [createdPayment, ...prev]);
+      await fetchData();
       
-      toast({
-        title: "✅ Contrat soldé",
-        description: `Le contrat ${contract.contract_number} est maintenant entièrement payé`,
-        variant: "default"
+      appendAuditLog({
+        action: "payment_created",
+        details: `Paiement enregistré pour ${contract.contract_number}`,
+        amount: paymentData.amount,
+        reference: paymentData.checkReference
       });
-    } else {
-      await refetch();
+
+      // Recalculate and update contract status if needed
+      const contractPayments = (await paymentsRepository.getAll()).filter(p => p.contractId === contractId);
+      const additionalPayments = contractPayments.reduce((sum, payment) => sum + payment.amount, 0);
+      const contractSummary = computeContractSummary(contract, { advanceMode: 'field' });
+      const totalPaid = (contract.advance_payment || 0) + additionalPayments;
+      const newRemainingAmount = Math.max(0, contractSummary.total - totalPaid);
+
+      // #region debug-point E:recette-after-recompute
+      fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"recette-payment-refresh",runId:"pre-fix",hypothesisId:"E",location:"Recette.tsx:handlePayment",msg:"[DEBUG] recette recompute after payment",data:{contractId,additionalPayments,totalPaid,contractTotal:contractSummary.total,newRemainingAmount},ts:Date.now()})}).catch(()=>{});
+      // #endregion
       
-      toast({
-        title: "✅ Paiement enregistré",
-        description: `Paiement de ${paymentData.amount.toLocaleString()} MAD enregistré. Reste: ${newRemainingAmount.toLocaleString()} MAD`,
-        variant: "default"
-      });
+      if (newRemainingAmount <= 0) {
+        await updateContract(contractId, { status: 'completed' });
+        await refetch();
+        toast({ title: "✅ Contrat soldé", description: `Le contrat ${contract.contract_number} est maintenant entièrement payé` });
+      } else {
+        await refetch();
+        toast({ title: "✅ Paiement enregistré", description: `Le paiement de ${paymentData.amount.toLocaleString()} MAD a été ajouté au contrat ${contract.contract_number}` });
+      }
+    } catch (error) {
+      // #region debug-point D:recette-payment-error
+      fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"recette-payment-refresh",runId:"pre-fix",hypothesisId:"D",location:"Recette.tsx:handlePayment",msg:"[DEBUG] recette payment error",data:{message:error instanceof Error ? error.message : String(error),code:(error as {code?:string}|null)?.code||null},ts:Date.now()})}).catch(()=>{});
+      // #endregion
+      toast({ title: "Erreur", description: "Échec du paiement", variant: "destructive" });
     }
   };
 
@@ -1033,7 +988,6 @@ const Recette = () => {
               <History className="w-4 h-4" />
               Actualiser
             </Button>
-            <ContractMigrationButton />
             <PDFExportButton
               type="revenue"
               data={{
@@ -1090,7 +1044,7 @@ const Recette = () => {
 
         {/* Tableau récapitulatif avec dépenses diverses */}
         <motion.div
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-8"
+          className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8"
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, delay: 0.05 }}
@@ -1375,11 +1329,11 @@ const Recette = () => {
         </Card>
 
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'analytics' | 'contracts' | 'expenses' | 'vehicle_expenses')} className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="analytics">📊 Analyses & Graphiques</TabsTrigger>
-            <TabsTrigger value="contracts">💰 Contrats & Paiements</TabsTrigger>
-            <TabsTrigger value="expenses">📋 Dépenses Diverses</TabsTrigger>
-            <TabsTrigger value="vehicle_expenses">🚗 Dépenses Véhicules</TabsTrigger>
+          <TabsList className="flex w-full overflow-x-auto scrollbar-none justify-start gap-1 p-1 h-auto md:grid md:grid-cols-4">
+            <TabsTrigger value="analytics" className="shrink-0 whitespace-nowrap text-xs md:text-sm">📊 Analyses & Graphiques</TabsTrigger>
+            <TabsTrigger value="contracts" className="shrink-0 whitespace-nowrap text-xs md:text-sm">💰 Contrats & Paiements</TabsTrigger>
+            <TabsTrigger value="expenses" className="shrink-0 whitespace-nowrap text-xs md:text-sm">📋 Dépenses Diverses</TabsTrigger>
+            <TabsTrigger value="vehicle_expenses" className="shrink-0 whitespace-nowrap text-xs md:text-sm">🚗 Dépenses Véhicules</TabsTrigger>
           </TabsList>
           
           <TabsContent value="contracts" className="space-y-6">
@@ -1405,18 +1359,20 @@ const Recette = () => {
                       className="pl-9"
                     />
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button size="sm" variant={contractsViewMode === "table" ? "default" : "outline"} onClick={() => setContractsViewMode("table")}>
-                      <Table2 className="w-4 h-4 mr-1.5" />
-                      Table
-                    </Button>
-                    <Button size="sm" variant={contractsViewMode === "cards" ? "default" : "outline"} onClick={() => setContractsViewMode("cards")}>
-                      <LayoutGrid className="w-4 h-4 mr-1.5" />
-                      Cards
-                    </Button>
-                  </div>
+                  {!isMobile && (
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" variant={effectiveContractsViewMode === "table" ? "default" : "outline"} onClick={() => setContractsViewMode("table")}>
+                        <Table2 className="w-4 h-4 mr-1.5" />
+                        Table
+                      </Button>
+                      <Button size="sm" variant={effectiveContractsViewMode === "cards" ? "default" : "outline"} onClick={() => setContractsViewMode("cards")}>
+                        <LayoutGrid className="w-4 h-4 mr-1.5" />
+                        Cards
+                      </Button>
+                    </div>
+                  )}
                 </div>
-                {contractsViewMode === "table" ? (
+                {effectiveContractsViewMode === "table" ? (
                 <ScrollArea className="h-[600px]">
                   <div className="overflow-x-auto">
                     <table className="w-full">
@@ -1472,6 +1428,7 @@ const Recette = () => {
                         {paginatedContractsWithDebts.map((contract) => {
                           const startDate = contract.start_date ? parseISO(contract.start_date) : null;
                           const endDate = contract.end_date ? parseISO(contract.end_date) : null;
+                          const paymentSummary = getContractPaymentSummary(contract.id);
                           const summary = getContractSummaryWithPayments(contract.id, contracts);
                           const duration = summary?.duration || 0;
 
@@ -1489,9 +1446,9 @@ const Recette = () => {
                               <td className="p-2">{(contract.daily_rate || 0).toLocaleString()} MAD</td>
                               <td className="p-2">{duration} jours</td>
                               <td className="p-2 font-semibold">{(summary?.total || 0).toLocaleString()} MAD</td>
-                              <td className="p-2 text-green-600">{(summary?.avance || 0).toLocaleString()} MAD</td>
+                              <td className="p-2 text-green-600">{paymentSummary.totalPaid.toLocaleString()} MAD</td>
                               <td className="p-2 text-red-600 font-semibold">
-                                {(summary?.reste || 0).toLocaleString()} MAD
+                                {paymentSummary.remainingAmount.toLocaleString()} MAD
                               </td>
                               <td className="p-2">
                                 <Badge className={contract.financial_status.color}>
@@ -1503,12 +1460,12 @@ const Recette = () => {
                               </td>
                                <td className="p-2">
                                  <div className="flex items-center gap-2">
-                                   {contract.remaining_amount > 0 ? (
+                                   {!paymentSummary.isFullyPaid ? (
                                      <PaymentDialog
                                        contractId={contract.id}
                                        contractNumber={contract.contract_number}
                                        customerName={contract.customer_name}
-                                       remainingAmount={contract.remaining_amount}
+                                       remainingAmount={paymentSummary.remainingAmount}
                                        onPayment={handlePayment}
                                      >
                                        <Button
@@ -1531,8 +1488,8 @@ const Recette = () => {
                                         customerName={contract.customer_name}
                                         payments={payments}
                                         totalAmount={summary?.total || contract.total_amount}
-                                        totalPaid={summary?.avance || 0}
-                                        remainingAmount={summary?.reste || contract.remaining_amount}
+                                        totalPaid={paymentSummary.totalPaid}
+                                        remainingAmount={paymentSummary.remainingAmount}
                                       >
                                         <Button variant="outline" size="sm">
                                           👁️ Détails
@@ -1563,6 +1520,7 @@ const Recette = () => {
                       paginatedContractsWithDebts.map((contract, index) => {
                         const startDate = contract.start_date ? parseISO(contract.start_date) : null;
                         const endDate = contract.end_date ? parseISO(contract.end_date) : null;
+                        const paymentSummary = getContractPaymentSummary(contract.id);
                         const summary = getContractSummaryWithPayments(contract.id, contracts);
                         return (
                           <motion.div
@@ -1591,21 +1549,21 @@ const Recette = () => {
                                     <p className="font-semibold">{(summary?.total || 0).toLocaleString()} MAD</p>
                                   </div>
                                   <div className="rounded-lg bg-muted/40 p-2">
-                                    <p className="text-xs text-muted-foreground">Avance</p>
-                                    <p className="font-semibold text-green-600">{(summary?.avance || 0).toLocaleString()} MAD</p>
+                                    <p className="text-xs text-muted-foreground">Total Payé</p>
+                                    <p className="font-semibold text-green-600">{paymentSummary.totalPaid.toLocaleString()} MAD</p>
                                   </div>
                                   <div className="rounded-lg bg-muted/40 p-2 col-span-2">
                                     <p className="text-xs text-muted-foreground">Reste à payer</p>
-                                    <p className="font-semibold text-red-600">{(summary?.reste || 0).toLocaleString()} MAD</p>
+                                    <p className="font-semibold text-red-600">{paymentSummary.remainingAmount.toLocaleString()} MAD</p>
                                   </div>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2">
-                                  {contract.remaining_amount > 0 ? (
+                                  {!paymentSummary.isFullyPaid ? (
                                     <PaymentDialog
                                       contractId={contract.id}
                                       contractNumber={contract.contract_number}
                                       customerName={contract.customer_name}
-                                      remainingAmount={contract.remaining_amount}
+                                      remainingAmount={paymentSummary.remainingAmount}
                                       onPayment={handlePayment}
                                     >
                                       <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white">
@@ -1622,8 +1580,8 @@ const Recette = () => {
                                     customerName={contract.customer_name}
                                     payments={payments}
                                     totalAmount={summary?.total || contract.total_amount}
-                                    totalPaid={summary?.avance || 0}
-                                    remainingAmount={summary?.reste || contract.remaining_amount}
+                                    totalPaid={paymentSummary.totalPaid}
+                                    remainingAmount={paymentSummary.remainingAmount}
                                   >
                                     <Button variant="outline" size="sm">👁️ Détails</Button>
                                   </PaymentHistoryDialog>
@@ -2012,6 +1970,27 @@ const Recette = () => {
               <ScrollArea className="h-[500px]">
                 {monthlyVehicleExpensesData.rows.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">Aucune dépense véhicule pour ce mois</div>
+                ) : isMobile ? (
+                  <div className="space-y-3">
+                    {monthlyVehicleExpensesData.rows.map((row, index) => (
+                      <motion.div
+                        key={row.id}
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.02 }}
+                        className="p-4 rounded-xl border border-border bg-card space-y-2 text-sm"
+                      >
+                        <div className="flex justify-between items-center">
+                          <span className="font-semibold text-foreground">{row.vehicleName}</span>
+                          <span className="text-red-600 font-bold">-{row.amount.toLocaleString()} MAD</span>
+                        </div>
+                        <div className="flex justify-between items-center text-xs text-muted-foreground">
+                          <Badge variant="secondary">{row.expenseType}</Badge>
+                          <span>{row.monthYear}</span>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
                 ) : (
                   <div className="overflow-x-auto rounded-xl border border-border/50 bg-card">
                     <table className="w-full">

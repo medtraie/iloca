@@ -15,6 +15,8 @@ import { fr } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { Payment, CheckDepositStatus, PaymentAuditEntry, RelanceLevel } from "@/types/payment";
+import { paymentsRepository } from "@/repositories/paymentsRepository";
+import { bankTransfersRepository } from "@/repositories/bankTransfersRepository";
 import { useToast } from "@/hooks/use-toast";
 import { UniversalPDFExport } from "@/components/UniversalPDFExport";
 import CheckEditDialog from "@/components/CheckEditDialog";
@@ -102,8 +104,9 @@ const roleViews: Record<UserRole, { id: SavedViewId; label: string }[]> = {
 };
 
 const Cheques = () => {
-  const [payments, setPayments] = useLocalStorage<Payment[]>("payments", []);
-  const [bankTransfers, setBankTransfers] = useLocalStorage<BankTransfer[]>("bankTransfers", []);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [bankTransfers, setBankTransfers] = useState<BankTransfer[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [notifRegistry, setNotifRegistry] = useLocalStorage<Record<string, string>>("cheques:notif-registry", {});
   const [visibleColumns, setVisibleColumns] = useLocalStorage<string[]>("cheques:columns", allColumns.map((column) => column.key));
   const [selectedRole, setSelectedRole] = useLocalStorage<UserRole>("cheques:role", "Comptable");
@@ -131,6 +134,31 @@ const Cheques = () => {
   const [sortPrimary, setSortPrimary] = useState<SortKey>("priority");
   const [sortSecondary, setSortSecondary] = useState<SortKey>("depositDate");
   const { toast } = useToast();
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        const [paymentsData, bankTransfersData] = await Promise.all([
+          paymentsRepository.getAll(),
+          bankTransfersRepository.getAll()
+        ]);
+        setPayments(paymentsData);
+        setBankTransfers(bankTransfersData as BankTransfer[]);
+      } catch (error) {
+        console.error("Error fetching data:", error);
+        toast({
+          title: "Erreur de chargement",
+          description: "Impossible de récupérer les données depuis Supabase.",
+          variant: "destructive"
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [toast]);
 
   const customerReturnsMap = useMemo(() => {
     return payments.reduce<Record<string, number>>((acc, payment) => {
@@ -206,13 +234,12 @@ const Cheques = () => {
     return beforeStatus !== "encaissé" && afterStatus === "encaissé";
   };
 
-  const createTreasuryTransfer = (payment: Payment) => {
+  const createTreasuryTransfer = async (payment: Payment) => {
     const alreadyExists = bankTransfers.some(
       (transfer) => transfer.type === "check" && transfer.reference === `AUTO-${payment.id}`
     );
     if (alreadyExists) return;
-    const transfer: BankTransfer = {
-      id: crypto.randomUUID(),
+    const transfer: Omit<BankTransfer, "id" | "createdAt"> = {
       date: new Date().toISOString().split("T")[0],
       type: "check",
       amount: payment.amount,
@@ -222,10 +249,20 @@ const Cheques = () => {
       clientName: payment.customerName,
       contractNumber: payment.contractNumber,
       checkDate: payment.paymentDate.split("T")[0],
-      checkDepositDate: payment.checkDepositDate,
-      createdAt: new Date().toISOString()
+      checkDepositDate: payment.checkDepositDate
     };
-    setBankTransfers([transfer, ...bankTransfers]);
+    
+    try {
+      const newTransfer = await bankTransfersRepository.create(transfer);
+      setBankTransfers([newTransfer, ...bankTransfers]);
+    } catch (error) {
+      console.error("Error creating treasury transfer:", error);
+      toast({
+        title: "Erreur",
+        description: "Impossible d'enregistrer le virement bancaire.",
+        variant: "destructive"
+      });
+    }
   };
 
   const resetFilters = () => {
@@ -403,7 +440,7 @@ const Cheques = () => {
     setEditDialogOpen(true);
   };
 
-  const handleSaveCheck = (updatedCheck: Payment) => {
+  const handleSaveCheck = async (updatedCheck: Payment) => {
     const before = payments.find((payment) => payment.id === updatedCheck.id);
     const nextCheck: Payment = {
       ...updatedCheck,
@@ -411,10 +448,27 @@ const Cheques = () => {
       relanceHistory: updatedCheck.relanceHistory || before?.relanceHistory || [],
       auditTrail: appendAuditEntry(updatedCheck, "édition", "Mise à jour manuelle depuis la fiche chèque")
     };
-    if (before && shouldCreateTreasuryTransfer(before.checkDepositStatus, nextCheck.checkDepositStatus)) {
-      createTreasuryTransfer(nextCheck);
+
+    try {
+      const savedCheck = await paymentsRepository.update(nextCheck.id, nextCheck);
+      
+      if (before && shouldCreateTreasuryTransfer(before.checkDepositStatus, savedCheck.checkDepositStatus)) {
+        await createTreasuryTransfer(savedCheck);
+      }
+      
+      setPayments(payments.map((payment) => (payment.id === savedCheck.id ? savedCheck : payment)));
+      toast({
+        title: "Mis à jour",
+        description: "Le chèque a été mis à jour avec succès."
+      });
+    } catch (error) {
+      console.error("Error saving check:", error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de mettre à jour le chèque.",
+        variant: "destructive"
+      });
     }
-    setPayments(payments.map((payment) => (payment.id === nextCheck.id ? nextCheck : payment)));
   };
 
   const handleDeleteCheck = (check: CheckRecord) => {
@@ -422,15 +476,25 @@ const Cheques = () => {
     setDeleteDialogOpen(true);
   };
 
-  const confirmDeleteCheck = () => {
+  const confirmDeleteCheck = async () => {
     if (checkToDelete) {
       if (checkToDelete.canEdit) {
-        const updatedPayments = payments.filter((payment) => payment.id !== checkToDelete.id);
-        setPayments(updatedPayments);
-        toast({
-          title: "Supprimé",
-          description: "Le chèque a été supprimé avec succès."
-        });
+        try {
+          await paymentsRepository.delete(checkToDelete.id);
+          const updatedPayments = payments.filter((payment) => payment.id !== checkToDelete.id);
+          setPayments(updatedPayments);
+          toast({
+            title: "Supprimé",
+            description: "Le chèque a été supprimé avec succès."
+          });
+        } catch (error) {
+          console.error("Error deleting check:", error);
+          toast({
+            title: "Erreur",
+            description: "Impossible de supprimer le chèque.",
+            variant: "destructive"
+          });
+        }
       } else {
         toast({
           title: "Attention",
@@ -443,63 +507,88 @@ const Cheques = () => {
     setCheckToDelete(null);
   };
 
-  const applyBulkActions = () => {
+  const applyBulkActions = async () => {
     if (selectedChecks.length === 0) {
       toast({ title: "Aucune sélection", description: "Sélectionnez au moins un chèque modifiable.", variant: "destructive" });
       return;
     }
     const partial = Number(bulkPartialAmount) || 0;
     const nowDate = new Date().toISOString().split("T")[0];
-    const updated = payments.map((payment) => {
-      if (!selectedChecks.includes(payment.id) || payment.paymentMethod !== "Chèque") return payment;
-      const previousStatus = payment.checkDepositStatus;
-      const nextStatus = bulkStatus;
-      const nextPayment: Payment = {
-        ...payment,
-        checkDepositStatus: nextStatus,
-        checkDepositDate: bulkDepositDate || payment.checkDepositDate || nowDate,
-        checkReturnReason: nextStatus === "retourné" ? bulkReturnReason : undefined,
-        checkReturnDate: nextStatus === "retourné" ? nowDate : undefined,
-        partiallyCollectedAmount: nextStatus === "partiellement encaissé" ? partial : nextStatus === "encaissé" ? payment.amount : undefined,
-        auditTrail: appendAuditEntry(payment, "action_groupee", `Statut ${nextStatus}`)
-      };
-      if (shouldCreateTreasuryTransfer(previousStatus, nextStatus)) {
-        createTreasuryTransfer(nextPayment);
-      }
-      return nextPayment;
-    });
-    setPayments(updated);
-    setSelectedChecks([]);
-    toast({
-      title: "Actions groupées appliquées",
-      description: `${selectedChecks.length} chèque(s) mis à jour.`
-    });
+    
+    try {
+      const updatedPayments = await Promise.all(payments.map(async (payment) => {
+        if (!selectedChecks.includes(payment.id) || payment.paymentMethod !== "Chèque") return payment;
+        const previousStatus = payment.checkDepositStatus;
+        const nextStatus = bulkStatus;
+        const nextPayment: Payment = {
+          ...payment,
+          checkDepositStatus: nextStatus,
+          checkDepositDate: bulkDepositDate || payment.checkDepositDate || nowDate,
+          checkReturnReason: nextStatus === "retourné" ? bulkReturnReason : undefined,
+          checkReturnDate: nextStatus === "retourné" ? nowDate : undefined,
+          partiallyCollectedAmount: nextStatus === "partiellement encaissé" ? partial : nextStatus === "encaissé" ? payment.amount : undefined,
+          auditTrail: appendAuditEntry(payment, "action_groupee", `Statut ${nextStatus}`)
+        };
+        
+        const savedPayment = await paymentsRepository.update(payment.id, nextPayment);
+        
+        if (shouldCreateTreasuryTransfer(previousStatus, nextStatus)) {
+          await createTreasuryTransfer(savedPayment);
+        }
+        return savedPayment;
+      }));
+      
+      setPayments(updatedPayments);
+      setSelectedChecks([]);
+      toast({
+        title: "Actions groupées appliquées",
+        description: `${selectedChecks.length} chèque(s) mis à jour.`
+      });
+    } catch (error) {
+      console.error("Error applying bulk actions:", error);
+      toast({
+        title: "Erreur",
+        description: "Impossible d'appliquer les actions groupées.",
+        variant: "destructive"
+      });
+    }
   };
 
-  const sendRelance = (checkId: string, level: RelanceLevel) => {
-    const updated = payments.map((payment) => {
-      if (payment.id !== checkId) return payment;
-      const history = payment.relanceHistory || [];
-      return {
-        ...payment,
-        relanceLevel: level,
-        relanceHistory: [
-          ...history,
-          {
-            id: crypto.randomUUID(),
-            level,
-            sentAt: new Date().toISOString(),
-            sentBy: selectedRole
-          }
-        ],
-        auditTrail: appendAuditEntry(payment, "relance", `Relance ${level}`)
-      };
-    });
-    setPayments(updated);
-    toast({
-      title: "Relance envoyée",
-      description: `Relance ${level} enregistrée avec traçabilité.`
-    });
+  const sendRelance = async (checkId: string, level: RelanceLevel) => {
+    const payment = payments.find(p => p.id === checkId);
+    if (!payment) return;
+
+    const history = payment.relanceHistory || [];
+    const updatedPayment: Payment = {
+      ...payment,
+      relanceLevel: level,
+      relanceHistory: [
+        ...history,
+        {
+          id: crypto.randomUUID(),
+          level,
+          sentAt: new Date().toISOString(),
+          sentBy: selectedRole
+        }
+      ],
+      auditTrail: appendAuditEntry(payment, "relance", `Relance ${level}`)
+    };
+
+    try {
+      const savedPayment = await paymentsRepository.update(checkId, updatedPayment);
+      setPayments(payments.map((p) => (p.id === checkId ? savedPayment : p)));
+      toast({
+        title: "Relance envoyée",
+        description: `Relance ${level} enregistrée avec traçabilité.`
+      });
+    } catch (error) {
+      console.error("Error sending relance:", error);
+      toast({
+        title: "Erreur",
+        description: "Impossible d'enregistrer la relance.",
+        variant: "destructive"
+      });
+    }
   };
 
   const toggleColumn = (column: string) => {

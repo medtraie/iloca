@@ -1,6 +1,7 @@
 
 import React from 'react';
 import ContractPDFHeader from './ContractPDFHeader';
+import { getCompanyDisplayName } from "@/utils/companyInfo";
 
 interface ContractFormData {
   contractNumber: string;
@@ -106,20 +107,7 @@ const ContractFormPDF = ({ data }: ContractFormPDFProps) => {
     </div>
   );
 
-  const readValue = (key: string): string => {
-    try {
-      const v = localStorage.getItem(key);
-      if (!v) return '';
-      try {
-        return JSON.parse(v);
-      } catch {
-        return v;
-      }
-    } catch {
-      return '';
-    }
-  };
-  const companyName = readValue('companyName') || 'SFTLOCATION';
+  const companyName = getCompanyDisplayName();
   return (
     <div className="max-w-4xl mx-auto p-6 bg-white text-black print:p-4 print:text-xs">
       <ContractPDFHeader contractNumber={data.contractNumber} />

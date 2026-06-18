@@ -1,6 +1,7 @@
 
 import { Edit, Trash2, Eye, Car } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,7 @@ interface VehicleTableProps {
 }
 
 const VehicleTable = ({ vehicles, onEdit, onDelete, onViewDetails, getStatusBadge }: VehicleTableProps) => {
+  const isMobile = useIsMobile();
   const getStatusDotClass = (status: string) => {
     switch (status) {
       case "disponible":
@@ -39,6 +41,86 @@ const VehicleTable = ({ vehicles, onEdit, onDelete, onViewDetails, getStatusBadg
           <p className="text-muted-foreground">Aucun véhicule trouvé</p>
         </CardContent>
       </Card>
+    );
+  }
+
+  if (isMobile) {
+    return (
+      <div className="space-y-4">
+        {vehicles.map((vehicle) => {
+          const marque = vehicle.marque || vehicle.brand || "";
+          const modele = vehicle.modele || vehicle.model || "";
+          const immatriculation = vehicle.immatriculation || vehicle.registration || "";
+          const annee = vehicle.annee || vehicle.year || new Date().getFullYear();
+          const etat = vehicle.etat_vehicule || "disponible";
+          const statusConfig = getStatusBadge(etat);
+          
+          return (
+            <Card key={vehicle.id} className="border border-border/40 rounded-xl overflow-hidden bg-card">
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-16 h-12 bg-muted/40 rounded-lg flex items-center justify-center overflow-hidden shrink-0">
+                    {vehicle.photos && vehicle.photos.length > 0 ? (
+                      <img 
+                        src={vehicle.photos[0]} 
+                        alt={`${marque} ${modele}`}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <Car className="w-6 h-6 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-sm text-foreground truncate">{marque} {modele}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{annee} • <code className="bg-muted/50 px-1.5 py-0.5 rounded text-[10px]">{immatriculation}</code></div>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center border-t border-muted/20 pt-2 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`h-2.5 w-2.5 rounded-full ${getStatusDotClass(etat)}`} />
+                    <span className="font-medium">{statusConfig.label}</span>
+                  </div>
+                  <div className="font-semibold text-card-green">{vehicle.prix_par_jour || 200} DH / jour</div>
+                </div>
+
+                <div className="flex justify-between items-center border-t border-muted/20 pt-2 text-xs">
+                  <span className="text-muted-foreground">{(vehicle.kilometrage || 0).toLocaleString()} km</span>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => onViewDetails(vehicle)} className="h-8 w-8 p-0">
+                      <Eye className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => onEdit(vehicle)} className="h-8 w-8 p-0">
+                      <Edit className="w-4 h-4" />
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-600 hover:text-red-700">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>حذف المركبة</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            هل أنت متأكد من رغبتك في حذف المركبة {marque} {modele} ({immatriculation})؟
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => onDelete(vehicle.id)} className="bg-red-600 hover:bg-red-700">
+                            حذف
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
     );
   }
 

@@ -1,6 +1,6 @@
 
 import { Vehicle } from "@/hooks/useVehicles";
-import { localStorageService } from "@/services/localStorageService";
+import { vehiclesRepository } from "@/repositories/vehiclesRepository";
 
 export function findMatchingVehicle(vehicleString: string, vehicles: Vehicle[]): Vehicle | null {
   if (!vehicleString || !vehicles || vehicles.length === 0) {
@@ -29,22 +29,20 @@ export function findMatchingVehicle(vehicleString: string, vehicles: Vehicle[]):
   return strictMatch || null;
 }
 
-export function setVehicleAsRented(vehicleId: string): boolean {
+export async function setVehicleAsRented(vehicleId: string): Promise<boolean> {
   try {
-    const updated = localStorageService.update<Vehicle>('vehicles', vehicleId, { etat_vehicule: 'loue' });
+    const updated = await vehiclesRepository.updateVehicle(vehicleId, { etat_vehicule: 'loue' });
     return !!updated;
   } catch (error) {
-    console.error('Error setting vehicle as rented:', error);
     return false;
   }
 }
 
-export function updateVehicleStatusAfterDeletion(vehicleId: string): boolean {
+export async function updateVehicleStatusAfterDeletion(vehicleId: string): Promise<boolean> {
   try {
-    const updated = localStorageService.update<Vehicle>('vehicles', vehicleId, { etat_vehicule: 'disponible' });
+    const updated = await vehiclesRepository.updateVehicle(vehicleId, { etat_vehicule: 'disponible' });
     return !!updated;
   } catch (error) {
-    console.error('Error updating vehicle status after deletion:', error);
     return false;
   }
 }

@@ -296,33 +296,36 @@ function ContractsTable({
       label: 'Avance / Reste à Payer',
       sortable: false,
       render: (contract: Contract) => {
-        // 🚨 CRITICAL DEBUG: Log values used for display
-        const advance = contract.advance_payment || 0;
-        console.log(`[💰 TABLE DEBUG] Contract ${contract.contract_number || contract.id}:`);
-        console.log(`- Raw advance_payment: ${contract.advance_payment} MAD`);
-        console.log(`- Used advance: ${advance} MAD`);
+        let totalPaid = contract.advance_payment || 0;
+        let remaining = 0;
         
         const summary = computeContractSummary(contract, { advanceMode: 'field' });
-        const remaining = Math.max(0, summary.total - advance);
         
-        console.log(`- Summary total: ${summary.total} MAD`);
-        console.log(`- Calculated remaining: ${remaining} MAD`);
+        if (getPaymentSummary) {
+          const paymentSummary = getPaymentSummary(contract.id);
+          totalPaid = paymentSummary.totalPaid;
+          remaining = paymentSummary.remainingAmount;
+        } else {
+          remaining = Math.max(0, summary.total - totalPaid);
+        }
         
         return (
           <div className="flex items-center gap-2">
             <DollarSign className="h-4 w-4 text-blue-600" />
             <div className="flex flex-col text-sm">
               <div className="text-foreground">
-                <span className="font-semibold text-blue-600">{formatCurrency(advance)}</span>
+                <span className="text-xs text-muted-foreground mr-1">Payé:</span>
+                <span className="font-semibold text-blue-600">{formatCurrency(totalPaid)}</span>
               </div>
               <div className="text-foreground">
+                <span className="text-xs text-muted-foreground mr-1">Reste:</span>
                 <span className="font-semibold text-orange-600">{formatCurrency(remaining)}</span>
               </div>
               <Badge 
-                variant={remaining === 0 ? "default" : advance > 0 ? "secondary" : "destructive"}
+                variant={remaining <= 0 ? "default" : totalPaid > 0 ? "secondary" : "destructive"}
                 className="text-xs mt-1 w-fit"
               >
-                {remaining === 0 ? "Payé" : advance > 0 ? "En cours" : "En attente"}
+                {remaining <= 0 ? "Payé" : totalPaid > 0 ? "En cours" : "En attente"}
               </Badge>
             </div>
           </div>

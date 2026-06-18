@@ -10,7 +10,6 @@ import { useContractsPageLogic } from "@/hooks/useContractsPageLogic";
 import { RefreshCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ContractMigrationButton } from "@/components/ContractMigrationButton";
 
 import { motion } from "framer-motion";
 import { Plus } from "lucide-react";
@@ -70,14 +69,14 @@ const Contracts = () => {
         transition={{ duration: 0.35 }}
       >
         <div>
-          <h1 className="text-4xl font-black tracking-tight text-foreground mb-1">
+          <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-foreground mb-1">
             Gestion des <span className="text-accent">Contrats</span>
           </h1>
-          <p className="text-muted-foreground font-medium">
+          <p className="text-muted-foreground text-sm sm:text-base font-medium">
             Suivi des locations et status financier
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
           <Button 
             variant="outline"
             size="lg"
@@ -89,7 +88,7 @@ const Contracts = () => {
           </Button>
           <Button 
             onClick={handleAddContract}
-            className="rounded-xl h-12 px-6 font-bold bg-accent text-accent-foreground hover:bg-accent/90 shadow-lg shadow-accent/20 hover:scale-105 transition-transform"
+            className="rounded-xl h-12 px-6 font-bold bg-accent text-accent-foreground hover:bg-accent/90 shadow-lg shadow-accent/20 hover:scale-105 transition-transform w-full sm:w-auto"
           >
             <Plus className="w-5 h-5 mr-2" />
             Nouveau Contrat
@@ -102,18 +101,18 @@ const Contracts = () => {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.1 }}
-        className="grid grid-cols-1 lg:grid-cols-2 gap-6"
+        className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6"
       >
-        <div className="bg-card p-6 rounded-[2rem] border border-border/50 shadow-sm space-y-4">
+        <div className="bg-card p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] border border-border/50 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Statut général</span>
             <div className="h-1.5 w-1.5 rounded-full bg-accent" />
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none snap-x snap-mandatory">
             {contractStatusOptions.map(opt => (
               <button
                 key={opt.value}
-                className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-200
+                className={`px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 snap-start shrink-0
                   ${statusFilter === opt.value
                     ? "bg-primary text-primary-foreground shadow-lg scale-105"
                     : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -128,7 +127,7 @@ const Contracts = () => {
           </div>
         </div>
         
-        <div className="bg-card p-6 rounded-[2rem] border border-border/50 shadow-sm">
+        <div className="bg-card p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] border border-border/50 shadow-sm">
           <PaymentStatusFilter 
             financialStatusFilter={financialStatusFilter}
             setFinancialStatusFilter={setFinancialStatusFilter}
@@ -143,7 +142,7 @@ const Contracts = () => {
         transition={{ duration: 0.4, delay: 0.2 }}
         className="space-y-6"
       >
-        <div className="bg-card p-4 rounded-[2rem] border border-border/50 shadow-sm">
+        <div className="bg-card p-3 sm:p-4 rounded-2xl sm:rounded-[2rem] border border-border/50 shadow-sm">
           <ContractsSearchBar 
             searchTerm={searchTerm}
             setSearchTerm={setSearchTerm}
@@ -153,12 +152,11 @@ const Contracts = () => {
         
         <div className="flex items-center justify-between px-2">
           <h2 className="text-xl font-bold">Aperçu Statistique</h2>
-          <ContractMigrationButton />
         </div>
 
         <ContractsStats contracts={contracts} />
         
-        <Card className="border-none shadow-card rounded-[2rem] overflow-hidden bg-card">
+        <Card className="border-none shadow-card rounded-2xl sm:rounded-[2rem] overflow-hidden bg-card">
           <CardHeader className="pb-4">
             <CardTitle className="text-xl font-bold">Liste des contrats</CardTitle>
           </CardHeader>

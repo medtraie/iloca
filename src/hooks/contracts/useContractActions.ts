@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useContracts, Contract } from "@/hooks/useContracts";
 import { useToast } from "@/hooks/use-toast";
-import { localStorageService, Vehicle } from "@/services/localStorageService";
+import { vehiclesRepository } from "@/repositories/vehiclesRepository";
 import { convertFromNewDialogContract, NewDialogContract } from "@/utils/contractTransform";
 import { useVehicles } from "@/hooks/useVehicles";
 import { 
@@ -18,8 +18,6 @@ export function useContractActions() {
   const { vehicles } = useVehicles();
 
   const handleAddContract = async (newContractData: any) => {
-    console.log("[useContractActions] handleAddContract called with data:", newContractData);
-    
     const newContractWithSerie = { ...newContractData } as NewDialogContract;
     
     // Set initial status as 'ouvert' (draft)
@@ -31,10 +29,7 @@ export function useContractActions() {
       newContractWithSerie.contractNumber = newContractData.id;
     }
     
-    console.log("[useContractActions] Contract with serie:", newContractWithSerie);
-    
     const contractData = convertFromNewDialogContract(newContractWithSerie);
-    console.log("[useContractActions] Converted contract data:", contractData);
 
     if (
       !contractData.customer_name ||
@@ -53,16 +48,13 @@ export function useContractActions() {
 
     let searchVehicles = vehicles;
     if (!vehicles || vehicles.length === 0) {
-      searchVehicles = localStorageService.getAll<Vehicle>('vehicles');
+      searchVehicles = await vehiclesRepository.listVehicles();
     }
     const matchedVehicle = findMatchingVehicle(contractData.vehicle, searchVehicles);
 
     // VALIDATION: Vérifier l'état du véhicule avant création
     if (matchedVehicle) {
-      console.log("[useContractActions] Vehicle found:", matchedVehicle.id, "Status:", matchedVehicle.etat_vehicule);
-      
       if (matchedVehicle.etat_vehicule === 'loue') {
-        console.log("[useContractActions] Vehicle is already rented, blocking contract creation");
         toast({
           title: "السيارة غير متاحة",
           description: "هذه السيارة مؤجرة بالفعل. لا يمكن إنشاء عقد جديد.",
@@ -72,7 +64,6 @@ export function useContractActions() {
       }
       
       if (matchedVehicle.etat_vehicule === 'maintenance') {
-        console.log("[useContractActions] Vehicle is in maintenance, blocking contract creation");
         toast({
           title: "السيارة في الصيانة",
           description: "هذه السيارة في الصيانة. لا يمكن إنشاء عقد في الوقت الحالي.",
@@ -80,16 +71,10 @@ export function useContractActions() {
         });
         return;
       }
-      
-      console.log("[useContractActions] Vehicle is available, proceeding with contract creation");
-    } else {
-      console.warn("[useContractActions] No matching vehicle found for:", contractData.vehicle);
     }
 
     const result = await addContract(contractData);
-    console.log("[useContractActions] addContract result:", result);
     if (!result) {
-      console.log("[useContractActions] addContract failed - showing error toast");
       toast({
         title: "Échec de création",
         description: "Échec de la création du nouveau contrat. Veuillez réessayer.",
@@ -101,22 +86,19 @@ export function useContractActions() {
 
     // RÈGLE MÉTIER: Nouveau contrat → statut "ouvert", véhicule → "loué"
     if (matchedVehicle) {
-      const updatedVehicle = localStorageService.update<Vehicle>('vehicles', matchedVehicle.id, { etat_vehicule: 'loue' });
+      const updatedVehicle = await vehiclesRepository.updateVehicle(matchedVehicle.id, { etat_vehicule: 'loue' });
       if (!updatedVehicle) {
-        console.error("Erreur MAJ statut véhicule");
         toast({
           title: "Avertissement",
           description: "Le contrat a été créé, mais une erreur s'est produite lors de la mise à jour du statut du véhicule",
           variant: "destructive"
         });
       }
-    } else {
-      console.warn("Aucun véhicule trouvé pour :", contractData.vehicle);
     }
 
     setTimeout(() => { refetch(); }, 500);
 
-    toast({
+    toast({ 
       title: "Succès",
       description: "Le contrat a été créé avec succès!",
     });
@@ -138,10 +120,9 @@ export function useContractActions() {
     const isDeleted = await deleteContract(contractId);
 
     if (isDeleted && matchedVehicle) {
-      const updated = localStorageService.update<Vehicle>('vehicles', matchedVehicle.id, { etat_vehicule: 'disponible' });
+      const updated = await vehiclesRepository.updateVehicle(matchedVehicle.id, { etat_vehicule: 'disponible' });
       
       if (!updated) {
-          console.error("Failed to update vehicle status");
           toast({
             title: "Avertissement",
             description: "Le contrat a été supprimé, mais la mise à jour du statut du véhicule a échoué.",
@@ -172,7 +153,7 @@ export function useContractActions() {
       // Remettre le véhicule à "disponible"
       const matchedVehicle = findMatchingVehicle(updatedContract.vehicle, vehicles);
       if (matchedVehicle && matchedVehicle.etat_vehicule === 'loue') {
-        localStorageService.update<Vehicle>('vehicles', matchedVehicle.id, { etat_vehicule: 'disponible' });
+        await vehiclesRepository.updateVehicle(matchedVehicle.id, { etat_vehicule: 'disponible' });
         toast({
           title: "Contrat clôturé automatiquement",
           description: "Le contrat a été fermé et le véhicule est maintenant disponible",

@@ -1,7 +1,7 @@
-
 import { useState, useEffect } from 'react';
-import { localStorageService, Customer } from '@/services/localStorageService';
 import { useToast } from '@/hooks/use-toast';
+import { customersRepository } from '@/repositories/customersRepository';
+import type { Customer } from '@/types/appData';
 
 export type { Customer };
 
@@ -13,13 +13,12 @@ export const useCustomers = () => {
   const fetchCustomers = async () => {
     try {
       setLoading(true);
-      const data = localStorageService.getAll<Customer>('customers');
+      const data = await customersRepository.listCustomers();
       setCustomers(data);
     } catch (error) {
-      console.error('Error fetching customers:', error);
       toast({
         title: "خطأ",
-        description: "حدث خطأ أثناء جلب العملاء",
+        description: error instanceof Error ? error.message : "حدث خطأ أثناء جلب العملاء",
         variant: "destructive"
       });
     } finally {
@@ -29,7 +28,7 @@ export const useCustomers = () => {
 
   const addCustomer = async (customerData: Omit<Customer, 'id' | 'created_at' | 'updated_at'>) => {
     try {
-      const newCustomer = localStorageService.create<Customer>('customers', customerData);
+      const newCustomer = await customersRepository.createCustomer(customerData);
       setCustomers(prev => [...prev, newCustomer]);
       toast({
         title: "تم بنجاح",
@@ -37,10 +36,9 @@ export const useCustomers = () => {
       });
       return newCustomer;
     } catch (error) {
-      console.error('Error:', error);
       toast({
         title: "خطأ",
-        description: "حدث خطأ أثناء إضافة العميل",
+        description: error instanceof Error ? error.message : "حدث خطأ أثناء إضافة العميل",
         variant: "destructive"
       });
       return null;

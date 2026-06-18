@@ -14,6 +14,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { getCompanyDisplayName, getCompanyContactLines, getCompanySlug, getCompanyLogoImage } from "@/utils/companyInfo";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface TreasuryMovementsProps {
   movements: TreasuryMovement[];
@@ -61,6 +62,7 @@ export const TreasuryMovements = ({
   onEndDateChange,
   onDelete
 }: TreasuryMovementsProps) => {
+  const isMobile = useIsMobile();
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState("");
@@ -89,12 +91,16 @@ export const TreasuryMovements = ({
       const start = startOfDay(new Date(startDate));
       const end = endOfDay(new Date(endDate));
       filtered = filtered.filter(m => {
+        if (!m.date) return false;
         const date = new Date(m.date);
+        if (isNaN(date.getTime())) return false;
         return isWithinInterval(date, { start, end });
       });
     } else {
       filtered = filtered.filter(m => {
+        if (!m.date) return false;
         const date = new Date(m.date);
+        if (isNaN(date.getTime())) return false;
         return isWithinInterval(date, selectedTimeRange);
       });
     }
@@ -115,7 +121,11 @@ export const TreasuryMovements = ({
       });
     }
 
-    filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    filtered.sort((a, b) => {
+      const dateA = a.date ? new Date(a.date).getTime() : 0;
+      const dateB = b.date ? new Date(b.date).getTime() : 0;
+      return (isNaN(dateB) ? 0 : dateB) - (isNaN(dateA) ? 0 : dateA);
+    });
 
     let balance = 0;
     return [...filtered].reverse().map(m => {
@@ -136,10 +146,14 @@ export const TreasuryMovements = ({
 
   const groupedMovements = useMemo(() => {
     const groups = filteredMovements.reduce<Record<string, { label: string; items: typeof filteredMovements; total: number }>>((acc, movement) => {
-      const key = format(new Date(movement.date), "yyyy-MM-dd");
+      if (!movement.date) return acc;
+      const dateObj = new Date(movement.date);
+      if (isNaN(dateObj.getTime())) return acc;
+      
+      const key = format(dateObj, "yyyy-MM-dd");
       if (!acc[key]) {
         acc[key] = {
-          label: format(new Date(movement.date), "dd/MM/yyyy"),
+          label: format(dateObj, "dd/MM/yyyy"),
           items: [],
           total: 0
         };
@@ -452,91 +466,127 @@ export const TreasuryMovements = ({
         </div>
 
         <ScrollArea className="h-[600px]">
-          <div className="border rounded-lg overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Moyen</TableHead>
-                  <TableHead className="text-right">Montant</TableHead>
-                  <TableHead>Référence</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="text-right">Solde</TableHead>
-                  {onDelete && <TableHead className="text-center">Actions</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredMovements.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={onDelete ? 8 : 7} className="text-center py-8 text-muted-foreground">
-                      Aucune opération trouvée
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  tableMode === "flat" ? (
-                    filteredMovements.map((movement) => (
-                      <TableRow key={movement.id} className="transition-all hover:bg-muted/40">
-                        <TableCell className="whitespace-nowrap">
+          {isMobile ? (
+            <div className="space-y-4">
+              {filteredMovements.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground bg-card rounded-lg border border-dashed p-4">
+                  Aucune opération trouvée
+                </div>
+              ) : tableMode === "flat" ? (
+                filteredMovements.map((movement) => (
+                  <Card key={movement.id} className="border border-border/50 bg-card p-4 space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <span className="text-xs text-muted-foreground">
                           {format(new Date(movement.date), 'dd/MM/yyyy')}
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={getTypeColor(movement.type)} variant="secondary">
-                            {movement.type.charAt(0).toUpperCase() + movement.type.slice(1)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={getPaymentMethodColor(movement.paymentMethod)} variant="secondary">
-                            {movement.paymentMethod}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className={`text-right font-semibold ${movement.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {movement.amount >= 0 ? (
-                            <span className="flex items-center justify-end gap-1">
-                              <TrendingUp className="w-4 h-4" />
-                              +{movement.amount.toLocaleString()} DH
-                            </span>
-                          ) : (
-                            <span className="flex items-center justify-end gap-1">
-                              <TrendingDown className="w-4 h-4" />
-                              {movement.amount.toLocaleString()} DH
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell className="font-medium">{movement.reference}</TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {movement.description || '-'}
-                        </TableCell>
-                        <TableCell className="text-right font-semibold">
-                          {movement.balance ? `${movement.balance.toLocaleString()} DH` : '-'}
-                        </TableCell>
-                        {onDelete && (
-                          <TableCell className="text-center">
+                        </span>
+                        <h4 className="font-semibold text-sm mt-0.5">{movement.reference}</h4>
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className={`font-semibold text-sm ${movement.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {movement.amount >= 0 ? `+${movement.amount.toLocaleString()} DH` : `${movement.amount.toLocaleString()} DH`}
+                        </span>
+                        {movement.balance !== undefined && (
+                          <span className="text-xs text-muted-foreground">Solde: {movement.balance.toLocaleString()} DH</span>
+                        )}
+                      </div>
+                    </div>
+                    {movement.description && (
+                      <p className="text-xs text-muted-foreground border-l-2 pl-2 py-0.5">{movement.description}</p>
+                    )}
+                    <div className="flex justify-between items-center pt-2 border-t border-border/20">
+                      <div className="flex gap-1.5 flex-wrap">
+                        <Badge className={getTypeColor(movement.type)} variant="secondary">
+                          {movement.type.charAt(0).toUpperCase() + movement.type.slice(1)}
+                        </Badge>
+                        <Badge className={getPaymentMethodColor(movement.paymentMethod)} variant="secondary">
+                          {movement.paymentMethod}
+                        </Badge>
+                      </div>
+                      {onDelete && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onDelete(movement.id, movement.type)}
+                          className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </Card>
+                ))
+              ) : (
+                groupedMovements.map((group) => (
+                  <div key={`group-${group.key}`} className="space-y-2">
+                    <div className="flex items-center justify-between text-xs font-semibold bg-muted/60 px-3 py-2 rounded-lg">
+                      <span>Date: {group.label}</span>
+                      <span className={group.total >= 0 ? "text-emerald-600" : "text-red-600"}>
+                        {group.total >= 0 ? "+" : ""}{group.total.toLocaleString()} DH
+                      </span>
+                    </div>
+                    {group.items.map((movement) => (
+                      <Card key={movement.id} className="border border-border/50 bg-card p-3 space-y-2">
+                        <div className="flex justify-between items-start">
+                          <h4 className="font-semibold text-xs">{movement.reference}</h4>
+                          <span className={`font-semibold text-xs ${movement.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {movement.amount >= 0 ? `+${movement.amount.toLocaleString()} DH` : `${movement.amount.toLocaleString()} DH`}
+                          </span>
+                        </div>
+                        {movement.description && (
+                          <p className="text-[11px] text-muted-foreground">{movement.description}</p>
+                        )}
+                        <div className="flex justify-between items-center text-[10px] pt-1 border-t border-border/10">
+                          <div className="flex gap-1">
+                            <Badge className={`${getTypeColor(movement.type)} text-[9px] px-1 py-0`} variant="secondary">
+                              {movement.type}
+                            </Badge>
+                            <Badge className={`${getPaymentMethodColor(movement.paymentMethod)} text-[9px] px-1 py-0`} variant="secondary">
+                              {movement.paymentMethod}
+                            </Badge>
+                          </div>
+                          {onDelete && (
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => onDelete(movement.id, movement.type)}
-                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              className="h-6 w-6 p-0 text-destructive"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </Button>
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    ))
+                          )}
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                ))
+              )}
+            </div>
+          ) : (
+            <div className="border rounded-lg overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Moyen</TableHead>
+                    <TableHead className="text-right">Montant</TableHead>
+                    <TableHead>Référence</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead className="text-right">Solde</TableHead>
+                    {onDelete && <TableHead className="text-center">Actions</TableHead>}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredMovements.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={onDelete ? 8 : 7} className="text-center py-8 text-muted-foreground">
+                        Aucune opération trouvée
+                      </TableCell>
+                    </TableRow>
                   ) : (
-                    groupedMovements.flatMap((group) => ([
-                      <TableRow key={`group-${group.key}`} className="bg-muted/30 hover:bg-muted/30">
-                        <TableCell colSpan={onDelete ? 8 : 7} className="py-2">
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="font-medium">Date: {group.label}</span>
-                            <span className={`font-semibold ${group.total >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                              {group.total >= 0 ? "+" : ""}{group.total.toLocaleString()} DH
-                            </span>
-                          </div>
-                        </TableCell>
-                      </TableRow>,
-                      ...group.items.map((movement) => (
+                    tableMode === "flat" ? (
+                      filteredMovements.map((movement) => (
                         <TableRow key={movement.id} className="transition-all hover:bg-muted/40">
                           <TableCell className="whitespace-nowrap">
                             {format(new Date(movement.date), 'dd/MM/yyyy')}
@@ -585,28 +635,90 @@ export const TreasuryMovements = ({
                           )}
                         </TableRow>
                       ))
-                    ]))
-                  )
+                    ) : (
+                      groupedMovements.flatMap((group) => ([
+                        <TableRow key={`group-${group.key}`} className="bg-muted/30 hover:bg-muted/30">
+                          <TableCell colSpan={onDelete ? 8 : 7} className="py-2">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="font-medium">Date: {group.label}</span>
+                              <span className={`font-semibold ${group.total >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                                {group.total >= 0 ? "+" : ""}{group.total.toLocaleString()} DH
+                              </span>
+                            </div>
+                          </TableCell>
+                        </TableRow>,
+                        ...group.items.map((movement) => (
+                          <TableRow key={movement.id} className="transition-all hover:bg-muted/40">
+                            <TableCell className="whitespace-nowrap">
+                              {format(new Date(movement.date), 'dd/MM/yyyy')}
+                            </TableCell>
+                            <TableCell>
+                              <Badge className={getTypeColor(movement.type)} variant="secondary">
+                                {movement.type.charAt(0).toUpperCase() + movement.type.slice(1)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge className={getPaymentMethodColor(movement.paymentMethod)} variant="secondary">
+                                {movement.paymentMethod}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className={`text-right font-semibold ${movement.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {movement.amount >= 0 ? (
+                                <span className="flex items-center justify-end gap-1">
+                                  <TrendingUp className="w-4 h-4" />
+                                  +{movement.amount.toLocaleString()} DH
+                                </span>
+                              ) : (
+                                <span className="flex items-center justify-end gap-1">
+                                  <TrendingDown className="w-4 h-4" />
+                                  {movement.amount.toLocaleString()} DH
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="font-medium">{movement.reference}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {movement.description || '-'}
+                            </TableCell>
+                            <TableCell className="text-right font-semibold">
+                              {movement.balance ? `${movement.balance.toLocaleString()} DH` : '-'}
+                            </TableCell>
+                            {onDelete && (
+                              <TableCell className="text-center">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => onDelete(movement.id, movement.type)}
+                                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        ))
+                      ]))
+                    )
+                  )}
+                </TableBody>
+                {filteredMovements.length > 0 && (
+                  <TableFooter className="sticky bottom-0 z-10 bg-background/95 backdrop-blur">
+                    <TableRow>
+                      <TableCell colSpan={3} className="font-semibold">Résumé</TableCell>
+                      <TableCell className={`text-right font-semibold ${summary.net >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                        {summary.net >= 0 ? "+" : ""}{summary.net.toLocaleString()} DH
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">Entrées: {summary.entries.toLocaleString()} DH</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">Sorties: {summary.exits.toLocaleString()} DH</TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {filteredMovements[0]?.balance ? `${filteredMovements[0].balance.toLocaleString()} DH` : "-"}
+                      </TableCell>
+                      {onDelete && <TableCell />}
+                    </TableRow>
+                  </TableFooter>
                 )}
-              </TableBody>
-              {filteredMovements.length > 0 && (
-                <TableFooter className="sticky bottom-0 z-10 bg-background/95 backdrop-blur">
-                  <TableRow>
-                    <TableCell colSpan={3} className="font-semibold">Résumé</TableCell>
-                    <TableCell className={`text-right font-semibold ${summary.net >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                      {summary.net >= 0 ? "+" : ""}{summary.net.toLocaleString()} DH
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">Entrées: {summary.entries.toLocaleString()} DH</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">Sorties: {summary.exits.toLocaleString()} DH</TableCell>
-                    <TableCell className="text-right font-semibold">
-                      {filteredMovements[0]?.balance ? `${filteredMovements[0].balance.toLocaleString()} DH` : "-"}
-                    </TableCell>
-                    {onDelete && <TableCell />}
-                  </TableRow>
-                </TableFooter>
-              )}
-            </Table>
-          </div>
+              </Table>
+            </div>
+          )}
         </ScrollArea>
 
         <div className="text-sm text-muted-foreground">
