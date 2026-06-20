@@ -9,6 +9,7 @@ import { fr } from 'date-fns/locale';
 import { Contract } from '@/hooks/useContracts';
 import type { Payment } from '@/types/payment';
 import { PaymentHistoryDialog } from './PaymentHistoryDialog';
+import { getContractSummaryWithPayments, getRelatedContractPayments } from '@/utils/contractMath';
 
 interface SettledContractsDialogProps {
   settledContracts: Contract[];
@@ -26,9 +27,9 @@ export function SettledContractsDialog({
     const csvContent = [
       ['N° Contrat', 'Client', 'Date de Création', 'Date de Soldage', 'Montant Total', 'Nb Paiements'].join(','),
       ...settledContracts.map(contract => {
-        const contractPayments = payments.filter(p => p.contractId === contract.id);
+        const contractPayments = getRelatedContractPayments(contract, payments);
         const lastPaymentDate = contractPayments.length > 0 
-          ? contractPayments.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())[0].paymentDate
+          ? [...contractPayments].sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())[0].paymentDate
           : contract.created_at;
         
         return [
@@ -50,17 +51,14 @@ export function SettledContractsDialog({
   };
 
   const getContractPaymentSummary = (contractId: string) => {
-    const contractPayments = payments.filter(p => p.contractId === contractId);
-    const totalPaid = contractPayments.reduce((sum, payment) => sum + payment.amount, 0);
-    
     const contract = settledContracts.find(c => c.id === contractId);
-    const totalAmount = contract?.total_amount || 0;
-    const advancePayment = contract?.advance_payment || 0;
-    
+    const summary = getContractSummaryWithPayments(contractId, settledContracts, payments);
+    const contractPayments = contract ? getRelatedContractPayments(contract, payments) : [];
+
     return {
-      totalPaid: totalPaid + advancePayment,
-      remainingAmount: Math.max(0, totalAmount - (totalPaid + advancePayment)),
-      totalAmount,
+      totalPaid: summary?.avance || 0,
+      remainingAmount: summary?.reste || 0,
+      totalAmount: summary?.total || contract?.total_amount || 0,
       payments: contractPayments
     };
   };

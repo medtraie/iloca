@@ -8,9 +8,10 @@ interface ContractEditDialogProps {
   onOpenChange: (open: boolean) => void;
   onSave: (updatedContract: Contract) => void;
   contracts?: any[];
+  payments?: any[];
 }
 
-const ContractEditDialog = ({ contract, open, onOpenChange, onSave, contracts = [] }: ContractEditDialogProps) => {
+const ContractEditDialog = ({ contract, open, onOpenChange, onSave, contracts = [], payments = [] }: ContractEditDialogProps) => {
   return (
     <EnhancedContractFormDialog
       contract={contract}
@@ -19,6 +20,7 @@ const ContractEditDialog = ({ contract, open, onOpenChange, onSave, contracts = 
       onSave={onSave}
       mode="edit"
       contracts={contracts}
+      payments={payments}
     />
   );
 };

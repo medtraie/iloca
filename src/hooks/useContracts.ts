@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Contract } from '@/types/appData';
 import { contractsRepository } from '@/repositories/contractsRepository';
-import { paymentsRepository } from '@/repositories/paymentsRepository';
 import { localStorageService } from '@/services/localStorageService';
 import { useToast } from '@/hooks/use-toast';
 import { recalculateContractFinancials } from '@/utils/contractFinancialStatus';
 
 export type { Contract };
+
+const isValidPaymentMethod = (value: unknown): value is "Espèces" | "Chèque" | "Virement" => {
+  return value === "Espèces" || value === "Chèque" || value === "Virement";
+};
 
 export const useContracts = () => {
   const [contracts, setContracts] = useState<Contract[]>([]);
@@ -19,18 +22,31 @@ export const useContracts = () => {
       const data = await contractsRepository.getAll();
       
       const recalculatedContracts = data.map(contract => {
-        const recalculatedContract = recalculateContractFinancials(contract);
+        const fallbackPaymentMethod = contract.contract_data?.paymentMethod;
+        const normalizedPaymentMethod = isValidPaymentMethod(contract.payment_method)
+          ? contract.payment_method
+          : isValidPaymentMethod(fallbackPaymentMethod)
+            ? fallbackPaymentMethod
+            : undefined;
+
+        const normalizedContract = normalizedPaymentMethod && contract.payment_method !== normalizedPaymentMethod
+          ? { ...contract, payment_method: normalizedPaymentMethod }
+          : contract;
+
+        const recalculatedContract = recalculateContractFinancials(normalizedContract);
         
         const shouldUpdate = 
           recalculatedContract.total_amount !== contract.total_amount ||
           !contract.contract_data?.originalAmount ||
           recalculatedContract.contract_data?.extensionAmount !== contract.contract_data?.extensionAmount ||
-          recalculatedContract.contract_data?.overdueAmount !== contract.contract_data?.overdueAmount;
+          recalculatedContract.contract_data?.overdueAmount !== contract.contract_data?.overdueAmount ||
+          normalizedContract.payment_method !== contract.payment_method;
           
         if (shouldUpdate) {
           contractsRepository.update(contract.id, {
             total_amount: recalculatedContract.total_amount,
-            contract_data: recalculatedContract.contract_data
+            contract_data: recalculatedContract.contract_data,
+            payment_method: normalizedContract.payment_method
           }).catch(console.error);
         }
         
@@ -63,35 +79,6 @@ export const useContracts = () => {
       };
 
       const newContract = await contractsRepository.create(contractWithNumber);
-
-      // Create initial payment if advance_payment > 0
-      if (newContract.advance_payment && newContract.advance_payment > 0) {
-        try {
-          // #region debug-point addContract-payment
-          fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"contracts-avance-recette",runId:"pre-fix",hypothesisId:"H2",location:"useContracts.ts:addContract",msg:"[DEBUG] Attempting initial payment creation",data:{contractId:newContract.id,amount:newContract.advance_payment,method:contractData.payment_method},ts:Date.now()})}).catch(()=>{});
-          // #endregion
-          
-          await paymentsRepository.create({
-            contractId: newContract.id,
-            contractNumber: newContract.contract_number,
-            customerName: newContract.customer_name,
-            amount: newContract.advance_payment,
-            paymentMethod: (contractData.payment_method as any) || 'Espèces',
-            paymentDate: newContract.start_date ? newContract.start_date.split('T')[0] : new Date().toISOString().split('T')[0],
-            notes: 'Avance initiale',
-            createdAt: new Date().toISOString()
-          });
-          
-          // #region debug-point addContract-payment-success
-          fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"contracts-avance-recette",runId:"pre-fix",hypothesisId:"H2",location:"useContracts.ts:addContract",msg:"[DEBUG] Initial payment created successfully",data:{contractId:newContract.id},ts:Date.now()})}).catch(()=>{});
-          // #endregion
-        } catch (paymentError: any) {
-          console.error('[useContracts][addContract] Error creating initial payment:', paymentError);
-          // #region debug-point addContract-payment-error
-          fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"contracts-avance-recette",runId:"pre-fix",hypothesisId:"H2",location:"useContracts.ts:addContract",msg:"[DEBUG] Error creating initial payment",data:{error:paymentError.message||String(paymentError)},ts:Date.now()})}).catch(()=>{});
-          // #endregion
-        }
-      }
 
       const recalculatedContract = recalculateContractFinancials(newContract);
       

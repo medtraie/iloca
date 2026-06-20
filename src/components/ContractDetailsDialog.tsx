@@ -1,6 +1,7 @@
 
 import EnhancedContractFormDialog from "./EnhancedContractFormDialog";
 import { Contract } from "@/hooks/useContracts";
+import type { Payment } from "@/types/payment";
 import { useContractSignatures } from "@/hooks/useContractSignatures";
 import { Signature } from "lucide-react";
 
@@ -9,9 +10,10 @@ interface ContractDetailsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   contracts?: any[];
+  payments?: Payment[];
 }
 
-const ContractDetailsDialog = ({ contract, open, onOpenChange, contracts = [] }: ContractDetailsDialogProps) => {
+const ContractDetailsDialog = ({ contract, open, onOpenChange, contracts = [], payments = [] }: ContractDetailsDialogProps) => {
   // Récupération des signatures liées au contrat
   const { signatures, loading } = useContractSignatures(contract?.id);
 
@@ -23,6 +25,7 @@ const ContractDetailsDialog = ({ contract, open, onOpenChange, contracts = [] }:
         onOpenChange={onOpenChange}
         mode="view"
         contracts={contracts}
+        payments={payments}
       />
       {/* Affichage des signatures en bas des détails */}
       {open && contract && (

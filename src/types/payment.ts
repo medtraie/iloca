@@ -39,6 +39,7 @@ export interface Payment {
   relanceLevel?: RelanceLevel;
   relanceHistory?: RelanceEntry[];
   auditTrail?: PaymentAuditEntry[];
+  notes?: string;
 }
 
 export interface PaymentSummary {

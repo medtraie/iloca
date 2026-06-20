@@ -14,8 +14,6 @@ import ContractLocataireFields from "./contracts/ContractLocataireFields";
 import ContractVehicleFields from "./contracts/ContractVehicleFields";
 import ContractFacturationFields from "./contracts/ContractFacturationFields";
 import ContractSignatureFields from "./contracts/ContractSignatureFields";
-import { Payment } from "@/types/payment";
-import { paymentsRepository } from "@/repositories/paymentsRepository";
 
 // Refactoring: centralisation de la logique état du contrat
 import { useNewContractState } from "./new-contract-dialog/useNewContractState";
@@ -153,6 +151,7 @@ const NewContractDialog = ({ onAddContract, open: externalOpen, onOpenChange: ex
       dailyRate: parseFloat(formData.dailyPrice),
       totalAmount: total.toString(),
       advance_payment: parseFloat(formData.advance) || undefined, // CRITICAL: Include advance payment, keep undefined if empty
+      paymentMethod: formData.paymentMethod || undefined,
       status: "ouvert", // CRITICAL FIX: Always create as "ouvert" not "brouillon"
       notes: formData.observationsDelivery,
       // CRITICAL: Interactive data preservation - add to the interface

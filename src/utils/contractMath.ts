@@ -94,6 +94,37 @@ export function sumPayments(payments: Payment[] = []): number {
   }, 0);
 }
 
+function normalizeText(value?: string | null): string {
+  return (value || "").trim().toLowerCase();
+}
+
+export function isInitialAdvancePayment(payment: Payment, contract?: Contract | null): boolean {
+  const notes = normalizeText(payment.notes);
+  if (!notes.includes("avance initiale")) return false;
+
+  if (!contract) return true;
+  if (!contract.advance_payment || payment.amount !== contract.advance_payment) return false;
+
+  return (
+    payment.contractId === contract.id ||
+    payment.contractNumber === (contract as any).contract_number
+  );
+}
+
+export function getRelatedContractPayments(contract: Contract | null, payments: Payment[] = []): Payment[] {
+  if (!contract) return [];
+
+  // Payments must be linked by the immutable contract id only.
+  // Matching by contract number is unsafe because numbers can be reused.
+  return payments.filter((payment) => payment.contractId === contract.id);
+}
+
+export function getAdditionalContractPayments(contract: Contract | null, payments: Payment[] = []): Payment[] {
+  return getRelatedContractPayments(contract, payments).filter(
+    (payment) => !isInitialAdvancePayment(payment, contract)
+  );
+}
+
 /**
  * Calcule un résumé complet du contrat
  * @param contract - Objet contrat
@@ -209,12 +240,12 @@ export function getContractSummaryWithPayments(contractId: string, contracts: Co
   // Get base summary with advance_payment
   const summary = computeContractSummary(contract, { advanceMode: 'field' });
   
-  // Filter payments for this contract
-  const contractPayments = payments.filter(p => p.contractId === contractId || p.contractId === (contract as any).contract_number);
+  const contractPayments = getRelatedContractPayments(contract, payments);
+  const additionalPayments = getAdditionalContractPayments(contract, payments);
   
   // Calculate total paid including advance_payment and all additional payments
   const advancePayment = contract.advance_payment || 0;
-  const additionalPaymentsTotal = contractPayments.reduce((sum, p) => sum + p.amount, 0);
+  const additionalPaymentsTotal = additionalPayments.reduce((sum, p) => sum + p.amount, 0);
   const totalPaid = advancePayment + additionalPaymentsTotal;
   
   // Calculate remaining amount

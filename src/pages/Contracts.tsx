@@ -1,10 +1,12 @@
 
+import { useState } from "react";
 import ContractsHeader from "@/components/ContractsHeader";
 import ContractsSearchBar from "@/components/ContractsSearchBar";
 import ContractsStats from "@/components/ContractsStats";
 import ContractsTable from "@/components/ContractsTable";
 import ContractDetailsDialog from "@/components/ContractDetailsDialog";
 import ContractEditDialog from "@/components/ContractEditDialog";
+import NewContractDialog from "@/components/NewContractDialog";
 import PaymentStatusFilter from "@/components/PaymentStatusFilter";
 import { useContractsPageLogic } from "@/hooks/useContractsPageLogic";
 import { RefreshCcw } from "lucide-react";
@@ -14,6 +16,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { motion } from "framer-motion";
 import { Plus } from "lucide-react";
 
+import { usePayments } from "@/hooks/usePayments";
+
 // Options de statut des contrats simplifiées
 const contractStatusOptions = [
   { label: "Tous", value: "all" },
@@ -22,6 +26,7 @@ const contractStatusOptions = [
 ];
 
 const Contracts = () => {
+  const [isNewContractOpen, setIsNewContractOpen] = useState(false);
   const {
     contracts,
     loading,
@@ -40,13 +45,15 @@ const Contracts = () => {
     handleSendForSignature,
     selectedContract,
     setSelectedContract,
-    isDetailsOpen,
     setIsDetailsOpen,
+    isDetailsOpen,
     isEditOpen,
     setIsEditOpen,
     signatureLoading,
-    getPaymentSummary,
+    getPaymentSummary
   } = useContractsPageLogic();
+
+  const { payments } = usePayments();
 
   if (loading) {
     return (
@@ -87,7 +94,7 @@ const Contracts = () => {
             Actualiser
           </Button>
           <Button 
-            onClick={handleAddContract}
+            onClick={() => setIsNewContractOpen(true)}
             className="rounded-xl h-12 px-6 font-bold bg-accent text-accent-foreground hover:bg-accent/90 shadow-lg shadow-accent/20 hover:scale-105 transition-transform w-full sm:w-auto"
           >
             <Plus className="w-5 h-5 mr-2" />
@@ -179,6 +186,7 @@ const Contracts = () => {
         open={isDetailsOpen}
         onOpenChange={setIsDetailsOpen}
         contracts={contracts}
+        payments={payments}
       />
       <ContractEditDialog
         contract={selectedContract}
@@ -186,6 +194,12 @@ const Contracts = () => {
         onOpenChange={setIsEditOpen}
         onSave={handleSaveContract}
         contracts={contracts}
+        payments={payments}
+      />
+      <NewContractDialog
+        onAddContract={handleAddContract}
+        open={isNewContractOpen}
+        onOpenChange={setIsNewContractOpen}
       />
     </div>
   );

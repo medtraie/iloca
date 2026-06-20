@@ -1,6 +1,8 @@
 import { getSupabaseClient } from "@/services/supabaseService";
 import type { Payment } from "@/types/payment";
 
+const normalizeNotes = (value?: string | null) => (value || "").trim().toLowerCase();
+
 export const paymentsRepository = {
   async getAll(): Promise<Payment[]> {
     const supabase = getSupabaseClient();
@@ -29,7 +31,7 @@ export const paymentsRepository = {
       auditTrail: row.audit_trail || [],
       createdAt: row.created_at,
       notes: row.notes,
-    })) as Payment[];
+    })).filter((payment) => normalizeNotes(payment.notes) !== "avance initiale") as Payment[];
   },
 
   async create(payment: Omit<Payment, "id">): Promise<Payment> {

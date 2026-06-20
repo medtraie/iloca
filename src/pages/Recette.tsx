@@ -15,7 +15,7 @@ import { PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Cart
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, startOfDay, endOfDay, startOfMonth, endOfMonth, startOfYear, endOfYear, isWithinInterval, subMonths, type Interval } from "date-fns";
 import { fr } from "date-fns/locale";
-import { computeContractSummary, getContractSummaryWithPayments } from "@/utils/contractMath";
+import { computeContractSummary, getAdditionalContractPayments, getContractSummaryWithPayments } from "@/utils/contractMath";
 import { BankTransferDialog } from "@/components/BankTransferDialog";
 import { ReportFilters, type TimeFilter } from "@/components/ReportFilters";
 import { PDFExportButton } from "@/components/PDFExportButton";
@@ -51,6 +51,14 @@ interface BankTransfer {
 
 type ContractsSortKey = "contract_number" | "customer_name" | "daily_rate" | "duration" | "total_paid" | "remaining_amount";
 type SortDirection = "asc" | "desc";
+
+const resolveContractPaymentMethod = (contract: Contract): "Espèces" | "Chèque" | "Virement" | undefined => {
+  const rawValue = contract.payment_method || contract.contract_data?.paymentMethod;
+  if (rawValue === "Espèces" || rawValue === "Chèque" || rawValue === "Virement") {
+    return rawValue;
+  }
+  return undefined;
+};
 
 interface PieChartItem {
   name: string;
@@ -215,8 +223,8 @@ const Recette = () => {
   };
 
   const getContractPaymentSummary = (contractId: string): PaymentSummary => {
-    const contract = contracts.find(c => c.id === contractId);
-    if (!contract) {
+    const summary = getContractSummaryWithPayments(contractId, contracts, payments);
+    if (!summary) {
       return {
         totalPaid: 0,
         remainingAmount: 0,
@@ -224,18 +232,12 @@ const Recette = () => {
         payments: []
       };
     }
-
-    const contractSummary = computeContractSummary(contract, { advanceMode: 'field' });
-    const contractPayments = payments.filter(p => p.contractId === contractId);
-    const additionalPayments = contractPayments.reduce((sum, payment) => sum + payment.amount, 0);
-    const totalPaid = contractSummary.avance + additionalPayments;
-    const remainingAmount = Math.max(0, contractSummary.total - totalPaid);
     
     return {
-      totalPaid,
-      remainingAmount,
-      isFullyPaid: remainingAmount <= 0,
-      payments: contractPayments
+      totalPaid: summary.avance,
+      remainingAmount: summary.reste,
+      isFullyPaid: summary.isFullyPaid,
+      payments: summary.payments
     };
   };
 
@@ -349,8 +351,20 @@ const Recette = () => {
     contracts.forEach(contract => {
       const total = contract.total_amount || 0;
       const paymentSummary = getContractPaymentSummary(contract.id);
+      const advance = contract.advance_payment || 0;
       
       totalEncaisse += paymentSummary.totalPaid;
+
+      if (advance > 0) {
+        const paymentMethod = resolveContractPaymentMethod(contract);
+        if (paymentMethod === 'Espèces') {
+          totalEspeces += advance;
+        } else if (paymentMethod === 'Virement') {
+          totalVirements += advance;
+        } else if (paymentMethod === 'Chèque') {
+          totalCheques += advance;
+        }
+      }
       
       if (paymentSummary.isFullyPaid) {
         totalSolde += total;
@@ -425,7 +439,7 @@ const Recette = () => {
 
     const currentMonthKey = selectedDate.slice(0, 7);
     const totalVehiculeExpenses = (monthlyExpenses || [])
-      .filter((e) => e.month_year === currentMonthKey)
+      .filter((e) => (e.month_year || "").slice(0, 7) === currentMonthKey)
       .reduce((sum, e) => sum + Number(e.allocated_amount || 0), 0);
 
     return {
@@ -453,8 +467,8 @@ const Recette = () => {
     analyticsFilteredContracts.forEach(contract => {
       const total = contract.total_amount || 0;
       const advance = contract.advance_payment || 0;
-      
       const paymentSummary = getContractPaymentSummary(contract.id);
+      const additionalPayments = getAdditionalContractPayments(contract, payments);
       
       totalEncaisse += paymentSummary.totalPaid;
       
@@ -465,7 +479,7 @@ const Recette = () => {
       }
 
       if (advance > 0) {
-        const paymentMethod = contract.payment_method;
+        const paymentMethod = resolveContractPaymentMethod(contract);
         if (paymentMethod === 'Espèces') {
           totalEspeces += advance;
         } else if (paymentMethod === 'Chèque') {
@@ -474,12 +488,8 @@ const Recette = () => {
           totalVirements += advance;
         }
       }
-    });
 
-    // Add filtered payments
-    payments.filter(payment => 
-      analyticsFilteredContracts.some(contract => contract.id === payment.contractId)
-    ).forEach(payment => {
+      additionalPayments.forEach(payment => {
       if (payment.paymentMethod === 'Espèces') {
         totalEspeces += payment.amount;
       } else if (payment.paymentMethod === 'Virement') {
@@ -487,6 +497,7 @@ const Recette = () => {
       } else if (payment.paymentMethod === 'Chèque') {
         totalCheques += payment.amount;
       }
+      });
     });
 
     return {
@@ -754,7 +765,7 @@ const Recette = () => {
         .filter((expense) => expense.expense_date.slice(0, 7) === monthKey)
         .reduce((sum, expense) => sum + expense.amount, 0);
       const vehicleTotal = (monthlyExpenses || [])
-        .filter((expense) => expense.month_year === monthKey)
+        .filter((expense) => (expense.month_year || "").slice(0, 7) === monthKey)
         .reduce((sum, expense) => sum + Number(expense.allocated_amount || 0), 0);
       return {
         paymentsTotal,
@@ -859,14 +870,15 @@ const Recette = () => {
 
     const settlementDate = new Date().toISOString();
     for (const contract of debtsToSettle) {
+      const paymentMethod = resolveContractPaymentMethod(contract) || "Espèces";
       await paymentsRepository.create({
         contractId: contract.id,
         contractNumber: contract.contract_number,
         customerName: contract.customer_name,
         amount: contract.remaining_amount,
-        paymentMethod: contract.payment_method || "Espèces",
+        paymentMethod,
         paymentDate: settlementDate,
-        checkDepositStatus: contract.payment_method === "Chèque" ? "encaissé" : undefined,
+        checkDepositStatus: paymentMethod === "Chèque" ? "encaissé" : undefined,
         relanceLevel: "aucune",
         relanceHistory: [],
         auditTrail: []
@@ -930,8 +942,8 @@ const Recette = () => {
       });
 
       // Recalculate and update contract status if needed
-      const contractPayments = (await paymentsRepository.getAll()).filter(p => p.contractId === contractId);
-      const additionalPayments = contractPayments.reduce((sum, payment) => sum + payment.amount, 0);
+      const allPayments = await paymentsRepository.getAll();
+      const additionalPayments = getAdditionalContractPayments(contract, allPayments).reduce((sum, payment) => sum + payment.amount, 0);
       const contractSummary = computeContractSummary(contract, { advanceMode: 'field' });
       const totalPaid = (contract.advance_payment || 0) + additionalPayments;
       const newRemainingAmount = Math.max(0, contractSummary.total - totalPaid);

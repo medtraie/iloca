@@ -7,6 +7,7 @@ import { FileText, Download, Eye, CreditCard, Banknote, CheckCircle, Clock, Buil
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import type { Payment } from '@/types/payment';
+import { getRelatedContractPayments } from '@/utils/contractMath';
 
 interface PaymentHistoryDialogProps {
   contractId: string;
@@ -29,7 +30,15 @@ export function PaymentHistoryDialog({
   remainingAmount,
   children
 }: PaymentHistoryDialogProps) {
-  const contractPayments = payments.filter(payment => payment.contractId === contractId);
+  const contractPayments = getRelatedContractPayments(
+    {
+      id: contractId,
+      contract_number: contractNumber,
+      start_date: '',
+      end_date: ''
+    },
+    payments
+  );
   
   const getPaymentMethodIcon = (method: string) => {
     switch (method) {

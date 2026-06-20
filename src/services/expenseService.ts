@@ -251,10 +251,12 @@ export const expenseService = {
     const startDate = new Date(expense.start_date);
     const endDate = new Date(expense.end_date);
 
+    await expensesRepository.deleteMonthlyExpensesByExpenseId(expense.id).catch(() => {});
+
     const currentDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
 
     while (currentDate <= endDate) {
-      const monthYear = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`;
+      const monthYear = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}-01`;
 
       await expensesRepository.createMonthlyExpense({
         expense_id: expense.id,

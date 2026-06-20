@@ -22,7 +22,8 @@ import { usePDFGeneration, ContractPDFData } from "@/hooks/usePDFGeneration";
 import { Customer } from "@/hooks/useCustomers";
 import { Vehicle } from "@/hooks/useVehicles";
 import { Contract } from "@/hooks/useContracts";
-import { computeContractSummary, computeTotal, daysBetween } from "@/utils/contractMath";
+import type { Payment } from "@/types/payment";
+import { computeContractSummary, computeTotal, daysBetween, getAdditionalContractPayments } from "@/utils/contractMath";
 import { getCompanyDisplayName } from "@/utils/companyInfo";
 import { format } from "date-fns";
 
@@ -33,6 +34,7 @@ interface ContractFormDialogProps {
   onSave?: (updatedContract: Contract) => void;
   mode: 'view' | 'edit';
   contracts?: any[]; // Pour calculer la prochaine série
+  payments?: Payment[]; // Pass payments from ContractsTable to compute real remaining
 }
 
 interface DamagePoint {
@@ -41,7 +43,7 @@ interface DamagePoint {
   y: number;
 }
 
-const EnhancedContractFormDialog = ({ contract, open, onOpenChange, onSave, mode, contracts = [] }: ContractFormDialogProps) => {
+const EnhancedContractFormDialog = ({ contract, open, onOpenChange, onSave, mode, contracts = [], payments = [] }: ContractFormDialogProps) => {
   const { toast } = useToast();
   const { generatePDF, generatePDFBlob } = usePDFGeneration();
 
@@ -472,9 +474,13 @@ const EnhancedContractFormDialog = ({ contract, open, onOpenChange, onSave, mode
   const calculateRemaining = () => {
     const total = calculateTotalPrice();
     const advance = parseFloat(formData.advance) || 0;
-    const remaining = Math.max(0, total - advance);
     
-    console.log(`[💰 CALCUL RESTE] Total: ${total} DH - Avance: ${advance} DH = Reste: ${remaining} DH`);
+    const additionalPayments = getAdditionalContractPayments(contract, payments).reduce((sum, payment) => sum + payment.amount, 0);
+    
+    const totalPaid = advance + additionalPayments;
+    const remaining = Math.max(0, total - totalPaid);
+    
+    console.log(`[💰 CALCUL RESTE] Total: ${total} DH - Avance initiale: ${advance} DH - Paiements additionnels: ${additionalPayments} DH = Reste: ${remaining} DH`);
     return remaining;
   };
 
