@@ -6,18 +6,18 @@
 /* Système de couleurs moderne SFTLOCATION */
 @layer base {
   :root {
-    /* Nouveau Design SaaS Premium - Inspiré de l'image */
-    --background: 140 10% 92%;        /* #E9EDEA - Fond gris-vert très clair comme l'image */
+    /* Nouveau Design SaaS Premium */
+    --background: 140 10% 92%;        /* #E9EDEA */
     --foreground: 0 0% 5%;           /* #0D0D0D */
 
-    --card: 0 0% 100%;                /* Blanc pur pour les cartes */
+    --card: 0 0% 100%;                /* Blanc pur */
     --card-foreground: 0 0% 5%;
-    --card-accent: 65 100% 50%;       /* Jaune-vert Lime/Citron comme l'image (#E1FF00) */
+    --card-accent: 65 100% 50%;       /* Lime/Citron */
 
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 5%;
 
-    --primary: 0 0% 5%;               /* Noir profond pour le contraste */
+    --primary: 0 0% 5%;               /* Noir profond */
     --primary-foreground: 65 100% 50%; /* Lime sur Noir */
 
     --secondary: 0 0% 96%;
@@ -36,7 +36,7 @@
     --input: 0 0% 90%;
     --ring: 65 100% 50%;
 
-    --radius: 1.5rem;                 /* HAUTE courbure comme l'image */
+    --radius: 1.5rem;                 /* HAUTE courbure */
 
     --sidebar-background: 0 0% 5%;    /* Noir profond */
     --sidebar-foreground: 0 0% 100%;
@@ -47,7 +47,7 @@
 
     --card-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.05);
 
-    /* Couleurs des cartes de stats - Vibrant & High Contrast */
+    /* Couleurs des stats */
     --card-blue: 217 91% 60%;
     --card-blue-bg: 217 91% 60% / 0.1;
     --card-green: 65 100% 50%;
@@ -59,123 +59,16 @@
   }
 
   .dark {
-    /* Mode sombre optimisé pour le design premium */
     --background: 0 0% 3%;
     --foreground: 0 0% 98%;
-
     --card: 0 0% 7%;
     --card-foreground: 0 0% 98%;
-    --card-accent: 65 100% 50%;
-
-    --primary: 65 100% 50%;           /* Lime devient le primaire en mode sombre */
+    --primary: 65 100% 50%;
     --primary-foreground: 0 0% 5%;
-
     --muted: 0 0% 12%;
     --muted-foreground: 0 0% 60%;
-
-    --accent: 0 0% 15%;
-    --accent-foreground: 65 100% 50%;
-
     --border: 0 0% 15%;
     --input: 0 0% 15%;
-    
-    --sidebar-background: 0 0% 2%;
-
-    /* Couleurs des cartes en mode sombre */
-    --card-blue: 217 91% 65%;
-    --card-blue-bg: 217 91% 65% / 0.15;
-    --card-green: 65 100% 50%;
-    --card-green-bg: 65 100% 50% / 0.15;
-    --card-orange: 24 95% 60%;
-    --card-orange-bg: 24 95% 60% / 0.15;
-    --card-red: 0 84% 65%;
-    --card-red-bg: 0 84% 65% / 0.15;
-  }
-
-  /* Fix for input and amount display visibility in dark mode */
-  .dark input[type="text"],
-  .dark input[type="date"],
-  .dark input[type="number"],
-  .dark input[type="email"],
-  .dark input[type="tel"],
-  .dark textarea,
-  .dark select,
-  .dark .amount-field {
-    @apply bg-card text-foreground border-input;
-  }
-  
-  /* Fix for gray color classes in dark mode */
-  .dark .text-gray-700,
-  .dark .text-gray-800,
-  .dark .text-gray-900 {
-    @apply text-foreground;
-  }
-  
-  .dark .text-gray-500,
-  .dark .text-gray-600 {
-    @apply text-muted-foreground;
-  }
-  
-  .dark .text-gray-400 {
-    @apply text-muted-foreground/80;
-  }
-  
-  .dark .bg-gray-50,
-  .dark .bg-gray-100 {
-    @apply bg-muted;
-  }
-  
-  .dark .bg-gray-200 {
-    @apply bg-accent;
-  }
-  
-  .dark .bg-white {
-    @apply bg-card;
-  }
-  
-  .dark .border-gray-300,
-  .dark .border-gray-200 {
-    @apply border-input;
-  }
-  
-  .dark .border-gray-400 {
-    @apply border-input;
-  }
-  
-  /* Fix for placeholder text in dark mode */
-  .dark input::placeholder,
-  .dark textarea::placeholder {
-    @apply text-muted-foreground;
-  }
-  
-  /* Fix for select dropdowns in dark mode */
-  .dark select option {
-    @apply bg-card text-foreground;
-  }
-  
-  /* Fix for buttons with direct colors in dark mode */
-  .dark .bg-blue-600 {
-    @apply bg-primary;
-  }
-  
-  .dark .bg-indigo-600 {
-    @apply bg-primary;
-  }
-  
-  .dark .border-blue-700,
-  .dark .border-indigo-700 {
-    @apply border-primary;
-  }
-  
-  .dark .text-blue-600,
-  .dark .text-indigo-600 {
-    @apply text-primary;
-  }
-  
-  /* Fix for gradient backgrounds in dark mode */
-  .dark .from-blue-50,
-  .dark .to-indigo-100 {
-    @apply from-background to-background;
   }
 }
 
@@ -185,166 +78,132 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground overflow-x-hidden;
     font-family: 'Tajawal', 'Cairo', 'sans-serif';
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
   }
 
-  [data-sidebar="content"] {
-    scrollbar-width: thin;
-    scrollbar-color: #000000 #000000;
+  /* Focus rings improvement */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2;
   }
 
-  [data-sidebar="content"]::-webkit-scrollbar {
-    width: 8px;
+  /* Safe Area Utilities */
+  .safe-pt { padding-top: env(safe-area-inset-top, 0px); }
+  .safe-pb { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .safe-pl { padding-left: env(safe-area-inset-left, 0px); }
+  .safe-pr { padding-right: env(safe-area-inset-right, 0px); }
+
+  /* Smooth Scrolling */
+  .scroll-smooth {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
   }
 
-  [data-sidebar="content"]::-webkit-scrollbar-track {
-    background: #000000;
+  /* Custom Scrollbar */
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/20 rounded-full hover:bg-muted-foreground/40;
+  }
+}
+
+@layer components {
+  /* RESPONSIVE TABLE CONTAINER */
+  .table-container {
+    @apply w-full overflow-x-auto rounded-2xl border border-border/50 bg-card shadow-sm mb-6;
+    -webkit-overflow-scrolling: touch;
   }
 
-  [data-sidebar="content"]::-webkit-scrollbar-thumb {
-    background: #000000;
-    border-radius: 9999px;
-  }
-  
-  /* Styles pour les tableaux avec lignes alternées */
-  .table-striped tbody tr:nth-child(even) {
-    @apply bg-muted/30;
-  }
-  
-  .table-striped tbody tr:nth-child(odd) {
-    @apply bg-card;
-  }
-  
-  .table-striped tbody tr:hover {
-    @apply bg-accent/50 transition-colors duration-150;
+  /* FORCE TABLE BEHAVIOR ON MOBILE */
+  @media (max-width: 768px) {
+    table {
+      @apply min-w-[700px];
+    }
   }
 
-  /* Masquer la barre de défilement horizontal */
-  .scrollbar-none::-webkit-scrollbar {
-    display: none;
+  /* IMPROVED CARDS ON MOBILE */
+  .stat-card {
+    @apply rounded-[2rem] p-6 shadow-card transition-all duration-300 hover:scale-[1.02];
   }
+
+  /* NAVIGATION FIXES FOR MOBILE LANDSCAPE */
+  @media (max-height: 500px) and (orientation: landscape) {
+    header {
+      @apply h-12;
+    }
+    .h-16 { @apply h-12; }
+    .py-8 { @apply py-4; }
+    .space-y-8 { @apply space-y-4; }
+
+    /* Minimize sidebar elements in landscape to save space */
+    [data-sidebar="header"] { @apply p-2 mb-0; }
+    [data-sidebar="group-label"] { @apply hidden; }
+    .sidebar-menu-button { @apply py-1.5; }
+  }
+
+  /* PREVENT BUTTONS OVERFLOW */
+  .btn-responsive {
+    @apply whitespace-nowrap overflow-hidden text-ellipsis max-w-full;
+  }
+
+  /* GRID RESPONSIVENESS */
+  .grid-responsive {
+    @apply grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4;
+  }
+}
+
+@layer utilities {
   .scrollbar-none {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
-
-  /* Espacements pour les zones sûres (Notch et Status Bar) */
-  .safe-pt {
-    padding-top: env(safe-area-inset-top, 0px);
-  }
-  .safe-pb {
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
-  .safe-pl {
-    padding-left: env(safe-area-inset-left, 0px);
-  }
-  .safe-pr {
-    padding-right: env(safe-area-inset-right, 0px);
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
   }
 
-  /* ===== GLOBAL MOBILE RESPONSIVENESS ===== */
-
-  /* Prevent ANY element from overflowing the viewport */
-  @media (max-width: 767px) {
-    .max-w-7xl,
-    .max-w-6xl,
-    .max-w-5xl,
-    .max-w-4xl {
-      max-width: 100% !important;
-      padding-left: 0.75rem;
-      padding-right: 0.75rem;
-    }
-
-    /* Force all tables to be horizontally scrollable */
-    table {
-      display: block;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      white-space: nowrap;
-    }
-
-    thead, tbody, tfoot {
-      display: table;
-      width: 100%;
-    }
-
-    /* Ensure cards don't overflow */
-    .overflow-x-auto {
-      -webkit-overflow-scrolling: touch;
-    }
-
-    /* Smaller base font for mobile to fit more content */
-    .text-3xl { font-size: 1.5rem !important; }
-    .text-4xl { font-size: 1.875rem !important; }
-
-    /* Fix any fixed-width elements that could overflow */
-    input, select, textarea {
-      max-width: 100%;
-    }
-
-    /* Compact card padding on mobile */
-    .p-6 { padding: 1rem !important; }
-    .p-8 { padding: 1.25rem !important; }
-    .px-6 { padding-left: 1rem !important; padding-right: 1rem !important; }
-    .py-6 { padding-top: 1rem !important; padding-bottom: 1rem !important; }
-
-    /* Make dialogs full-width on mobile */
-    [role="dialog"] {
-      max-width: calc(100vw - 1.5rem) !important;
-      margin: 0.75rem !important;
-    }
+  .glass-effect {
+    @apply bg-background/80 backdrop-blur-md border border-white/10;
   }
 
-  /* ===== CAPACITOR ANDROID SPECIFIC ===== */
+  /* Text Overlap Fixes */
+  .text-tight {
+    @apply leading-tight tracking-tight;
+  }
+}
 
-  /* Smooth momentum scrolling for Capacitor WebView */
-  * {
-    -webkit-tap-highlight-color: transparent;
+/* GLOBAL MOBILE OVERRIDES */
+@media (max-width: 640px) {
+  h1 { @apply text-2xl !important; }
+  h2 { @apply text-xl !important; }
+  .p-6 { @apply p-4 !important; }
+  .p-8 { @apply p-5 !important; }
+
+  /* Form components sizing for touch */
+  input, select, button {
+    @apply min-h-[44px] !important;
   }
 
-  /* Prevent text selection on interactive elements */
-  button, [role="button"], a {
-    -webkit-user-select: none;
-    user-select: none;
+  /* Adjust safe area for mobile headers */
+  header {
+    @apply pt-[env(safe-area-inset-top,0px)] px-4 !important;
+  }
+}
+
+/* LANDSCAPE SIDEBAR FIX */
+@media (max-width: 1024px) {
+  [data-sidebar-collapsible="icon"] {
+    @apply absolute z-50 transition-transform duration-300;
   }
 
-  /* Touch-friendly minimum sizes */
-  @media (pointer: coarse) {
-    button:not(.h-6):not(.h-7):not(.h-8):not(.w-6):not(.w-7):not(.w-8) {
-      min-height: 36px;
-    }
-
-    input, select, textarea {
-      min-height: 40px;
-      font-size: 16px !important; /* Prevents iOS zoom on focus */
-    }
-  }
-
-  /* Mobile card styles */
-  .mobile-card {
-    @apply border border-border/50 bg-card rounded-xl p-3 space-y-2 shadow-sm;
-  }
-
-  .mobile-card-row {
-    @apply flex justify-between items-center;
-  }
-
-  .mobile-card-label {
-    @apply text-xs text-muted-foreground;
-  }
-
-  .mobile-card-value {
-    @apply text-sm font-semibold;
-  }
-
-  /* Horizontal scrollable filter bar */
-  .mobile-filter-bar {
-    @apply flex overflow-x-auto gap-2 pb-1 scrollbar-none;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .mobile-filter-bar > * {
-    @apply shrink-0;
+  /* Content shift fix when sidebar is open */
+  .sidebar-open .main-content {
+    @apply blur-sm md:blur-none pointer-events-none md:pointer-events-auto;
   }
 }

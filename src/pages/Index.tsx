@@ -181,7 +181,7 @@ const Index = () => {
   }
 
   return (
-    <div className="space-y-8 pb-10">
+    <div className="space-y-8 pb-10 safe-pt safe-pb">
       {/* Welcome Section */}
       <motion.div 
         className="flex flex-col md:flex-row md:items-center justify-between gap-4" 
@@ -627,7 +627,7 @@ const Index = () => {
               <CardTitle className="text-lg font-bold">Résumé des alertes</CardTitle>
               <CardDescription className="font-medium">Points d'attention immédiate</CardDescription>
             </CardHeader>
-            <CardContent className="grid grid-cols-3 gap-4">
+            <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="p-5 rounded-[1.5rem] bg-card-red-bg text-card-red flex flex-col items-center justify-center border border-card-red/10">
                 <div className="text-3xl font-black">{counts.critical || 0}</div>
                 <div className="text-[10px] font-bold uppercase tracking-widest mt-1">Critiques</div>

@@ -10,8 +10,10 @@ import { fuelService, FuelLog } from "@/services/fuelService";
 import { gpswoxService, GpswoxFuelRecord } from "@/services/gpswoxService";
 import { toast } from "@/components/ui/sonner";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell } from "recharts";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function Fuel() {
+  const isMobile = useIsMobile();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [logs, setLogs] = useState<FuelLog[]>([]);
   const [cons, setCons] = useState<Record<string, number>>({});
@@ -185,16 +187,16 @@ export default function Fuel() {
       setSyncing(true);
       const records = await gpswoxService.getFuelRecords();
       setGpsFuel(records);
-      toast.success("Carburant GPSwox synchronisé");
+      toast.success("Carburant SFT synchronisé");
     } catch {
-      toast.error("Erreur de synchronisation GPSwox");
+      toast.error("Erreur de synchronisation SFT");
     } finally {
       setSyncing(false);
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 safe-pt safe-pb">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Carburant</h1>
         <Dialog open={open} onOpenChange={setOpen}>
@@ -231,7 +233,7 @@ export default function Fuel() {
           </DialogContent>
         </Dialog>
         <Button variant="outline" onClick={syncGpsFuel} disabled={syncing}>
-          {syncing ? "Sync..." : "Sync GPSwox"}
+          {syncing ? "Sync..." : "Sync SFT"}
         </Button>
       </div>
 
@@ -359,7 +361,7 @@ export default function Fuel() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Carburant GPSwox par jour</CardTitle>
+            <CardTitle>Carburant SFT par jour</CardTitle>
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -375,7 +377,7 @@ export default function Fuel() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Répartition GPSwox par station</CardTitle>
+            <CardTitle>Répartition SFT par station</CardTitle>
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -400,42 +402,89 @@ export default function Fuel() {
           <CardTitle>Enregistrements</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-7 gap-2 text-sm font-medium text-muted-foreground">
-            <div>Véhicule</div>
-            <div>Chauffeur</div>
-            <div>Quantité</div>
-            <div>Prix</div>
-            <div>Station</div>
-            <div>Date</div>
-            <div>Compteur</div>
-          </div>
-          <div className="divide-y mt-2">
-            {logs.map((l) => {
-              const v = vehicles.find((x) => x.id === l.vehicleId);
-              return (
-                <div key={l.id} className="grid grid-cols-7 gap-2 py-2 text-sm">
-                  <div>{v ? `${v.marque || v.brand || ""} ${v.modele || v.model || ""}` : l.vehicleId}</div>
-                  <div>{l.driver || "-"}</div>
-                  <div>{l.quantity} L</div>
-                  <div>{l.price} DH</div>
-                  <div>{l.station || "-"}</div>
-                  <div>{new Date(l.date).toLocaleDateString()}</div>
-                  <div>{l.odometer ? `${l.odometer} km` : "-"}</div>
+          {isMobile ? (
+            <div className="space-y-3">
+              {logs.map((l) => {
+                const v = vehicles.find((x) => x.id === l.vehicleId);
+                return (
+                  <div key={l.id} className="p-3 border rounded-lg space-y-2 bg-card text-card-foreground shadow-sm">
+                    <div className="flex justify-between items-start">
+                      <div className="font-semibold text-sm">
+                        {v ? `${v.marque || v.brand || ""} ${v.modele || v.model || ""}` : l.vehicleId}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(l.date).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1 text-xs">
+                      <div><span className="text-muted-foreground">Chauffeur:</span> {l.driver || "-"}</div>
+                      <div><span className="text-muted-foreground">Station:</span> {l.station || "-"}</div>
+                      <div><span className="text-muted-foreground">Quantité:</span> {l.quantity} L</div>
+                      <div><span className="text-muted-foreground">Prix:</span> {l.price} DH</div>
+                      {l.odometer ? (
+                        <div className="col-span-2"><span className="text-muted-foreground">Compteur:</span> {l.odometer} km</div>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+              {gpsFuel.map((record) => (
+                <div key={record.id} className="p-3 border rounded-lg space-y-2 bg-card text-card-foreground shadow-sm">
+                  <div className="flex justify-between items-start">
+                    <div className="font-semibold text-sm">{record.deviceId}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {new Date(record.date).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1 text-xs">
+                    <div><span className="text-muted-foreground">Chauffeur:</span> SFT</div>
+                    <div><span className="text-muted-foreground">Station:</span> {record.station || "-"}</div>
+                    <div><span className="text-muted-foreground">Quantité:</span> {record.quantity} L</div>
+                    <div><span className="text-muted-foreground">Prix:</span> {record.price || 0} DH</div>
+                  </div>
                 </div>
-              );
-            })}
-            {gpsFuel.map((record) => (
-              <div key={record.id} className="grid grid-cols-7 gap-2 py-2 text-sm">
-                <div>{record.deviceId}</div>
-                <div>GPSwox</div>
-                <div>{record.quantity} L</div>
-                <div>{record.price || 0} DH</div>
-                <div>{record.station || "-"}</div>
-                <div>{new Date(record.date).toLocaleDateString()}</div>
-                <div>-</div>
+              ))}
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-7 gap-2 text-sm font-medium text-muted-foreground">
+                <div>Véhicule</div>
+                <div>Chauffeur</div>
+                <div>Quantité</div>
+                <div>Prix</div>
+                <div>Station</div>
+                <div>Date</div>
+                <div>Compteur</div>
               </div>
-            ))}
-          </div>
+              <div className="divide-y mt-2">
+                {logs.map((l) => {
+                  const v = vehicles.find((x) => x.id === l.vehicleId);
+                  return (
+                    <div key={l.id} className="grid grid-cols-7 gap-2 py-2 text-sm">
+                      <div>{v ? `${v.marque || v.brand || ""} ${v.modele || v.model || ""}` : l.vehicleId}</div>
+                      <div>{l.driver || "-"}</div>
+                      <div>{l.quantity} L</div>
+                      <div>{l.price} DH</div>
+                      <div>{l.station || "-"}</div>
+                      <div>{new Date(l.date).toLocaleDateString()}</div>
+                      <div>{l.odometer ? `${l.odometer} km` : "-"}</div>
+                    </div>
+                  );
+                })}
+                {gpsFuel.map((record) => (
+                  <div key={record.id} className="grid grid-cols-7 gap-2 py-2 text-sm">
+                    <div>{record.deviceId}</div>
+                    <div>SFT</div>
+                    <div>{record.quantity} L</div>
+                    <div>{record.price || 0} DH</div>
+                    <div>{record.station || "-"}</div>
+                    <div>{new Date(record.date).toLocaleDateString()}</div>
+                    <div>-</div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

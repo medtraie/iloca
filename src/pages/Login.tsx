@@ -42,7 +42,7 @@ const Login = () => {
   }
 
   return (
-    <div className="min-h-screen grid place-items-center px-4 bg-gradient-to-b from-background via-background to-background">
+    <div className="min-h-screen grid place-items-center px-4 bg-gradient-to-b from-background via-background to-background safe-pt safe-pb">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-3">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 w-fit">

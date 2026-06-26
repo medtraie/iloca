@@ -259,27 +259,27 @@ const VehicleFormDialog = ({ open, onOpenChange, onSave, vehicle }: VehicleFormD
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl p-0 overflow-hidden border-none bg-transparent shadow-none max-h-[95vh] flex flex-col">
-        <div className="bg-card/95 backdrop-blur-xl border border-primary/10 rounded-[var(--radius)] shadow-2xl overflow-hidden flex flex-col">
-          <div className="relative h-28 bg-primary/10 flex items-center px-8 shrink-0">
-            <div className="absolute top-0 right-0 p-6 opacity-10">
+      <DialogContent className="w-full sm:max-w-3xl p-0 overflow-hidden border-none bg-transparent shadow-none max-h-[98vh] sm:max-h-[95vh] flex flex-col">
+        <div className="bg-card/95 backdrop-blur-xl border border-primary/10 rounded-t-[var(--radius)] sm:rounded-[var(--radius)] shadow-2xl overflow-hidden flex flex-col h-full">
+          <div className="relative h-20 sm:h-28 bg-primary/10 flex items-center px-4 sm:px-8 shrink-0">
+            <div className="absolute top-0 right-0 p-6 opacity-10 hidden sm:block">
               <Car className="h-24 w-24" />
             </div>
-            <div className="flex items-center gap-4 relative z-10">
-              <div className="p-3 rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
-                <Car className="h-7 w-7" />
+            <div className="flex items-center gap-3 sm:gap-4 relative z-10">
+              <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+                <Car className="h-5 w-5 sm:h-7 sm:w-7" />
               </div>
               <div>
-                <h2 className="text-2xl font-black tracking-tight uppercase">
-                  {vehicle ? "Modifier Véhicule" : "Nouveau Véhicule"}
+                <h2 className="text-lg sm:text-2xl font-black tracking-tight uppercase leading-none">
+                  {vehicle ? "Modifier" : "Nouveau"} <span className="text-primary/60 hidden sm:inline">Véhicule</span>
                 </h2>
-                <p className="text-muted-foreground font-medium">Gestion des détails et caractéristiques techniques</p>
+                <p className="text-[10px] sm:text-sm text-muted-foreground font-medium mt-1">Détails et caractéristiques techniques</p>
               </div>
             </div>
           </div>
           
-          <form onSubmit={handleSubmit} className="p-8 space-y-8 overflow-y-auto custom-scrollbar">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <form onSubmit={handleSubmit} className="p-4 sm:p-8 space-y-6 sm:space-y-8 overflow-y-auto custom-scrollbar flex-1">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
               {/* Informations Générales */}
               <div className="space-y-6">
                 <div className="flex items-center gap-2 pb-2 border-b border-primary/10">
@@ -489,7 +489,7 @@ const VehicleFormDialog = ({ open, onOpenChange, onSave, vehicle }: VehicleFormD
                   {uploading && <div className="absolute inset-0 bg-background/60 backdrop-blur-sm rounded-[var(--radius)] flex items-center justify-center animate-pulse text-xs font-black text-primary uppercase">Téléchargement...</div>}
                 </div>
 
-                <div className="grid grid-cols-3 gap-3 max-h-32 overflow-y-auto pr-2 custom-scrollbar">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-32 overflow-y-auto pr-2 custom-scrollbar">
                   {photos.map((url, idx) => (
                     <div key={idx} className="relative group aspect-square rounded-[var(--radius)] overflow-hidden border border-primary/10">
                       <img src={url} alt={`vehicle-photo-${idx}`} className="h-full w-full object-cover" />
@@ -503,7 +503,7 @@ const VehicleFormDialog = ({ open, onOpenChange, onSave, vehicle }: VehicleFormD
                     </div>
                   ))}
                   {photos.length === 0 && (
-                    <div className="col-span-3 h-32 flex flex-col items-center justify-center border border-dashed border-primary/10 rounded-[var(--radius)] bg-muted/30 text-muted-foreground italic text-xs">
+                    <div className="col-span-2 sm:col-span-3 h-32 flex flex-col items-center justify-center border border-dashed border-primary/10 rounded-[var(--radius)] bg-muted/30 text-muted-foreground italic text-xs">
                       Aucune photo ajoutée
                     </div>
                   )}
@@ -609,12 +609,12 @@ const VehicleFormDialog = ({ open, onOpenChange, onSave, vehicle }: VehicleFormD
               </div>
             </div>
 
-            <div className="flex justify-end gap-4 pt-6 shrink-0 border-t border-primary/10">
+            <div className="flex flex-col sm:flex-row justify-end gap-3 pt-6 shrink-0 border-t border-primary/10">
               <Button 
                 type="button" 
                 variant="outline" 
                 onClick={() => onOpenChange(false)}
-                className="h-12 px-6 rounded-[var(--radius)] font-bold uppercase tracking-wider flex items-center gap-2"
+                className="h-11 sm:h-12 px-6 rounded-[var(--radius)] font-bold uppercase tracking-wider flex items-center justify-center gap-2 order-2 sm:order-1"
               >
                 <X className="h-4 w-4" />
                 Annuler
@@ -622,7 +622,7 @@ const VehicleFormDialog = ({ open, onOpenChange, onSave, vehicle }: VehicleFormD
               <Button 
                 type="submit" 
                 disabled={uploading || docsUploading}
-                className="h-12 px-10 rounded-[var(--radius)] font-black uppercase tracking-widest bg-primary text-primary-foreground hover:opacity-90 shadow-lg shadow-primary/20 flex items-center gap-2"
+                className="h-11 sm:h-12 px-10 rounded-[var(--radius)] font-black uppercase tracking-widest bg-primary text-primary-foreground hover:opacity-90 shadow-lg shadow-primary/20 flex items-center justify-center gap-2 order-1 sm:order-2"
               >
                 {docsUploading ? (
                   <>

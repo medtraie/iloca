@@ -15,12 +15,14 @@ import { cn } from "@/lib/utils";
 import { useMiscellaneousExpenses, MiscellaneousExpense } from "@/hooks/useMiscellaneousExpenses";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import MiscellaneousExpensePDFExport from "@/components/MiscellaneousExpensePDFExport";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface MiscellaneousExpenseTableProps {
   expenses: MiscellaneousExpense[];
 }
 
 const MiscellaneousExpenseTable = ({ expenses }: MiscellaneousExpenseTableProps) => {
+  const isMobile = useIsMobile();
   const [searchTerm, setSearchTerm] = useState("");
   const [dateFilter, setDateFilter] = useState("all");
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined);
@@ -165,70 +167,134 @@ const MiscellaneousExpenseTable = ({ expenses }: MiscellaneousExpenseTableProps)
       </CardHeader>
 
       <CardContent>
-        <ScrollArea className="h-[600px]">
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Montant</TableHead>
-                  <TableHead>Mode</TableHead>
-                  <TableHead>Note</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredExpenses.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-gray-500">
-                      Aucune dépense diverse trouvée
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredExpenses.map((expense) => (
-                    <TableRow key={expense.id}>
-                      <TableCell className="font-medium">
-                        {format(parseISO(expense.expense_date), "dd/MM/yyyy", { locale: fr })}
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-medium">
-                          {expense.custom_expense_type || expense.expense_type}
+        <ScrollArea className="h-[400px] md:h-[600px]">
+          {isMobile ? (
+            <div className="space-y-3 animate-fade-in">
+              {filteredExpenses.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground italic text-sm">
+                  Aucune dépense diverse trouvée
+                </div>
+              ) : (
+                filteredExpenses.map((expense) => (
+                  <div key={expense.id} className="p-3 border rounded-lg space-y-2 bg-card text-card-foreground shadow-sm">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <span className="font-semibold text-[10px] text-muted-foreground block uppercase">Date</span>
+                        <span className="text-sm font-semibold">
+                          {format(parseISO(expense.expense_date), "dd/MM/yyyy", { locale: fr })}
                         </span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-semibold text-red-600">
+                      </div>
+                      <div className="text-right">
+                        <span className="font-semibold text-[10px] text-muted-foreground block uppercase">Montant</span>
+                        <span className="text-sm font-bold text-red-600">
                           -{expense.amount.toLocaleString()} MAD
                         </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={getPaymentMethodColor(expense.payment_method)}>
-                          {expense.payment_method}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="max-w-[200px]">
-                        <span className="text-sm text-gray-600 truncate">
-                          {expense.notes || '-'}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t">
+                      <div>
+                        <span className="text-muted-foreground block uppercase">Type</span>
+                        <span className="font-medium text-foreground">
+                          {expense.custom_expense_type || expense.expense_type}
                         </span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteExpense(expense.id)}
-                            className="text-red-600 hover:text-red-800 hover:bg-red-50"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block uppercase">Mode</span>
+                        <div className="mt-0.5">
+                          <Badge className={cn("text-[10px] px-1.5 py-0.5", getPaymentMethodColor(expense.payment_method))}>
+                            {expense.payment_method}
+                          </Badge>
                         </div>
+                      </div>
+                    </div>
+
+                    {expense.notes && (
+                      <div className="pt-2 border-t text-xs">
+                        <span className="text-muted-foreground block uppercase">Note</span>
+                        <p className="text-muted-foreground italic mt-0.5">{expense.notes}</p>
+                      </div>
+                    )}
+
+                    <div className="flex justify-end pt-2 border-t">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteExpense(expense.id)}
+                        className="text-red-600 hover:text-red-800 hover:bg-red-50 h-8 px-2"
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" /> Supprimer
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          ) : (
+            <div className="rounded-md border overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Montant</TableHead>
+                    <TableHead>Mode</TableHead>
+                    <TableHead>Note</TableHead>
+                    <TableHead className="w-[100px]">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredExpenses.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                        Aucune dépense diverse trouvée
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                  ) : (
+                    filteredExpenses.map((expense) => (
+                      <TableRow key={expense.id}>
+                        <TableCell className="font-medium">
+                          {format(parseISO(expense.expense_date), "dd/MM/yyyy", { locale: fr })}
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-medium">
+                            {expense.custom_expense_type || expense.expense_type}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-semibold text-red-600">
+                            -{expense.amount.toLocaleString()} MAD
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={getPaymentMethodColor(expense.payment_method)}>
+                            {expense.payment_method}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="max-w-[200px]">
+                          <span className="text-sm text-gray-600 truncate">
+                            {expense.notes || '-'}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteExpense(expense.id)}
+                              className="text-red-600 hover:text-red-800 hover:bg-red-50"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </ScrollArea>
       </CardContent>
     </Card>

@@ -242,7 +242,7 @@ const Repairs = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background px-4 py-6">
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background px-4 py-6 safe-pt safe-pb">
       <div className="max-w-7xl mx-auto space-y-8">
         <motion.div
           className="flex flex-col md:flex-row md:items-center justify-between gap-4"

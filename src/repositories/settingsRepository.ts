@@ -33,7 +33,7 @@ const requireSupabase = () => {
 };
 
 const readString = (value: unknown, fallback = "") => (typeof value === "string" ? value : fallback);
-const readNullableString = (value: unknown) => (typeof value === "string" ? value : null);
+const readNullableString = (value: unknown) => (typeof value === "string" && value !== "" ? value : null);
 
 async function listAppSettings(): Promise<Record<string, JsonValue>> {
   const supabase = requireSupabase();
@@ -51,7 +51,10 @@ async function upsertAppSettings(values: Record<string, JsonValue>): Promise<voi
   if (!entries.length) return;
 
   const supabase = requireSupabase();
-  const payload = entries.map(([setting_key, setting_value]) => ({ setting_key, setting_value }));
+  const payload = entries.map(([setting_key, setting_value]) => ({ 
+    setting_key, 
+    setting_value: setting_value === null ? "" : setting_value 
+  }));
   const { error } = await supabase.from(APP_SETTINGS_TABLE).upsert(payload, { onConflict: "user_id,setting_key" });
   if (error) throw error;
 }
@@ -71,16 +74,20 @@ async function getCompanySettings(): Promise<CompanySettings> {
 }
 
 async function saveCompanySettings(settings: CompanySettings): Promise<void> {
-  await upsertAppSettings({
-    companyName: settings.companyName,
-    companyLogo: settings.companyLogo,
-    companyAddress: settings.companyAddress,
-    companyPhone: settings.companyPhone,
-    companyFax: settings.companyFax,
-    companyGsm: settings.companyGsm,
-    companyEmail: settings.companyEmail,
-    brandColor: settings.brandColor || DEFAULT_BRAND_COLOR,
-  });
+  const payload: Record<string, JsonValue> = {};
+  
+  if (settings.companyName !== undefined) payload.companyName = settings.companyName;
+  if (settings.companyLogo !== undefined) payload.companyLogo = settings.companyLogo;
+  if (settings.companyAddress !== undefined) payload.companyAddress = settings.companyAddress;
+  if (settings.companyPhone !== undefined) payload.companyPhone = settings.companyPhone;
+  if (settings.companyFax !== undefined) payload.companyFax = settings.companyFax;
+  if (settings.companyGsm !== undefined) payload.companyGsm = settings.companyGsm;
+  if (settings.companyEmail !== undefined) payload.companyEmail = settings.companyEmail;
+  if (settings.brandColor !== undefined) payload.brandColor = settings.brandColor || DEFAULT_BRAND_COLOR;
+
+  if (Object.keys(payload).length > 0) {
+    await upsertAppSettings(payload);
+  }
 }
 
 async function getBackupPreferences(): Promise<BackupPreferences> {

@@ -151,7 +151,7 @@ const Vehicles = () => {
   }
 
   return (
-    <div className="p-8 space-y-10 pb-20">
+    <div className="p-8 space-y-10 pb-20 safe-pt safe-pb">
       {/* Header Section */}
       <motion.div 
         className="flex flex-col md:flex-row md:items-center justify-between gap-6"

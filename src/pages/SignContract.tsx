@@ -97,6 +97,37 @@ const SignContract = () => {
     }
   };
 
+  const startDrawingTouch = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    setIsDrawing(true);
+    const canvas = canvasRef.current;
+    const rect = canvas?.getBoundingClientRect();
+    const touch = e.touches[0];
+    if (canvas && rect && touch) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.beginPath();
+        ctx.moveTo(touch.clientX - rect.left, touch.clientY - rect.top);
+      }
+    }
+  };
+
+  const drawTouch = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    if (!isDrawing) return;
+    
+    const canvas = canvasRef.current;
+    const rect = canvas?.getBoundingClientRect();
+    const touch = e.touches[0];
+    if (canvas && rect && touch) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.lineTo(touch.clientX - rect.left, touch.clientY - rect.top);
+        ctx.stroke();
+      }
+    }
+  };
+
   const stopDrawing = () => {
     setIsDrawing(false);
   };
@@ -200,7 +231,7 @@ const SignContract = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background px-4 py-6">
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background px-4 py-6 safe-pt safe-pb">
       <div className="max-w-4xl mx-auto">
         <Card className="mb-6 rounded-[var(--radius)] border border-primary/10 bg-card/95 shadow-2xl shadow-primary/10">
           <CardHeader>
@@ -268,6 +299,9 @@ const SignContract = () => {
                   onMouseMove={draw}
                   onMouseUp={stopDrawing}
                   onMouseLeave={stopDrawing}
+                  onTouchStart={startDrawingTouch}
+                  onTouchMove={drawTouch}
+                  onTouchEnd={stopDrawing}
                   style={{ touchAction: 'none' }}
                 />
                 <div className="mt-2 text-center">

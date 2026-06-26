@@ -218,8 +218,8 @@ export default function FleetMap() {
 
   const refreshGps = async () => {
     await refetch();
-    if (!error) toast.success("Données GPSwox synchronisées");
-    else toast.error("Synchronisation GPSwox échouée");
+    if (!error) toast.success("Données SFT synchronisées");
+    else toast.error("Synchronisation SFT échouée");
   };
 
   const stopPlayback = () => {
@@ -443,7 +443,7 @@ export default function FleetMap() {
       <CardHeader className="pb-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-1">
-            <CardTitle className="text-xl font-semibold">Carte (GPSwox Live)</CardTitle>
+            <CardTitle className="text-xl font-semibold">Carte (SFT Live)</CardTitle>
             <div className="text-xs text-muted-foreground">
               Vue temps réel, filtres avancés, détails, historique et lecture animée du trajet.
             </div>
@@ -451,7 +451,7 @@ export default function FleetMap() {
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={refreshGps} disabled={isFetching}>
               <RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-              {isFetching ? "Sync..." : "Sync GPSwox"}
+              {isFetching ? "Sync..." : "Sync SFT"}
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -511,7 +511,7 @@ export default function FleetMap() {
 
           {error ? (
             <div className="absolute left-3 bottom-3 z-[600] rounded-2xl border bg-amber-500/90 text-white px-3 py-2 text-xs max-w-[calc(100%-1.5rem)]">
-              GPSwox Error: {error.message}
+              SFT Error: {error.message}
             </div>
           ) : null}
 

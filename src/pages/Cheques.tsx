@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -104,6 +105,7 @@ const roleViews: Record<UserRole, { id: SavedViewId; label: string }[]> = {
 };
 
 const Cheques = () => {
+  const isMobile = useIsMobile();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [bankTransfers, setBankTransfers] = useState<BankTransfer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -646,7 +648,7 @@ const Cheques = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background px-4 py-6">
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background px-4 py-6 safe-pt safe-pb">
       <div className="max-w-7xl mx-auto space-y-6">
         <motion.div
           className="flex flex-col md:flex-row md:items-center justify-between gap-4"
@@ -893,117 +895,173 @@ const Cheques = () => {
               </Card>
             ))}
           </motion.div>
-        ) : (
-          <>
-            <motion.div className="md:hidden space-y-3" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.08 }}>
-              {filteredChecks.length === 0 ? (
-                <Card><CardContent className="py-8 text-center text-muted-foreground">Aucun chèque trouvé</CardContent></Card>
-              ) : (
-                filteredChecks.map((check) => (
+        ) : isMobile ? (
+          <motion.div className="space-y-3" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.08 }}>
+            {filteredChecks.length === 0 ? (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">Aucun chèque trouvé</CardContent></Card>
+            ) : (
+              filteredChecks.map((check) => {
+                const priority = getPriorityLevel(check);
+                const status = check.checkDepositStatus || "non encaissé";
+                const delayDays = getDelayDays(check);
+                return (
                   <Card key={check.id}>
                     <CardContent className="p-4 space-y-3">
                       <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="font-semibold">{check.checkName || "-"}</p>
-                          <p className="text-xs text-muted-foreground">{check.contractNumber} • {check.checkReference || "-"}</p>
+                        <div className="space-y-1">
+                          <p className="font-semibold text-sm">{check.checkName || "Bénéficiaire inconnu"}</p>
+                          <div className="flex flex-wrap gap-1 items-center">
+                            <Badge variant="outline" className="text-[10px]">{check.sourceType === "reparation" ? "Réparation" : "Contrat"}</Badge>
+                            <Badge className={cn("text-[10px]", check.checkDirection === "reçu" ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-indigo-100 text-indigo-700 border-indigo-200")}>
+                              {check.checkDirection || "reçu"}
+                            </Badge>
+                            <Badge className={cn("text-[10px]", priorityLabelClass[priority])}>{priority}</Badge>
+                          </div>
                         </div>
-                        <Badge className={statusLabelClass[check.checkDepositStatus || "non encaissé"]}>{check.checkDepositStatus || "non encaissé"}</Badge>
+                        <Badge className={cn("text-xs", statusLabelClass[status])}>{status}</Badge>
                       </div>
-                      <div className="text-sm">{check.amount.toLocaleString()} MAD</div>
-                      <div className="text-xs text-muted-foreground">Risque {check.riskScore} • {getDelayDays(check)} j</div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs border-t border-b py-2">
+                        <div>
+                          <span className="text-muted-foreground block">N° chèque:</span>
+                          <span className="font-medium">{check.checkReference || "-"}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block">Contrat:</span>
+                          <span className="font-medium">{check.contractNumber}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block">Date chèque:</span>
+                          <span className="font-medium">{format(new Date(check.paymentDate), "dd/MM/yyyy")}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block">Encaissement:</span>
+                          <span className="font-medium">{check.checkDepositDate ? format(new Date(check.checkDepositDate), "dd/MM/yyyy") : "-"}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block">Délai:</span>
+                          <span className="font-medium">{delayDays > 0 ? `Retard ${delayDays} j` : delayDays === 0 ? "Aujourd'hui" : `J${delayDays}`}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block">Score risque:</span>
+                          <span className="font-medium">{check.riskScore}/100</span>
+                        </div>
+                      </div>
+
+                      <div className="text-sm font-bold text-right text-primary">
+                        {check.amount.toLocaleString()} MAD
+                      </div>
+
                       {renderTimeline(check)}
+
+                      <div className="flex items-center justify-between pt-2 border-t text-xs">
+                        <div className="flex items-center gap-1">
+                          <span className="text-muted-foreground mr-1">Relance:</span>
+                          <Button variant="outline" size="sm" className="h-7 w-7 p-0 text-[10px]" disabled={!check.canEdit} onClick={() => sendRelance(check.id, "1ère")}>1</Button>
+                          <Button variant="outline" size="sm" className="h-7 w-7 p-0 text-[10px]" disabled={!check.canEdit} onClick={() => sendRelance(check.id, "2ème")}>2</Button>
+                          <Button variant="outline" size="sm" className="h-7 w-7 p-0 text-[10px]" disabled={!check.canEdit} onClick={() => sendRelance(check.id, "finale")}>F</Button>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => handleEditCheck(check)} className="h-8 px-2 text-blue-600 hover:bg-blue-50 hover:text-blue-700" title="Modifier" disabled={!check.canEdit}>
+                            <Edit className="h-3.5 w-3.5 mr-1" /> Modifier
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => handleDeleteCheck(check)} className="h-8 px-2 text-red-600 hover:bg-red-50 hover:text-red-700" title="Supprimer" disabled={!check.canEdit}>
+                            <Trash2 className="h-3.5 w-3.5 mr-1" /> Supprimer
+                          </Button>
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
-                ))
-              )}
-            </motion.div>
-
-            <motion.div className="hidden md:block" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.08 }}>
-              <Card>
-                <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5" />Liste des chèques ({filteredChecks.length})</CardTitle></CardHeader>
-                <CardContent>
-                  <div className="rounded-md border overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          {visibleColumns.includes("selection") && (
-                            <TableHead>
-                              <Checkbox checked={allSelectableVisibleIds.length > 0 && selectedChecks.length === allSelectableVisibleIds.length} onCheckedChange={toggleSelectAllVisible} />
-                            </TableHead>
-                          )}
-                          {visibleColumns.includes("name") && <TableHead>Nom complet</TableHead>}
-                          {visibleColumns.includes("contract") && <TableHead>N° Contrat</TableHead>}
-                          {visibleColumns.includes("source") && <TableHead>Origine</TableHead>}
-                          {visibleColumns.includes("reference") && <TableHead>Référence</TableHead>}
-                          {visibleColumns.includes("paymentDate") && <TableHead>Date chèque</TableHead>}
-                          {visibleColumns.includes("depositDate") && <TableHead>Date encaissement</TableHead>}
-                          {visibleColumns.includes("direction") && <TableHead>Direction</TableHead>}
-                          {visibleColumns.includes("status") && <TableHead>Statut</TableHead>}
-                          {visibleColumns.includes("amount") && <TableHead>Montant</TableHead>}
-                          {visibleColumns.includes("delay") && <TableHead>Délai</TableHead>}
-                          {visibleColumns.includes("priority") && <TableHead>Priorité</TableHead>}
-                          {visibleColumns.includes("risk") && <TableHead>Score risque</TableHead>}
-                          {visibleColumns.includes("timeline") && <TableHead>Timeline</TableHead>}
-                          {visibleColumns.includes("relance") && <TableHead>Relance</TableHead>}
-                          {visibleColumns.includes("actions") && <TableHead>Actions</TableHead>}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredChecks.length === 0 ? (
-                          <TableRow><TableCell colSpan={visibleColumns.length} className="text-center py-8 text-muted-foreground">Aucun chèque trouvé</TableCell></TableRow>
-                        ) : (
-                          filteredChecks.map((check) => {
-                            const priority = getPriorityLevel(check);
-                            const status = check.checkDepositStatus || "non encaissé";
-                            const delayDays = getDelayDays(check);
-                            return (
-                              <TableRow key={`${check.sourceType}-${check.id}`}>
-                                {visibleColumns.includes("selection") && (
-                                  <TableCell>
-                                    <Checkbox checked={selectedChecks.includes(check.id)} onCheckedChange={() => toggleSelectOne(check.id)} disabled={!canSelect(check)} />
-                                  </TableCell>
-                                )}
-                                {visibleColumns.includes("name") && <TableCell className="font-medium">{check.checkName || "-"}</TableCell>}
-                                {visibleColumns.includes("contract") && <TableCell>{check.contractNumber}</TableCell>}
-                                {visibleColumns.includes("source") && <TableCell><Badge variant="outline">{check.sourceType === "reparation" ? "Réparation" : "Contrat"}</Badge></TableCell>}
-                                {visibleColumns.includes("reference") && <TableCell>{check.checkReference || "-"}</TableCell>}
-                                {visibleColumns.includes("paymentDate") && <TableCell>{format(new Date(check.paymentDate), "dd/MM/yyyy")}</TableCell>}
-                                {visibleColumns.includes("depositDate") && <TableCell>{check.checkDepositDate ? format(new Date(check.checkDepositDate), "dd/MM/yyyy") : "-"}</TableCell>}
-                                {visibleColumns.includes("direction") && <TableCell><Badge className={check.checkDirection === "reçu" ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-indigo-100 text-indigo-700 border-indigo-200"}>{check.checkDirection || "reçu"}</Badge></TableCell>}
-                                {visibleColumns.includes("status") && <TableCell><Badge className={statusLabelClass[status]}>{status}</Badge></TableCell>}
-                                {visibleColumns.includes("amount") && <TableCell className="font-semibold">{check.amount.toLocaleString()} MAD</TableCell>}
-                                {visibleColumns.includes("delay") && <TableCell>{delayDays > 0 ? `Retard ${delayDays} j` : delayDays === 0 ? "Aujourd'hui" : `J${delayDays}`}</TableCell>}
-                                {visibleColumns.includes("priority") && <TableCell><Badge className={priorityLabelClass[priority]}>{priority}</Badge></TableCell>}
-                                {visibleColumns.includes("risk") && <TableCell><Badge variant="outline">{check.riskScore}/100</Badge></TableCell>}
-                                {visibleColumns.includes("timeline") && <TableCell>{renderTimeline(check)}</TableCell>}
-                                {visibleColumns.includes("relance") && (
-                                  <TableCell>
-                                    <div className="flex items-center gap-1">
-                                      <Button variant="outline" size="sm" className="h-7 px-2" disabled={!check.canEdit} onClick={() => sendRelance(check.id, "1ère")}>1</Button>
-                                      <Button variant="outline" size="sm" className="h-7 px-2" disabled={!check.canEdit} onClick={() => sendRelance(check.id, "2ème")}>2</Button>
-                                      <Button variant="outline" size="sm" className="h-7 px-2" disabled={!check.canEdit} onClick={() => sendRelance(check.id, "finale")}>F</Button>
-                                    </div>
-                                  </TableCell>
-                                )}
-                                {visibleColumns.includes("actions") && (
-                                  <TableCell>
-                                    <div className="flex items-center gap-2">
-                                      <Button variant="ghost" size="sm" onClick={() => handleEditCheck(check)} className="h-8 w-8 p-0 hover:bg-blue-50 hover:text-blue-700" title="Modifier" disabled={!check.canEdit}><Edit className="h-4 w-4" /></Button>
-                                      <Button variant="ghost" size="sm" onClick={() => handleDeleteCheck(check)} className="h-8 w-8 p-0 hover:bg-red-50 hover:text-red-700" title="Supprimer" disabled={!check.canEdit}><Trash2 className="h-4 w-4" /></Button>
-                                    </div>
-                                  </TableCell>
-                                )}
-                              </TableRow>
-                            );
-                          })
+                );
+              })
+            )}
+          </motion.div>
+        ) : (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.08 }}>
+            <Card>
+              <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5" />Liste des chèques ({filteredChecks.length})</CardTitle></CardHeader>
+              <CardContent>
+                <div className="rounded-md border overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        {visibleColumns.includes("selection") && (
+                          <TableHead>
+                            <Checkbox checked={allSelectableVisibleIds.length > 0 && selectedChecks.length === allSelectableVisibleIds.length} onCheckedChange={toggleSelectAllVisible} />
+                          </TableHead>
                         )}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </>
+                        {visibleColumns.includes("name") && <TableHead>Nom complet</TableHead>}
+                        {visibleColumns.includes("contract") && <TableHead>N° Contrat</TableHead>}
+                        {visibleColumns.includes("source") && <TableHead>Origine</TableHead>}
+                        {visibleColumns.includes("reference") && <TableHead>Référence</TableHead>}
+                        {visibleColumns.includes("paymentDate") && <TableHead>Date chèque</TableHead>}
+                        {visibleColumns.includes("depositDate") && <TableHead>Date encaissement</TableHead>}
+                        {visibleColumns.includes("direction") && <TableHead>Direction</TableHead>}
+                        {visibleColumns.includes("status") && <TableHead>Statut</TableHead>}
+                        {visibleColumns.includes("amount") && <TableHead>Montant</TableHead>}
+                        {visibleColumns.includes("delay") && <TableHead>Délai</TableHead>}
+                        {visibleColumns.includes("priority") && <TableHead>Priorité</TableHead>}
+                        {visibleColumns.includes("risk") && <TableHead>Score risque</TableHead>}
+                        {visibleColumns.includes("timeline") && <TableHead>Timeline</TableHead>}
+                        {visibleColumns.includes("relance") && <TableHead>Relance</TableHead>}
+                        {visibleColumns.includes("actions") && <TableHead>Actions</TableHead>}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredChecks.length === 0 ? (
+                        <TableRow><TableCell colSpan={visibleColumns.length} className="text-center py-8 text-muted-foreground">Aucun chèque trouvé</TableCell></TableRow>
+                      ) : (
+                        filteredChecks.map((check) => {
+                          const priority = getPriorityLevel(check);
+                          const status = check.checkDepositStatus || "non encaissé";
+                          const delayDays = getDelayDays(check);
+                          return (
+                            <TableRow key={`${check.sourceType}-${check.id}`}>
+                              {visibleColumns.includes("selection") && (
+                                <TableCell>
+                                  <Checkbox checked={selectedChecks.includes(check.id)} onCheckedChange={() => toggleSelectOne(check.id)} disabled={!canSelect(check)} />
+                                </TableCell>
+                              )}
+                              {visibleColumns.includes("name") && <TableCell className="font-medium">{check.checkName || "-"}</TableCell>}
+                              {visibleColumns.includes("contract") && <TableCell>{check.contractNumber}</TableCell>}
+                              {visibleColumns.includes("source") && <TableCell><Badge variant="outline">{check.sourceType === "reparation" ? "Réparation" : "Contrat"}</Badge></TableCell>}
+                              {visibleColumns.includes("reference") && <TableCell>{check.checkReference || "-"}</TableCell>}
+                              {visibleColumns.includes("paymentDate") && <TableCell>{format(new Date(check.paymentDate), "dd/MM/yyyy")}</TableCell>}
+                              {visibleColumns.includes("depositDate") && <TableCell>{check.checkDepositDate ? format(new Date(check.checkDepositDate), "dd/MM/yyyy") : "-"}</TableCell>}
+                              {visibleColumns.includes("direction") && <TableCell><Badge className={check.checkDirection === "reçu" ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-indigo-100 text-indigo-700 border-indigo-200"}>{check.checkDirection || "reçu"}</Badge></TableCell>}
+                              {visibleColumns.includes("status") && <TableCell><Badge className={statusLabelClass[status]}>{status}</Badge></TableCell>}
+                              {visibleColumns.includes("amount") && <TableCell className="font-semibold">{check.amount.toLocaleString()} MAD</TableCell>}
+                              {visibleColumns.includes("delay") && <TableCell>{delayDays > 0 ? `Retard ${delayDays} j` : delayDays === 0 ? "Aujourd'hui" : `J${delayDays}`}</TableCell>}
+                              {visibleColumns.includes("priority") && <TableCell><Badge className={priorityLabelClass[priority]}>{priority}</Badge></TableCell>}
+                              {visibleColumns.includes("risk") && <TableCell><Badge variant="outline">{check.riskScore}/100</Badge></TableCell>}
+                              {visibleColumns.includes("timeline") && <TableCell>{renderTimeline(check)}</TableCell>}
+                              {visibleColumns.includes("relance") && (
+                                <TableCell>
+                                  <div className="flex items-center gap-1">
+                                    <Button variant="outline" size="sm" className="h-7 px-2" disabled={!check.canEdit} onClick={() => sendRelance(check.id, "1ère")}>1</Button>
+                                    <Button variant="outline" size="sm" className="h-7 px-2" disabled={!check.canEdit} onClick={() => sendRelance(check.id, "2ème")}>2</Button>
+                                    <Button variant="outline" size="sm" className="h-7 px-2" disabled={!check.canEdit} onClick={() => sendRelance(check.id, "finale")}>F</Button>
+                                  </div>
+                                </TableCell>
+                              )}
+                              {visibleColumns.includes("actions") && (
+                                <TableCell>
+                                  <div className="flex items-center gap-2">
+                                    <Button variant="ghost" size="sm" onClick={() => handleEditCheck(check)} className="h-8 w-8 p-0 hover:bg-blue-50 hover:text-blue-700" title="Modifier" disabled={!check.canEdit}><Edit className="h-4 w-4" /></Button>
+                                    <Button variant="ghost" size="sm" onClick={() => handleDeleteCheck(check)} className="h-8 w-8 p-0 hover:bg-red-50 hover:text-red-700" title="Supprimer" disabled={!check.canEdit}><Trash2 className="h-4 w-4" /></Button>
+                                  </div>
+                                </TableCell>
+                              )}
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
         )}
 
         <CheckEditDialog open={editDialogOpen} onOpenChange={setEditDialogOpen} check={editingCheck} onSave={handleSaveCheck} />

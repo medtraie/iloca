@@ -213,9 +213,9 @@ export default function Analytics() {
       if (result.error) {
         throw result.error;
       }
-      toast.success("Analytics GPSwox synchronisées");
+      toast.success("Analytics SFT synchronisées");
     } catch {
-      toast.error("Erreur de synchronisation GPSwox");
+      toast.error("Erreur de synchronisation SFT");
     }
   };
 
@@ -229,7 +229,7 @@ export default function Analytics() {
       setFuelRecords(fuel);
       setEvents(evt);
     } catch {
-      toast.error("Erreur lors du chargement des détails GPSwox");
+      toast.error("Erreur lors du chargement des détails SFT");
     } finally {
       setGpsDetailsLoading(false);
     }
@@ -317,7 +317,7 @@ export default function Analytics() {
 
       <div className="flex justify-end">
         <Button variant="outline" onClick={syncGpsAnalytics} disabled={gpsSyncing}>
-          {gpsSyncing ? "Sync..." : "Sync GPSwox"}
+          {gpsSyncing ? "Sync..." : "Sync SFT"}
         </Button>
       </div>
 

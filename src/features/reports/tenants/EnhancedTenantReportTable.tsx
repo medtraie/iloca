@@ -140,7 +140,7 @@ const EnhancedTenantReportTable = ({ tenantData }: EnhancedTenantReportTableProp
       </div>
 
       {/* Table */}
-      <div className="bg-card rounded-lg border border-border overflow-hidden">
+      <div className="bg-card rounded-lg border border-border overflow-x-auto">
         <Table>
           <TableHeader className="bg-gray-50">
             <TableRow>

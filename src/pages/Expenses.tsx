@@ -490,7 +490,7 @@ const Expenses = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/70 to-indigo-100/70 p-4 md:p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/70 to-indigo-100/70 p-4 md:p-6 safe-pt safe-pb">
       <div className="mx-auto max-w-7xl">
         <motion.div
           initial={shouldReduceMotion ? false : { opacity: 0, y: 12 }}

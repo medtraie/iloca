@@ -27,7 +27,7 @@ const nav = {
     { title: "Suivi", url: "/tracking", icon: Activity },
     { title: "Carburant", url: "/fuel", icon: Fuel },
     { title: "Alertes", url: "/alerts", icon: Bell },
-    { title: "Analytique", url: "/analytics", icon: ChartBar },
+    { title: "Analytique SFT", url: "/analytics", icon: ChartBar },
   ],
 };
 

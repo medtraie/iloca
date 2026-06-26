@@ -184,7 +184,7 @@ export const BankTransferDialog = ({
                   {/* Type de transfert */}
                   <div>
                     <Label>Type de transfert</Label>
-                    <div className="grid grid-cols-3 gap-2 mt-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
                       <Button
                         type="button"
                         variant={transferType === 'bank_to_cash' ? 'default' : 'outline'}

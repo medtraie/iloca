@@ -117,12 +117,33 @@ const Settings = () => {
 
   useEffect(() => {
     if (!companySettingsReady) return;
-    const timeoutId = window.setTimeout(() => {
-      settingsRepository.saveCompanySettings(companySettings).catch(() => {});
-    }, 350);
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        await settingsRepository.saveCompanySettings(companySettings);
+        // لا نحتاج لإظهار toast في كل حركة لون لتجنب الإزعاج
+      } catch (error) {
+        console.error("Error saving settings:", error);
+      }
+    }, 500);
 
     return () => window.clearTimeout(timeoutId);
   }, [companySettings, companySettingsReady]);
+
+  const handleManualSave = async () => {
+    try {
+      await settingsRepository.saveCompanySettings(companySettings);
+      toast({
+        title: "Paramètres enregistrés",
+        description: "Les modifications ont été sauvegardées avec succès.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error?.message || "Erreur lors de la sauvegarde",
+        variant: "destructive"
+      });
+    }
+  };
 
   const handleSaveGpsSettings = async () => {
     if (!gpsApiUrl || !gpsEmail || !gpsPassword) {
@@ -142,13 +163,13 @@ const Settings = () => {
       };
       await settingsRepository.saveGpsSettings(payload);
       toast({
-        title: "✅ GPS Tracker",
-        description: "Les parametres GPSwox ont ete enregistres avec succes"
+        title: "Parametres enregistres",
+        description: "Les parametres SFT ont ete enregistres avec succes"
       });
     } catch (error: any) {
       toast({
-        title: "❌ GPS Tracker",
-        description: error?.message || "Echec de l'enregistrement des parametres GPSwox",
+        title: "Erreur",
+        description: error?.message || "Echec de l'enregistrement des parametres SFT",
         variant: "destructive"
       });
     } finally {
@@ -579,9 +600,9 @@ const Settings = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-3xl font-bold">Parametres GPS Tracker</CardTitle>
+            <CardTitle className="text-3xl font-bold">Parametres SFT Tracker</CardTitle>
             <CardDescription className="text-lg">
-              Pour connecter le systeme de suivi GPSwox/TrackPremier, renseignez vos identifiants
+              Pour connecter le systeme de suivi SFT/TrackPremier, renseignez vos identifiants
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -809,6 +830,10 @@ const Settings = () => {
             <div className="flex gap-2">
               <Button variant="outline" onClick={handleResetOfficialColor}>
                 Activer le jaune officiel
+              </Button>
+              <Button onClick={handleManualSave} className="flex items-center gap-2">
+                <Save className="h-4 w-4" />
+                Sauvegarder la couleur
               </Button>
             </div>
             <div className="rounded-xl border p-4 bg-card">

@@ -515,7 +515,7 @@ const Customers = () => {
   );
 
   return (
-    <div className="space-y-8 pb-10">
+    <div className="space-y-8 pb-10 safe-pt safe-pb">
       <motion.div 
         className="flex flex-col md:flex-row md:items-center justify-between gap-4"
         initial={{ opacity: 0, y: 10 }}

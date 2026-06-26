@@ -1,11 +1,13 @@
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { HashRouter, Routes, Route, useLocation, Outlet, Navigate } from "react-router-dom";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { HashRouter, Routes, Route, useLocation, Outlet, Navigate, useNavigate } from "react-router-dom";
+import { SidebarProvider, SidebarInset, useSidebar } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { TopHeader } from "@/components/TopHeader";
+import { Home, FileText, Car, Receipt, Menu } from "lucide-react";
 import Index from "./pages/Index";
 import Contracts from "./pages/Contracts";
 import Customers from "./pages/Customers";
@@ -42,17 +44,43 @@ const queryClient = new QueryClient({
   },
 });
 
-function AnimatedPage({ children }: { children: ReactNode }) {
-  const reduce = useReducedMotion();
+function MobileBottomNav() {
+  const { toggleSidebar } = useSidebar();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const navItems = [
+    { label: "Bord", icon: Home, path: "/" },
+    { label: "Contrats", icon: FileText, path: "/contracts" },
+    { label: "Véhicules", icon: Car, path: "/vehicles" },
+    { label: "Revenus", icon: Receipt, path: "/recette" },
+  ];
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: reduce ? 0 : 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: reduce ? 0 : -8 }}
-      transition={{ duration: 0.25 }}
-    >
-      {children}
-    </motion.div>
+    <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur border-t px-2 py-2 pb-[calc(env(safe-area-inset-bottom,0px)+6px)] shadow-lg flex items-center justify-between">
+      {navItems.map((item) => {
+        const isActive = location.pathname === item.path;
+        return (
+          <button
+            key={item.path}
+            onClick={() => navigate(item.path)}
+            className={`flex flex-col items-center gap-1 flex-1 py-1 transition-colors ${
+              isActive ? "text-primary font-bold" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <item.icon className="h-5 w-5" />
+            <span className="text-[10px]">{item.label}</span>
+          </button>
+        );
+      })}
+      <button
+        onClick={toggleSidebar}
+        className="flex flex-col items-center gap-1 flex-1 py-1 text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <Menu className="h-5 w-5" />
+        <span className="text-[10px]">Menu</span>
+      </button>
+    </div>
   );
 }
 
@@ -61,7 +89,7 @@ function ProtectedLayout() {
   const { isAuthenticated, isReady } = useAuth();
 
   if (!isReady) {
-    return <div className="min-h-screen grid place-items-center text-muted-foreground">Chargement...</div>;
+    return <div className="min-h-screen grid place-items-center text-muted-foreground font-tajawal">Chargement...</div>;
   }
 
   if (!isAuthenticated) {
@@ -69,20 +97,28 @@ function ProtectedLayout() {
   }
 
   return (
-    <SidebarProvider>
-      <div className="h-dvh w-full flex bg-background overflow-hidden">
+    <SidebarProvider defaultOpen={true}>
+      <div className="flex min-h-screen w-full bg-background font-tajawal overflow-x-hidden pb-16 md:pb-0">
         <AppSidebar />
-        <div className="flex-1 flex flex-col h-full overflow-hidden">
+        <SidebarInset className="flex flex-col min-w-0 flex-1 overflow-hidden">
           <TopHeader />
-          <main className="flex-1 overflow-y-auto p-3 sm:p-6 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)]">
+          <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)]">
             <AnimatePresence mode="wait" initial={false}>
-              <motion.div key={location.pathname} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+              <motion.div
+                key={location.pathname}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className="w-full max-w-full"
+              >
                 <Outlet />
               </motion.div>
             </AnimatePresence>
           </main>
-        </div>
+        </SidebarInset>
       </div>
+      <MobileBottomNav />
       <Toaster />
       <Sonner />
       <CommandPalette />
@@ -93,7 +129,7 @@ function ProtectedLayout() {
 function PublicOnlyRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, isReady } = useAuth();
   if (!isReady) {
-    return <div className="min-h-screen grid place-items-center text-muted-foreground">Chargement...</div>;
+    return <div className="min-h-screen grid place-items-center text-muted-foreground font-tajawal">Chargement...</div>;
   }
   if (isAuthenticated) {
     return <Navigate to="/" replace />;

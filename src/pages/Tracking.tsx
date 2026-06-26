@@ -352,12 +352,12 @@ export default function Tracking() {
       if (mapped.length) {
         setGpsDevices(mapped);
         drawVehicleMarkers(mapped);
-        toast.success(`${mapped.length} véhicules GPSwox chargés`);
+        toast.success(`${mapped.length} véhicules SFT chargés`);
       } else {
-        toast.error("Aucun véhicule GPSwox trouvé");
+        toast.error("Aucun véhicule SFT trouvé");
       }
     } catch {
-      toast.error("Échec de synchronisation GPSwox");
+      toast.error("Échec de synchronisation SFT");
     } finally {
       setSyncing(false);
     }
@@ -521,7 +521,7 @@ export default function Tracking() {
     stopLive();
 
     if (!selectedDevice) {
-      toast.error("Choisissez un véhicule GPSwox");
+      toast.error("Choisissez un véhicule SFT");
       return;
     }
 
@@ -659,7 +659,7 @@ export default function Tracking() {
     stopPlayback();
 
     if (!selectedDevice) {
-      toast.error("Choisissez un véhicule GPSwox");
+      toast.error("Choisissez un véhicule SFT");
       return;
     }
 
@@ -778,15 +778,15 @@ export default function Tracking() {
         <CardHeader className="pb-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-1">
-              <CardTitle className="text-xl font-semibold">Suivi GPSwox — Trajet vidéo</CardTitle>
+              <CardTitle className="text-xl font-semibold">Suivi SFT — Trajet vidéo</CardTitle>
               <div className="text-xs text-muted-foreground">
-                Sélectionnez un véhicule GPSwox, choisissez une période, puis lancez la lecture animée du trajet.
+                Sélectionnez un véhicule SFT, choisissez une période, puis lanceز la lecture animée du trajet.
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" onClick={syncGps} disabled={syncing}>
                 <RefreshCw className={`mr-2 h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-                {syncing ? "Synchronisation..." : "Synchroniser GPSwox"}
+                {syncing ? "Synchronisation..." : "Synchroniser SFT"}
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -855,7 +855,7 @@ export default function Tracking() {
                 <div className="space-y-1 min-w-0">
                   <div className="font-semibold">Contrôles</div>
                   <div className="text-[11px] text-muted-foreground truncate">
-                    {selectedDevice ? `${selectedDevice.plate || selectedDevice.name}` : "Aucun vehicule GPSwox selectionne"}
+                    {selectedDevice ? `${selectedDevice.plate || selectedDevice.name}` : "Aucun vehicule SFT selectionne"}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -870,7 +870,7 @@ export default function Tracking() {
               </div>
 
               <div className="space-y-2">
-                <div className="text-xs font-medium">Véhicule (GPSwox uniquement)</div>
+                <div className="text-xs font-medium">Véhicule (SFT uniquement)</div>
                 <div className="grid gap-2">
                   <div className="relative">
                     <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -878,7 +878,7 @@ export default function Tracking() {
                   </div>
                   <Select value={vehicleId} onValueChange={(v) => setVehicleId(v)}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Sélectionner un véhicule GPSwox" />
+                      <SelectValue placeholder="Sélectionner un véhicule SFT" />
                     </SelectTrigger>
                     <SelectContent>
                       {filteredDevices.length ? (
@@ -896,7 +896,7 @@ export default function Tracking() {
                   </Select>
                   <div className="flex items-center justify-between text-xs">
                     <div className="text-muted-foreground truncate">
-                      {gpsDevices.length} véhicule(s) GPSwox
+                      {gpsDevices.length} véhicule(s) SFT
                     </div>
                     {selectedDevice ? <Badge variant="secondary">Lie</Badge> : <Badge variant="secondary">—</Badge>}
                   </div>
@@ -942,7 +942,7 @@ export default function Tracking() {
                   />
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  Ajoute automatiquement la dernière position GPSwox (toutes les ~8s) au trajet.
+                  Ajoute automatiquement la dernière position SFT (toutes les ~8s) au trajet.
                 </div>
               </div>
 

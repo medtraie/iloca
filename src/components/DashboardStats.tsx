@@ -89,10 +89,12 @@ export function DashboardStats() {
               <stat.icon className={`h-5 w-5 ${stat.colors.icon}`} />
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-black mb-2 tracking-tight">{stat.value}</div>
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-1 text-xs font-bold">
+          <CardContent className="p-4 pt-0">
+            <div className="text-2xl sm:text-3xl font-black mb-1 sm:mb-2 tracking-tight truncate" title={stat.value}>
+              {stat.value}
+            </div>
+            <div className="flex flex-col gap-0.5 sm:gap-1">
+              <div className="flex items-center gap-1 text-[10px] sm:text-xs font-bold truncate">
                 {stat.changeType === "positive" ? (
                   <TrendingUp className={`h-3.5 w-3.5 ${stat.colors.change}`} />
                 ) : (
