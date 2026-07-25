@@ -18,9 +18,10 @@ export const contractsRepository = {
 
   async create(contract: Omit<Contract, "id" | "created_at" | "updated_at">): Promise<Contract> {
     const supabase = getSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
     const { data, error } = await supabase
       .from("contracts")
-      .insert([contract])
+      .insert([{ ...contract, user_id: user?.id }])
       .select()
       .single();
     if (error) throw error;

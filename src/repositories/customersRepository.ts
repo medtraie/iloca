@@ -136,19 +136,15 @@ async function listCustomers(): Promise<Customer[]> {
 
 async function createCustomer(input: Omit<Customer, "id" | "created_at" | "updated_at">): Promise<Customer> {
   const supabase = requireSupabase();
-  const { data, error } = await supabase.from("clients").insert(buildCustomerPayload(input)).select("*").single();
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data, error } = await supabase.from("clients").insert({ ...buildCustomerPayload(input), user_id: user?.id }).select("*").single();
   if (error) throw error;
   return toCustomer(toClientProfile(data));
 }
 
 async function updateCustomer(id: string, updates: Partial<Customer>): Promise<Customer> {
   const supabase = requireSupabase();
-  const { data, error } = await supabase
-    .from("clients")
-    .update(buildCustomerPayload(updates))
-    .eq("id", id)
-    .select("*")
-    .single();
+  const { data, error } = await supabase.from("clients").update(buildCustomerPayload(updates)).eq("id", id).select("*").single();
   if (error) throw error;
   return toCustomer(toClientProfile(data));
 }
@@ -166,7 +162,8 @@ async function listTenants(): Promise<Tenant[]> {
 
 async function createTenant(input: Omit<Tenant, "id" | "createdAt" | "updatedAt">): Promise<Tenant> {
   const supabase = requireSupabase();
-  const { data, error } = await supabase.from("clients").insert(buildTenantPayload(input)).select("*").single();
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data, error } = await supabase.from("clients").insert({ ...buildTenantPayload(input), user_id: user?.id }).select("*").single();
   if (error) throw error;
   return toTenant(toClientProfile(data));
 }

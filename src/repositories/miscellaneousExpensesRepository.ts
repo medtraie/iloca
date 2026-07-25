@@ -12,9 +12,10 @@ export const miscellaneousExpensesRepository = {
 
   async create(expense: Omit<MiscellaneousExpense, "id" | "created_at">): Promise<MiscellaneousExpense> {
     const supabase = getSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
     const { data, error } = await supabase
       .from("miscellaneous_expenses")
-      .insert([expense])
+      .insert([{ ...expense, user_id: user?.id }])
       .select()
       .single();
     if (error) throw error;

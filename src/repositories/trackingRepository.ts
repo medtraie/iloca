@@ -25,6 +25,7 @@ export const trackingRepository = {
 
   async setPositions(vehicleId: string, positions: Position[]): Promise<void> {
     const supabase = getSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
     
     // First clear old positions
     await supabase.from("tracking_positions").delete().eq("vehicle_id", vehicleId);
@@ -33,6 +34,7 @@ export const trackingRepository = {
     
     // Then insert new ones
     const payload = positions.map(p => ({
+      user_id: user?.id,
       vehicle_id: vehicleId,
       timestamp: p.timestamp,
       lat: p.lat,
@@ -46,7 +48,9 @@ export const trackingRepository = {
 
   async addPosition(vehicleId: string, p: Position): Promise<void> {
     const supabase = getSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
     const { error } = await supabase.from("tracking_positions").insert([{
+      user_id: user?.id,
       vehicle_id: vehicleId,
       timestamp: p.timestamp,
       lat: p.lat,

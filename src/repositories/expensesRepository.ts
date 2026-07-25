@@ -34,7 +34,8 @@ export const expensesRepository = {
 
   async createExpense(expense: Omit<Expense, "id" | "created_at" | "updated_at">): Promise<Expense> {
     const supabase = getSupabaseClient();
-    const payload = buildExpenseWritePayload(expense);
+    const { data: { user } } = await supabase.auth.getUser();
+    const payload = { ...buildExpenseWritePayload(expense), user_id: user?.id };
     const { data, error } = await supabase.from("expenses").insert([payload]).select().single();
     if (error) throw new Error(error.message);
     return data as Expense;
@@ -65,7 +66,8 @@ export const expensesRepository = {
 
   async createMonthlyExpense(record: Omit<MonthlyExpense, "id" | "created_at" | "updated_at">): Promise<MonthlyExpense> {
     const supabase = getSupabaseClient();
-    const { data, error } = await supabase.from("monthly_expenses").insert([record]).select().single();
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data, error } = await supabase.from("monthly_expenses").insert([{ ...record, user_id: user?.id }]).select().single();
     if (error) throw new Error(error.message);
     return data as MonthlyExpense;
   },
@@ -87,7 +89,8 @@ export const expensesRepository = {
 
   async createBudget(budget: Omit<ExpenseBudget, "id" | "created_at" | "updated_at">): Promise<ExpenseBudget> {
     const supabase = getSupabaseClient();
-    const { data, error } = await supabase.from("expense_budgets").insert([budget]).select().single();
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data, error } = await supabase.from("expense_budgets").insert([{ ...budget, user_id: user?.id }]).select().single();
     if (error) throw new Error(error.message);
     return data as ExpenseBudget;
   },

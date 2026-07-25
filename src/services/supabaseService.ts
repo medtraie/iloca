@@ -47,7 +47,9 @@ export async function saveGpsSnapshot(snapshotType: string, payload: JsonValue) 
   const sb = getSupabaseClient();
   if (!sb) return;
   try {
+    const { data: { user } } = await sb.auth.getUser();
     await sb.from("gpswox_snapshots").insert({
+      user_id: user?.id,
       snapshot_type: snapshotType,
       payload,
       source: "gpswox"
@@ -62,7 +64,9 @@ export async function upsertGpsDevicesCache(
   const sb = getSupabaseClient();
   if (!sb || !devices.length) return;
   try {
-    await sb.from("gpswox_devices_cache").upsert(devices, { onConflict: "external_id" });
+    const { data: { user } } = await sb.auth.getUser();
+    const payload = devices.map(d => ({ ...d, user_id: user?.id }));
+    await sb.from("gpswox_devices_cache").upsert(payload, { onConflict: "user_id,external_id" });
   } catch {
   }
 }

@@ -51,7 +51,9 @@ async function upsertAppSettings(values: Record<string, JsonValue>): Promise<voi
   if (!entries.length) return;
 
   const supabase = requireSupabase();
+  const { data: { user } } = await supabase.auth.getUser();
   const payload = entries.map(([setting_key, setting_value]) => ({ 
+    user_id: user?.id,
     setting_key, 
     setting_value: setting_value === null ? "" : setting_value 
   }));

@@ -39,9 +39,11 @@ export const bankTransfersRepository = {
 
   async create(transfer: Omit<BankTransfer, "id" | "createdAt">): Promise<BankTransfer> {
     const supabase = getSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
     const { data, error } = await supabase
       .from("bank_transfers")
       .insert([{
+        user_id: user?.id,
         date: transfer.date,
         type: transfer.type,
         amount: transfer.amount,

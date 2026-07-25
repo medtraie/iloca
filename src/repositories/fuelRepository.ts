@@ -30,9 +30,11 @@ export const fuelRepository = {
 
   async create(log: Omit<FuelLog, "id">): Promise<FuelLog> {
     const supabase = getSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
     const { data, error } = await supabase
       .from("fuel_logs")
       .insert([{
+        user_id: user?.id,
         vehicle_id: log.vehicleId,
         driver: log.driver,
         quantity: log.quantity,

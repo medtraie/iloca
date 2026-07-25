@@ -27,9 +27,11 @@ export const auditLogsRepository = {
 
   async create(log: Omit<AuditLogEntry, "id" | "createdAt">): Promise<AuditLogEntry> {
     const supabase = getSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
     const { data, error } = await supabase
       .from("audit_logs")
       .insert([{
+        user_id: user?.id,
         action: log.action,
         details: log.details,
         amount: log.amount,

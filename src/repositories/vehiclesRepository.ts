@@ -105,13 +105,7 @@ async function createVehicle(input: Omit<Vehicle, "id" | "created_at" | "updated
     ...buildVehicleInsertPayload(input),
     user_id: authData.user.id,
   };
-  // #region debug-point A:repository-payload
-  fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"vehicle-save-supabase",runId:"pre-fix",hypothesisId:"A",location:"vehiclesRepository.ts:createVehicle",msg:"[DEBUG] createVehicle insert payload",data:{authUserId:authData.user?.id||null,brand:payload.brand,registration:payload.registration,year:payload.year,status:payload.status,photosCount:Array.isArray(payload.photos_urls)?payload.photos_urls.length:-1,documentsCount:Array.isArray(payload.documents_urls)?payload.documents_urls.length:-1},ts:Date.now()})}).catch(()=>{});
-  // #endregion
   const { data, error } = await supabase.from("vehicles").insert(payload).select("*").single();
-  // #region debug-point D:repository-response
-  fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"vehicle-save-supabase",runId:"pre-fix",hypothesisId:"D",location:"vehiclesRepository.ts:createVehicle",msg:"[DEBUG] createVehicle supabase response",data:{hasData:Boolean(data),errorMessage:error?.message||null,errorCode:error?.code||null,errorHint:error?.hint||null},ts:Date.now()})}).catch(()=>{});
-  // #endregion
   if (error) throw error;
   return mapVehicleRow(data);
 }
@@ -119,18 +113,12 @@ async function createVehicle(input: Omit<Vehicle, "id" | "created_at" | "updated
 async function updateVehicle(id: string, updates: Partial<Vehicle>): Promise<Vehicle> {
   const supabase = requireSupabase();
   const payload = buildVehicleUpdatePayload(updates);
-  // #region debug-point V1:vehicle-update-payload
-  fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"vehicle-save-refresh",runId:"pre-fix",hypothesisId:"H4",location:"vehiclesRepository.ts:updateVehicle",msg:"[DEBUG] updateVehicle payload",data:{id,updateKeys:Object.keys(updates||{}),brand:payload.brand,registration:payload.registration,status:payload.status,photosCount:Array.isArray(payload.photos_urls)?payload.photos_urls.length:-1,documentsCount:Array.isArray(payload.documents_urls)?payload.documents_urls.length:-1},ts:Date.now()})}).catch(()=>{});
-  // #endregion
   const { data, error } = await supabase
     .from("vehicles")
     .update(payload)
     .eq("id", id)
     .select("*")
     .single();
-  // #region debug-point V2:vehicle-update-response
-  fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"vehicle-save-refresh",runId:"pre-fix",hypothesisId:"H4",location:"vehiclesRepository.ts:updateVehicle",msg:"[DEBUG] updateVehicle response",data:{id,hasData:Boolean(data),errorMessage:error?.message||null,errorCode:error?.code||null},ts:Date.now()})}).catch(()=>{});
-  // #endregion
   if (error) throw error;
   return mapVehicleRow(data);
 }

@@ -89,27 +89,16 @@ const buildInvoicePayload = (invoice: Partial<Invoice>) => {
 
 async function listInvoices(): Promise<Invoice[]> {
   const supabase = requireSupabase();
-  // #region debug-point A:invoices-list-start
-  fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"factures-create-error",runId:"pre-fix",hypothesisId:"H2",location:"invoicesRepository.ts:listInvoices",msg:"[DEBUG] listInvoices start",data:{},ts:Date.now()})}).catch(()=>{});
-  // #endregion
   const { data, error } = await supabase.from("invoices").select("*").order("updated_at", { ascending: false });
-  // #region debug-point B:invoices-list-result
-  fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"factures-create-error",runId:"pre-fix",hypothesisId:"H2",location:"invoicesRepository.ts:listInvoices",msg:"[DEBUG] listInvoices result",data:{hasData:Boolean(data),count:Array.isArray(data)?data.length:null,errorCode:error?.code||null,errorMessage:error?.message||null,errorHint:error?.hint||null},ts:Date.now()})}).catch(()=>{});
-  // #endregion
   if (error) throw error;
   return (data || []).map(mapInvoiceRow);
 }
 
 async function createInvoice(input: Omit<Invoice, "id" | "created_at" | "updated_at">): Promise<Invoice> {
   const supabase = requireSupabase();
-  const payload = buildInvoicePayload(input);
-  // #region debug-point C:invoices-create-payload
-  fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"factures-create-error",runId:"pre-fix",hypothesisId:"H2",location:"invoicesRepository.ts:createInvoice",msg:"[DEBUG] createInvoice payload",data:{invoice_number:payload.invoice_number,invoice_date:payload.invoice_date,subtotal_ht:payload.subtotal_ht,total_ttc:payload.total_ttc,status:payload.status,payment_method:payload.payment_method},ts:Date.now()})}).catch(()=>{});
-  // #endregion
+  const { data: { user } } = await supabase.auth.getUser();
+  const payload = { ...buildInvoicePayload(input), user_id: user?.id };
   const { data, error } = await supabase.from("invoices").insert(payload).select("*").single();
-  // #region debug-point D:invoices-create-result
-  fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"factures-create-error",runId:"pre-fix",hypothesisId:"H2",location:"invoicesRepository.ts:createInvoice",msg:"[DEBUG] createInvoice result",data:{hasData:Boolean(data),errorCode:error?.code||null,errorMessage:error?.message||null,errorHint:error?.hint||null},ts:Date.now()})}).catch(()=>{});
-  // #endregion
   if (error) throw error;
   return mapInvoiceRow(data);
 }

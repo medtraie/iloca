@@ -38,9 +38,6 @@ export const paymentsRepository = {
     const supabase = getSupabaseClient();
     const { data: authData } = await supabase.auth.getUser();
     
-    // #region debug-point A:payments-create-payload
-    fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"recette-payment-refresh",runId:"pre-fix",hypothesisId:"A",location:"paymentsRepository.ts:create",msg:"[DEBUG] paymentsRepository create payload",data:{authUserId:authData.user?.id||null,contractId:payment.contractId||null,contractNumber:payment.contractNumber,amount:payment.amount,paymentMethod:payment.paymentMethod},ts:Date.now()})}).catch(()=>{});
-    // #endregion
     const { data, error } = await supabase
       .from("payments")
       .insert([{
@@ -67,9 +64,6 @@ export const paymentsRepository = {
       }])
       .select()
       .single();
-    // #region debug-point D:payments-create-response
-    fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"recette-payment-refresh",runId:"pre-fix",hypothesisId:"D",location:"paymentsRepository.ts:create",msg:"[DEBUG] paymentsRepository create response",data:{hasData:Boolean(data),errorMessage:error?.message||null,errorCode:error?.code||null,errorHint:error?.hint||null},ts:Date.now()})}).catch(()=>{});
-    // #endregion
     if (error) throw error;
     
     return {
