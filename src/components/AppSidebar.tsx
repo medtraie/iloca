@@ -1,5 +1,5 @@
 
-import { Home, FileText, Users, Car, Receipt, Wrench, BarChart3, FileSpreadsheet, Settings, CreditCard, Wallet, ChartBar, Map, Activity, Fuel, Bell } from "lucide-react";
+import { Home, FileText, Users, Car, Receipt, Wrench, BarChart3, FileSpreadsheet, Settings, CreditCard, Wallet, ChartBar, Map, Activity, Bell } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarHeader, SidebarFooter } from "@/components/ui/sidebar";
 
@@ -25,7 +25,6 @@ const nav = {
     { title: "Rapports", url: "/reports", icon: BarChart3 },
     { title: "Carte", url: "/map", icon: Map },
     { title: "Suivi", url: "/tracking", icon: Activity },
-    { title: "Carburant", url: "/fuel", icon: Fuel },
     { title: "Alertes", url: "/alerts", icon: Bell },
     { title: "Analytique SFT", url: "/analytics", icon: ChartBar },
   ],

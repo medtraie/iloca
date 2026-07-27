@@ -25,6 +25,8 @@ import {
   LocateFixed,
   MapPin,
   Pause,
+  PanelRightClose,
+  PanelRightOpen,
   Play,
   RefreshCw,
   Search,
@@ -142,6 +144,7 @@ export default function FleetMap() {
   const [selectedId, setSelectedId] = useState<string>("");
   const [panelTab, setPanelTab] = useState<"liste" | "tableau">("liste");
   const [mapTheme, setMapTheme] = useState<MapTheme>("light");
+  const [vehiclesPanelOpen, setVehiclesPanelOpen] = useState(true);
   const [followSelected, setFollowSelected] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playSpeedMs, setPlaySpeedMs] = useState(160);
@@ -433,6 +436,15 @@ export default function FleetMap() {
   }, [followSelected, isPlaying, selectedItem?.last?.lat, selectedItem?.last?.lng]);
 
   useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const id = window.setTimeout(() => {
+      map.invalidateSize();
+    }, 60);
+    return () => window.clearTimeout(id);
+  }, [vehiclesPanelOpen]);
+
+  useEffect(() => {
     return () => {
       stopPlayback();
     };
@@ -476,7 +488,7 @@ export default function FleetMap() {
         </div>
       </CardHeader>
 
-      <CardContent className="grid gap-3 lg:grid-cols-[1fr_420px]">
+      <CardContent className={`grid gap-3 ${vehiclesPanelOpen ? "lg:grid-cols-[1fr_420px]" : "lg:grid-cols-1"}`}>
         <div className="relative overflow-hidden rounded-3xl border bg-muted h-[40vh] lg:h-[calc(100dvh-16rem)]">
           <div className="absolute left-3 top-3 z-[600] flex flex-wrap gap-2">
             <div className="rounded-full bg-black/70 text-white text-[11px] px-2.5 py-1 inline-flex items-center gap-2">
@@ -504,6 +516,14 @@ export default function FleetMap() {
           <div className="absolute right-3 top-3 z-[600] flex items-center gap-2 rounded-2xl border bg-background/80 backdrop-blur px-3 py-2 shadow-sm">
             <div className="text-xs text-muted-foreground">Follow</div>
             <Switch checked={followSelected} onCheckedChange={(v) => setFollowSelected(v)} />
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setVehiclesPanelOpen((v) => !v)}
+              aria-label={vehiclesPanelOpen ? "Masquer la liste des véhicules" : "Afficher la liste des véhicules"}
+            >
+              {vehiclesPanelOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+            </Button>
             <Button size="icon" variant="ghost" onClick={focusSelected} disabled={!selectedItem?.hasPosition}>
               <LocateFixed className="h-4 w-4" />
             </Button>
@@ -518,6 +538,7 @@ export default function FleetMap() {
           <div ref={mapContainerRef} className="h-full w-full" />
         </div>
 
+        {vehiclesPanelOpen ? (
         <div className="rounded-3xl border bg-card overflow-hidden flex flex-col h-[48vh] lg:h-[calc(100dvh-16rem)]">
           <div className="p-4 border-b space-y-3">
             <div className="flex items-start justify-between gap-2">
@@ -810,6 +831,7 @@ export default function FleetMap() {
             </TabsContent>
           </Tabs>
         </div>
+        ) : null}
       </CardContent>
     </Card>
   );

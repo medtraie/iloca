@@ -423,9 +423,6 @@ export default function Alerts() {
           <Link to="/contracts" className="px-3 py-2 rounded-md bg-muted hover:bg-muted/80 text-sm">
             Contrats
           </Link>
-          <Link to="/fuel" className="px-3 py-2 rounded-md bg-muted hover:bg-muted/80 text-sm">
-            Carburant
-          </Link>
           <Link to="/tracking" className="px-3 py-2 rounded-md bg-muted hover:bg-muted/80 text-sm">
             Suivi
           </Link>

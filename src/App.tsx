@@ -31,7 +31,6 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
 const FleetMap = lazy(() => import("./pages/FleetMap"));
 const Tracking = lazy(() => import("./pages/Tracking"));
-const Fuel = lazy(() => import("./pages/Fuel"));
 const Alerts = lazy(() => import("./pages/Alerts"));
 const Analytics = lazy(() => import("./pages/Analytics"));
 
@@ -180,14 +179,6 @@ const App = () => {
                   element={
                     <Suspense fallback={<div className="p-6">Chargement…</div>}>
                       <Tracking />
-                    </Suspense>
-                  }
-                />
-                <Route
-                  path="fuel"
-                  element={
-                    <Suspense fallback={<div className="p-6">Chargement…</div>}>
-                      <Fuel />
                     </Suspense>
                   }
                 />

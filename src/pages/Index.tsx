@@ -8,7 +8,6 @@ import { useDashboardStats } from "@/hooks/useDashboardStats";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { alertsService } from "@/services/alertsService";
-import { fuelService } from "@/services/fuelService";
 import { contractsRepository } from "@/repositories/contractsRepository";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LineChart, Line, PieChart, Pie, Cell } from "recharts";
 import { motion, useReducedMotion } from "framer-motion";
@@ -81,7 +80,6 @@ const Index = () => {
 
   const [alerts, setAlerts] = useState<any[]>([]);
   const [counts, setCounts] = useState<any>({});
-  const [fuelMonthly, setFuelMonthly] = useState(0);
   const [contracts, setContracts] = useState<any[]>([]);
 
   const now = new Date();
@@ -134,7 +132,6 @@ const Index = () => {
       setAlerts(a);
       setCounts(alertsService.groupCount(a));
     });
-    fuelService.monthlyCost(now.getFullYear(), now.getMonth()).then(c => setFuelMonthly(c));
     contractsRepository.getAll().then(c => setContracts(c));
   }, []);
   const monthlyCosts = stats.monthlyExpenses + stats.monthlyRepairs;
@@ -641,22 +638,6 @@ const Index = () => {
                 <div className="text-[10px] font-bold uppercase tracking-widest mt-1">Infos</div>
               </div>
             </CardContent>
-          </Card>
-        </motion.div>
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.4 }}>
-          <Card className="border-none shadow-card rounded-[2rem] overflow-hidden bg-card flex flex-col justify-center p-8">
-            <div className="flex items-center gap-4 mb-4">
-              <div className="h-14 w-14 rounded-2xl bg-card-orange-bg flex items-center justify-center">
-                <FileText className="h-7 w-7 text-card-orange" />
-              </div>
-              <div>
-                <CardTitle className="text-lg font-bold">Carburant ce mois</CardTitle>
-                <CardDescription className="font-medium">Dépenses totales enregistrées</CardDescription>
-              </div>
-            </div>
-            <div className="text-5xl font-black tracking-tighter text-foreground">
-              {fuelMonthly.toLocaleString()} <span className="text-xl text-muted-foreground font-bold">DH</span>
-            </div>
           </Card>
         </motion.div>
       </div>

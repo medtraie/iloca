@@ -25,6 +25,8 @@ import {
   Layers,
   LocateFixed,
   Pause,
+  PanelRightClose,
+  PanelRightOpen,
   Play,
   RefreshCw,
   Route,
@@ -270,6 +272,7 @@ export default function Tracking() {
   const [fromDate, setFromDate] = useState<Date | undefined>(new Date(Date.now() - 24 * 3600 * 1000));
   const [toDate, setToDate] = useState<Date | undefined>(new Date());
   const [mapTheme, setMapTheme] = useState<MapTheme>("light");
+  const [controlsOpen, setControlsOpen] = useState(true);
   const [follow, setFollow] = useState(true);
   const [points, setPoints] = useState<HistoryPoint[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -381,6 +384,15 @@ export default function Tracking() {
       setDrawGeofence(false);
     });
   };
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const id = window.setTimeout(() => {
+      map.invalidateSize();
+    }, 60);
+    return () => window.clearTimeout(id);
+  }, [controlsOpen]);
 
   const setTileTheme = (theme: MapTheme) => {
     setMapTheme(theme);
@@ -811,7 +823,7 @@ export default function Tracking() {
           </div>
         </CardHeader>
 
-        <CardContent className="grid gap-3 lg:grid-cols-[1fr_420px]">
+        <CardContent className={`grid gap-3 ${controlsOpen ? "lg:grid-cols-[1fr_420px]" : "lg:grid-cols-1"}`}>
           <div className="relative overflow-hidden rounded-3xl border bg-muted h-[40vh] lg:h-[calc(100dvh-16rem)]">
             <div className="absolute left-3 top-3 z-[600] flex flex-wrap gap-2">
               <div className="rounded-full bg-black/70 text-white text-[11px] px-2.5 py-1 inline-flex items-center gap-2">
@@ -841,6 +853,14 @@ export default function Tracking() {
             <div className="absolute right-3 top-3 z-[600] flex items-center gap-2 rounded-2xl border bg-background/80 backdrop-blur px-3 py-2 shadow-sm">
               <div className="text-xs text-muted-foreground">Suivi auto</div>
               <Switch checked={follow} onCheckedChange={(v) => setFollow(v)} />
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setControlsOpen((v) => !v)}
+                aria-label={controlsOpen ? "Masquer les contrôles" : "Afficher les contrôles"}
+              >
+                {controlsOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+              </Button>
               <Button size="icon" variant="ghost" onClick={centerOnLast} disabled={!lastPoint}>
                 <LocateFixed className="h-4 w-4" />
               </Button>
@@ -849,6 +869,7 @@ export default function Tracking() {
             <div ref={mapContainerRef} className="h-full w-full" />
           </div>
 
+          {controlsOpen ? (
           <div className="rounded-3xl border bg-card overflow-hidden flex flex-col h-[52vh] lg:h-[calc(100dvh-16rem)]">
             <div className="p-4 border-b space-y-3 overflow-y-auto">
               <div className="flex items-start justify-between gap-2">
@@ -1086,6 +1107,7 @@ export default function Tracking() {
               </Sheet>
             </div>
           </div>
+          ) : null}
         </CardContent>
       </Card>
     </div>
