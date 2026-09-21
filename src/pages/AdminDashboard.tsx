@@ -11,6 +11,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -42,6 +43,13 @@ import {
   PauseCircle,
   Check,
   Radio,
+  Car,
+  FileText,
+  Receipt,
+  Wrench,
+  Activity,
+  CreditCard,
+  Building,
 } from "lucide-react";
 import { adminService, UserProfile, UserSession } from "@/services/adminService";
 import { useToast } from "@/hooks/use-toast";
@@ -72,14 +80,19 @@ export default function AdminDashboard() {
   const [newRole, setNewRole] = useState<UserProfile["role"]>("admin");
   const [newStatus, setNewStatus] = useState<UserProfile["status"]>("valide");
   const [newUserPassword, setNewUserPassword] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
 
   const loadData = async () => {
     try {
       const [u, s] = await Promise.all([adminService.getAllUsers(), adminService.getSessions()]);
-      setUsers(u);
-      setSessions(s);
+      if (Array.isArray(u) && u.length > 0) {
+        setUsers(u);
+      }
+      if (Array.isArray(s) && s.length > 0) {
+        setSessions(s);
+      }
     } catch (err) {
-      console.error(err);
+      console.error("Erreur chargement données admin:", err);
     } finally {
       setLoading(false);
     }
@@ -87,7 +100,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 10000);
+    const interval = setInterval(loadData, 8000);
     return () => clearInterval(interval);
   }, []);
 
@@ -118,7 +131,7 @@ export default function AdminDashboard() {
   }, [users]);
 
   const totalOpenSessions = useMemo(() => {
-    return sessions.filter((s) => s.is_active).length || sessions.length || 1;
+    return Math.max(1, sessions.filter((s) => s.is_active).length || sessions.length);
   }, [sessions]);
 
   const avgSessionsPerAccount = useMemo(() => {
@@ -131,10 +144,12 @@ export default function AdminDashboard() {
 
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
-      const matchesSearch =
-        u.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.company_name.toLowerCase().includes(searchTerm.toLowerCase());
+      const name = (u.full_name || "").toLowerCase();
+      const email = (u.email || "").toLowerCase();
+      const company = (u.company_name || "").toLowerCase();
+      const query = (searchTerm || "").toLowerCase().trim();
+
+      const matchesSearch = !query || name.includes(query) || email.includes(query) || company.includes(query);
 
       if (!matchesSearch) return false;
       if (statusFilter === "valide") return u.status === "valide";
@@ -145,24 +160,28 @@ export default function AdminDashboard() {
 
   // Actions
   const handleValidateUser = async (userId: string) => {
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, status: "valide" } : u)));
     await adminService.updateUserStatus(userId, "valide");
     toast({ title: "Compte validé", description: "L'utilisateur a désormais un accès complet à la plateforme." });
     await loadData();
   };
 
   const handleSuspendUser = async (userId: string) => {
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, status: "suspendu" } : u)));
     await adminService.updateUserStatus(userId, "suspendu");
     toast({ title: "Compte suspendu", description: "L'accès de cet utilisateur a été bloqué.", variant: "destructive" });
     await loadData();
   };
 
   const handleReactivateUser = async (userId: string) => {
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, status: "valide" } : u)));
     await adminService.updateUserStatus(userId, "valide");
     toast({ title: "Compte réactivé", description: "L'utilisateur peut de nouveau se connecter." });
     await loadData();
   };
 
   const handleRoleChange = async (userId: string, newRoleValue: UserProfile["role"]) => {
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: newRoleValue } : u)));
     await adminService.updateUserRole(userId, newRoleValue);
     toast({ title: "Rôle mis à jour", description: `Le rôle a été changé en : ${newRoleValue}` });
     await loadData();
@@ -170,7 +189,9 @@ export default function AdminDashboard() {
 
   const handleDeleteUserConfirmed = async () => {
     if (!userToDelete) return;
-    await adminService.deleteUser(userToDelete.id);
+    const idToDelete = userToDelete.id;
+    setUsers((prev) => prev.filter((u) => u.id !== idToDelete));
+    await adminService.deleteUser(idToDelete);
     toast({ title: "Utilisateur supprimé", description: "Le compte a été retiré définitivement." });
     setUserToDelete(null);
     await loadData();
@@ -179,28 +200,41 @@ export default function AdminDashboard() {
   const handleCreateUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEmail || !newFullName || !newCompany) {
-      toast({ title: "Erreur", description: "Veuillez remplir tous les champs obligatoires.", variant: "destructive" });
+      toast({ title: "Erreur", description: "Veuillez renseigner le nom, l'entreprise et l'email.", variant: "destructive" });
       return;
     }
 
-    await adminService.createUser({
-      full_name: newFullName,
-      company_name: newCompany,
-      email: newEmail,
-      phone: newPhone,
-      role: newRole,
-      status: newStatus,
-      password: newUserPassword || "123456",
-    });
+    setIsCreating(true);
+    try {
+      const created = await adminService.createUser({
+        full_name: newFullName,
+        company_name: newCompany,
+        email: newEmail,
+        phone: newPhone,
+        role: newRole,
+        status: newStatus,
+        password: newUserPassword || "123456",
+      });
 
-    toast({ title: "Utilisateur créé", description: "Le nouvel utilisateur a été enregistré avec succès." });
-    setIsAddUserOpen(false);
-    setNewFullName("");
-    setNewCompany("");
-    setNewEmail("");
-    setNewPhone("");
-    setNewUserPassword("");
-    await loadData();
+      // Mise à jour optimiste immédiate de la liste
+      setUsers((prev) => [created, ...prev.filter((p) => p.email.toLowerCase() !== created.email.toLowerCase())]);
+
+      toast({
+        title: "Utilisateur créé avec succès",
+        description: `Le compte pour ${created.full_name} (${created.company_name}) est prêt.`,
+      });
+
+      setIsAddUserOpen(false);
+      setNewFullName("");
+      setNewCompany("");
+      setNewEmail("");
+      setNewPhone("");
+      setNewUserPassword("");
+    } catch (err: any) {
+      toast({ title: "Erreur", description: err?.message || "Impossible de créer l'utilisateur.", variant: "destructive" });
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const handleUpdatePasswordSubmit = async (e: React.FormEvent) => {
@@ -395,7 +429,7 @@ export default function AdminDashboard() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
             {pendingUsers.map((pending) => {
-              const initials = pending.full_name
+              const initials = (pending.full_name || "U")
                 .split(" ")
                 .map((n) => n[0])
                 .join("")
@@ -471,14 +505,124 @@ export default function AdminDashboard() {
                   </p>
                 </div>
 
-                <Button
-                  onClick={() => setIsAddUserOpen(true)}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 self-start sm:self-auto"
-                  size="sm"
-                >
-                  <UserPlus className="h-4 w-4" />
-                  + Nouvel utilisateur
-                </Button>
+                {/* Bouton + Nouvel utilisateur avec DialogTrigger direct */}
+                <Dialog open={isAddUserOpen} onOpenChange={setIsAddUserOpen}>
+                  <DialogTrigger asChild>
+                    <Button
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 self-start sm:self-auto shadow-sm"
+                      size="sm"
+                    >
+                      <UserPlus className="h-4 w-4" />
+                      + Nouvel utilisateur
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="font-tajawal max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Ajouter un nouvel utilisateur</DialogTitle>
+                      <DialogDescription>
+                        Créez un compte entreprise directement pour donner accès à la plateforme.
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    <form onSubmit={handleCreateUserSubmit} className="space-y-3 pt-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="fullname">Nom complet</Label>
+                        <Input
+                          id="fullname"
+                          value={newFullName}
+                          onChange={(e) => setNewFullName(e.target.value)}
+                          placeholder="Ex: Youssef Bennani"
+                          required
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="company">Entreprise / Société</Label>
+                        <Input
+                          id="company"
+                          value={newCompany}
+                          onChange={(e) => setNewCompany(e.target.value)}
+                          placeholder="Ex: AutoRent SARL"
+                          required
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="email">Email</Label>
+                          <Input
+                            id="email"
+                            type="email"
+                            value={newEmail}
+                            onChange={(e) => setNewEmail(e.target.value)}
+                            placeholder="nom@societe.com"
+                            required
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label htmlFor="phone">Téléphone</Label>
+                          <Input
+                            id="phone"
+                            value={newPhone}
+                            onChange={(e) => setNewPhone(e.target.value)}
+                            placeholder="0661..."
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="password">Mot de passe temporaire</Label>
+                        <Input
+                          id="password"
+                          type="password"
+                          value={newUserPassword}
+                          onChange={(e) => setNewUserPassword(e.target.value)}
+                          placeholder="123456"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label>Rôle</Label>
+                          <Select value={newRole} onValueChange={(val: UserProfile["role"]) => setNewRole(val)}>
+                            <SelectTrigger className="text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="font-tajawal text-xs">
+                              <SelectItem value="admin">Administrateur</SelectItem>
+                              <SelectItem value="flotte">Gestionnaire Flotte</SelectItem>
+                              <SelectItem value="commercial">Commercial</SelectItem>
+                              <SelectItem value="comptable">Comptable</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label>Statut d'accès</Label>
+                          <Select value={newStatus} onValueChange={(val: UserProfile["status"]) => setNewStatus(val)}>
+                            <SelectTrigger className="text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="font-tajawal text-xs">
+                              <SelectItem value="valide">Validé / Actif direct</SelectItem>
+                              <SelectItem value="en_attente">En attente de validation</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <DialogFooter className="pt-3">
+                        <Button type="button" variant="outline" onClick={() => setIsAddUserOpen(false)} disabled={isCreating}>
+                          Annuler
+                        </Button>
+                        <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white" disabled={isCreating}>
+                          {isCreating ? "Création..." : "Créer l'utilisateur"}
+                        </Button>
+                      </DialogFooter>
+                    </form>
+                  </DialogContent>
+                </Dialog>
               </div>
 
               {/* Search & Filter pills */}
@@ -555,7 +699,7 @@ export default function AdminDashboard() {
                       </tr>
                     ) : (
                       filteredUsers.map((u) => {
-                        const isSelf = u.email === "medoraelis93@gmail.com";
+                        const isSelf = (u.email || "").toLowerCase() === "medoraelis93@gmail.com";
 
                         return (
                           <tr key={u.id} className="hover:bg-muted/10 transition-colors">
@@ -566,7 +710,7 @@ export default function AdminDashboard() {
                                   {u.company_name ? u.company_name[0].toUpperCase() : "E"}
                                 </div>
                                 <div>
-                                  <div className="font-bold text-foreground">{u.company_name}</div>
+                                  <div className="font-bold text-foreground">{u.company_name || "Entreprise"}</div>
                                   <div className="text-[11px] text-muted-foreground font-normal">
                                     {u.full_name} • {u.email}
                                   </div>
@@ -705,57 +849,68 @@ export default function AdminDashboard() {
           </Card>
         </div>
 
-        {/* Right Column: Matrice des Rôles & Sécurité (4 of 12 cols) */}
+        {/* Right Column: Matrice des Rôles & Sécurité (Sections exactes de l'application de location) */}
         <div className="lg:col-span-4 space-y-4">
           <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden">
             <CardHeader className="bg-muted/20 pb-3 border-b border-border/40">
               <div className="flex items-center gap-2">
-                <Shield className="h-4 w-4 text-primary" />
+                <Shield className="h-4 w-4 text-emerald-600" />
                 <CardTitle className="text-xs font-bold uppercase tracking-wider text-foreground">
                   Matrice des rôles & sécurité
                 </CardTitle>
               </div>
+              <p className="text-[11px] text-muted-foreground">
+                Permissions par module de l'ERP de location
+              </p>
             </CardHeader>
 
             <CardContent className="p-4 space-y-5 text-xs">
-              {/* Role 1: Admin Système */}
+              {/* Rôle 1: Administrateur Système / Gérant */}
               <div className="space-y-2">
                 <div className="px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-700 dark:text-rose-400 font-bold w-fit">
-                  Administrateur Système
+                  Administrateur Système (Gérant)
                 </div>
                 <ul className="space-y-1.5 pl-1 text-muted-foreground">
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Dashboard & KPI Généraux</span>
+                    <span className="font-semibold text-foreground/90">Tableau de bord & Rapports d'activité</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Catalogue Produits & Tarifs (CRUD)</span>
+                    <span>Gestion intégrale de la Flotte & Véhicules</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Gestion & Contrôle Flotte / Véhicules</span>
+                    <span>Gestion des Contrats & Signature électronique</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Facturation Ventes & Encaissements</span>
+                    <span>Fiches Clients, Locataires & Documents (CIN/Permis)</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Approvisionnements & Fournisseurs</span>
+                    <span>Réparations, Ordres d'Atelier & Suivi GPS en direct</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Contrôle Utilisateurs (Valider / Supprimer)</span>
+                    <span>Facturation, Revenus, Dépenses & Trésorerie</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Paramètres Fiscaux & Entreprise (ICE, RC)</span>
+                    <span>Gestion des Chèques de garantie & Caisses</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                    <span>Contrôle Utilisateurs (Valider, Suspendre, Supprimer)</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                    <span>Paramètres Fiscaux, Entreprise (ICE, RC) & Tarifs</span>
                   </li>
                 </ul>
               </div>
 
-              {/* Role 2: Gestionnaire de Stock / Flotte */}
+              {/* Rôle 2: Gestionnaire de Flotte */}
               <div className="space-y-2 pt-2 border-t border-border/40">
                 <div className="px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-700 dark:text-blue-400 font-bold w-fit">
                   Gestionnaire de Flotte
@@ -763,24 +918,32 @@ export default function AdminDashboard() {
                 <ul className="space-y-1.5 pl-1 text-muted-foreground">
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Dashboard & Suivi des Véhicules</span>
+                    <span className="font-semibold text-foreground/90">Tableau de bord Flotte & Disponibilité</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Atelier, Réparations & Entretiens</span>
+                    <span>Fiches Véhicules, Kilométrage & Cartes grises</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Suivi GPS & Dispositifs en direct</span>
+                    <span>Gestion des Réparations & Ateliers mécaniques</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Inventaires & Alertes d'échéances</span>
+                    <span>Carte de la flotte & Suivi GPS en temps réel</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                    <span>Alertes d'échéances (Assurance, Vidange, Visite)</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                    <span>Fiches de retour véhicules & Contrôle dégâts</span>
                   </li>
                 </ul>
               </div>
 
-              {/* Role 3: Vendeur / Commercial */}
+              {/* Rôle 3: Commercial / Agent de comptoir */}
               <div className="space-y-2 pt-2 border-t border-border/40">
                 <div className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold w-fit">
                   Vendeur / Commercial
@@ -788,36 +951,56 @@ export default function AdminDashboard() {
                 <ul className="space-y-1.5 pl-1 text-muted-foreground">
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Consultation du Parc & Tarifs</span>
+                    <span className="font-semibold text-foreground/90">Consultation du parc & Réservations</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Création & Signature des Contrats</span>
+                    <span>Création, Prolongation & Signature Contrats</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Fiches Clients & Gestion CRM</span>
+                    <span>Fiches Clients, CRM & Contrôle CIN / Permis</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Suivi des Règlements Commerciaux</span>
+                    <span>Enregistrement des Avances & Cautions</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                    <span>Émission des Devis & Factures de location</span>
                   </li>
                 </ul>
               </div>
 
-              {/* Role 4: Comptable / Audit */}
+              {/* Rôle 4: Comptable / Audit */}
               <div className="space-y-2 pt-2 border-t border-border/40">
                 <div className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-400 font-bold w-fit">
-                  Comptable / Audit
+                  Comptable / Audit Financier
                 </div>
                 <ul className="space-y-1.5 pl-1 text-muted-foreground">
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Rapports Financiers & TVA</span>
+                    <span className="font-semibold text-foreground/90">Suivi des Revenus & Recettes journalières</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Gestion des Chèques & Trésorerie</span>
+                    <span>Pointage & Saisie des Dépenses (Carburant, charges)</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                    <span>Facturation (Factures clients, Déclarations TVA)</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                    <span>Gestion des Chèques (Cautions & Encaissements)</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                    <span>Suivi de la Trésorerie, Comptes bancaires & Caisses</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                    <span>Rapports financiers, Balances & Exports</span>
                   </li>
                 </ul>
               </div>
@@ -825,116 +1008,6 @@ export default function AdminDashboard() {
           </Card>
         </div>
       </div>
-
-      {/* Modal: + Nouvel utilisateur */}
-      <Dialog open={isAddUserOpen} onOpenChange={setIsAddUserOpen}>
-        <DialogContent className="font-tajawal max-w-md">
-          <DialogHeader>
-            <DialogTitle>Ajouter un nouvel utilisateur</DialogTitle>
-            <DialogDescription>
-              Créez un compte directement sans passer par la console Supabase.
-            </DialogDescription>
-          </DialogHeader>
-
-          <form onSubmit={handleCreateUserSubmit} className="space-y-3 pt-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="fullname">Nom complet</Label>
-              <Input
-                id="fullname"
-                value={newFullName}
-                onChange={(e) => setNewFullName(e.target.value)}
-                placeholder="Ex: Youssef Bennani"
-                required
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="company">Entreprise / Société</Label>
-              <Input
-                id="company"
-                value={newCompany}
-                onChange={(e) => setNewCompany(e.target.value)}
-                placeholder="Ex: AutoRent SARL"
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  placeholder="nom@societe.com"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="phone">Téléphone</Label>
-                <Input
-                  id="phone"
-                  value={newPhone}
-                  onChange={(e) => setNewPhone(e.target.value)}
-                  placeholder="0661..."
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="password">Mot de passe temporaire</Label>
-              <Input
-                id="password"
-                type="password"
-                value={newUserPassword}
-                onChange={(e) => setNewUserPassword(e.target.value)}
-                placeholder="123456"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Rôle</Label>
-                <Select value={newRole} onValueChange={(val: UserProfile["role"]) => setNewRole(val)}>
-                  <SelectTrigger className="text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="font-tajawal text-xs">
-                    <SelectItem value="admin">Administrateur</SelectItem>
-                    <SelectItem value="flotte">Gestionnaire Flotte</SelectItem>
-                    <SelectItem value="commercial">Commercial</SelectItem>
-                    <SelectItem value="comptable">Comptable</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Statut d'accès</Label>
-                <Select value={newStatus} onValueChange={(val: UserProfile["status"]) => setNewStatus(val)}>
-                  <SelectTrigger className="text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="font-tajawal text-xs">
-                    <SelectItem value="valide">Validé / Actif direct</SelectItem>
-                    <SelectItem value="en_attente">En attente de validation</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <DialogFooter className="pt-3">
-              <Button type="button" variant="outline" onClick={() => setIsAddUserOpen(false)}>
-                Annuler
-              </Button>
-              <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                Créer l'utilisateur
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
 
       {/* Modal: Modifier mot de passe */}
       <Dialog open={isPasswordModalOpen} onOpenChange={setIsPasswordModalOpen}>
