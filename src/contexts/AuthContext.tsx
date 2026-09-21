@@ -1,4 +1,4 @@
-﻿import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import { getSupabaseClient, getSupabaseConfigError } from "@/services/supabaseService";
 import { adminService, UserProfile } from "@/services/adminService";
 
@@ -55,7 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: authId || profile?.id || "user-super-admin",
         email: normalizedEmail,
         fullName: profile?.full_name || meta?.full_name || "Super Administrateur",
-        companyName: profile?.company_name || meta?.company_name || "StockPro SARL",
+        companyName: profile?.company_name || meta?.company_name || "SFTLOCATION",
         phone: profile?.phone || meta?.phone || "0661000000",
         role: "super_admin",
         status: "valide",
@@ -217,7 +217,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: "user-super-admin",
         email: SUPER_ADMIN_EMAIL,
         fullName: "Super Administrateur",
-        companyName: "StockPro SARL",
+        companyName: "SFTLOCATION",
         phone: "0661000000",
         role: "super_admin",
         status: "valide",

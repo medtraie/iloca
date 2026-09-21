@@ -26,6 +26,7 @@ export interface UserSession {
 
 const STORAGE_KEY_PROFILES = "iloca:admin:profiles";
 const STORAGE_KEY_SESSIONS = "iloca:admin:sessions";
+const SUPER_ADMIN_ID = "5096a8c8-178e-4829-827d-b4881713435b";
 
 function generateUUID(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -38,18 +39,24 @@ function generateUUID(): string {
   });
 }
 
-// Données initiales reflétant la maquette de l'utilisateur
+function sanitizeText(val?: string, fallback = "SFTLOCATION"): string {
+  if (!val) return fallback;
+  if (val.toLowerCase().includes("stockpro")) return fallback;
+  return val;
+}
+
+// Données initiales nettoyées : AUCUNE mention de StockPro, uniquement SFTLOCATION
 const SEED_PROFILES: UserProfile[] = [
   {
-    id: "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+    id: SUPER_ADMIN_ID,
     email: "medoraelis93@gmail.com",
     full_name: "Super Administrateur",
-    company_name: "StockPro SARL",
+    company_name: "SFTLOCATION",
     phone: "0661000000",
     role: "super_admin",
     status: "valide",
-    last_login_at: "2026-09-21T22:25:25",
-    total_seconds_spent: 1830, // 30m 30s
+    last_login_at: "2026-09-21T23:24:12",
+    total_seconds_spent: 1830,
     created_at: "2026-09-01T10:00:00",
   },
   {
@@ -64,41 +71,17 @@ const SEED_PROFILES: UserProfile[] = [
     total_seconds_spent: 10,
     created_at: "2026-09-10T12:00:00",
   },
-  {
-    id: "c3d4e5f6-a7b8-9c0d-1e2f-3a4b5c6d7e8f",
-    email: "contact@stockpro.ma",
-    full_name: "StockPro SARL",
-    company_name: "StockPro SARL",
-    phone: "0522001122",
-    role: "admin",
-    status: "valide",
-    last_login_at: undefined,
-    total_seconds_spent: 0,
-    created_at: "2026-09-12T09:00:00",
-  },
-  {
-    id: "d4e5f6a7-b89c-0d1e-2f3a-4b5c6d7e8f9a",
-    email: "sms@gmail.com",
-    full_name: "somia",
-    company_name: "smar",
-    phone: "0670123456",
-    role: "admin",
-    status: "en_attente",
-    last_login_at: undefined,
-    total_seconds_spent: 0,
-    created_at: "2026-09-21T21:40:00",
-  },
 ];
 
 const SEED_SESSIONS: UserSession[] = [
   {
     id: "sess-1",
-    user_id: "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+    user_id: SUPER_ADMIN_ID,
     email: "medoraelis93@gmail.com",
     full_name: "Super Administrateur",
-    company_name: "StockPro SARL",
-    login_at: "2026-09-21T22:25:25",
-    duration_seconds: 1820,
+    company_name: "SFTLOCATION",
+    login_at: "2026-09-21T23:24:12",
+    duration_seconds: 1830,
     is_active: true,
   },
   {
@@ -113,6 +96,23 @@ const SEED_SESSIONS: UserSession[] = [
   },
 ];
 
+function cleanProfile(p: any): UserProfile {
+  const email = String(p.email || "").toLowerCase().trim();
+  const isSuper = email === "medoraelis93@gmail.com";
+  return {
+    id: String(p.id || generateUUID()),
+    email,
+    full_name: sanitizeText(p.full_name, isSuper ? "Super Administrateur" : "Utilisateur"),
+    company_name: sanitizeText(p.company_name, "SFTLOCATION"),
+    phone: p.phone || undefined,
+    role: (p.role || (isSuper ? "super_admin" : "admin")) as any,
+    status: (p.status || (isSuper ? "valide" : "en_attente")) as any,
+    last_login_at: p.last_login_at || undefined,
+    total_seconds_spent: Number(p.total_seconds_spent || 0),
+    created_at: p.created_at || new Date().toISOString(),
+  };
+}
+
 function getStoredProfiles(): UserProfile[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_PROFILES);
@@ -125,7 +125,7 @@ function getStoredProfiles(): UserProfile[] {
       saveStoredProfiles(SEED_PROFILES);
       return SEED_PROFILES;
     }
-    return parsed;
+    return parsed.map(cleanProfile);
   } catch {
     return SEED_PROFILES;
   }
@@ -133,11 +133,12 @@ function getStoredProfiles(): UserProfile[] {
 
 function saveStoredProfiles(profiles: UserProfile[]) {
   try {
-    if (Array.isArray(profiles) && profiles.length > 0) {
-      localStorage.setItem(STORAGE_KEY_PROFILES, JSON.stringify(profiles));
+    if (Array.isArray(profiles)) {
+      const sanitized = profiles.map(cleanProfile);
+      localStorage.setItem(STORAGE_KEY_PROFILES, JSON.stringify(sanitized));
     }
   } catch (e) {
-    console.error("Erreur sauvegarde profils:", e);
+    console.error("Erreur sauvegarde profils local:", e);
   }
 }
 
@@ -153,7 +154,10 @@ function getStoredSessions(): UserSession[] {
       saveStoredSessions(SEED_SESSIONS);
       return SEED_SESSIONS;
     }
-    return parsed;
+    return parsed.map((s: any) => ({
+      ...s,
+      company_name: sanitizeText(s.company_name, "SFTLOCATION"),
+    }));
   } catch {
     return SEED_SESSIONS;
   }
@@ -161,89 +165,153 @@ function getStoredSessions(): UserSession[] {
 
 function saveStoredSessions(sessions: UserSession[]) {
   try {
-    if (Array.isArray(sessions) && sessions.length > 0) {
-      localStorage.setItem(STORAGE_KEY_SESSIONS, JSON.stringify(sessions));
+    if (Array.isArray(sessions)) {
+      const sanitized = sessions.map((s) => ({
+        ...s,
+        company_name: sanitizeText(s.company_name, "SFTLOCATION"),
+      }));
+      localStorage.setItem(STORAGE_KEY_SESSIONS, JSON.stringify(sanitized));
     }
   } catch (e) {
-    console.error("Erreur sauvegarde sessions:", e);
+    console.error("Erreur sauvegarde sessions local:", e);
   }
 }
 
 export const adminService = {
+  /**
+   * Synchronise la liste des utilisateurs dans le Cloud Supabase (app_settings).
+   * Accessible de n'importe quel navigateur sans contrainte de clé étrangère.
+   */
+  async syncUsersToCloud(users: UserProfile[]): Promise<boolean> {
+    const supabase = getSupabaseClient();
+    if (!supabase) return false;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const targetUserId = user?.id || SUPER_ADMIN_ID;
+
+      const sanitized = users.map(cleanProfile);
+      const { error } = await supabase.from("app_settings").upsert(
+        {
+          user_id: targetUserId,
+          setting_key: "global_admin_users",
+          setting_value: JSON.stringify(sanitized),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,setting_key" }
+      );
+
+      if (error) {
+        console.warn("Erreur upsert app_settings global_admin_users:", error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.warn("Exception syncUsersToCloud:", err);
+      return false;
+    }
+  },
+
+  /**
+   * Récupère tous les utilisateurs depuis Supabase (Cloud) avec fallback local.
+   * La base Supabase fait autorité universelle entre tous les navigateurs.
+   */
   async getAllUsers(): Promise<UserProfile[]> {
-    const stored = getStoredProfiles();
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("*")
-          .order("created_at", { ascending: false });
+        // 1. Lire les utilisateurs enregistrés dans app_settings
+        const { data: settingsData, error } = await supabase
+          .from("app_settings")
+          .select("setting_value")
+          .eq("setting_key", "global_admin_users")
+          .maybeSingle();
 
-        if (!error && data && data.length > 0) {
-          const mapped: UserProfile[] = data.map((row: any) => ({
-            id: String(row.id),
-            email: String(row.email || "").toLowerCase(),
-            full_name: String(row.full_name || row.email?.split("@")[0] || "Utilisateur"),
-            company_name: String(row.company_name || "Entreprise"),
-            phone: row.phone || undefined,
-            role: (row.role || (row.email?.toLowerCase() === "medoraelis93@gmail.com" ? "super_admin" : "admin")) as any,
-            status: (row.status || (row.email?.toLowerCase() === "medoraelis93@gmail.com" ? "valide" : "en_attente")) as any,
-            last_login_at: row.last_login_at || undefined,
-            total_seconds_spent: Number(row.total_seconds_spent || 0),
-            created_at: row.created_at || new Date().toISOString(),
-          }));
+        let cloudUsers: UserProfile[] | null = null;
+        if (!error && settingsData?.setting_value) {
+          try {
+            const parsed = JSON.parse(settingsData.setting_value);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              cloudUsers = parsed.map(cleanProfile);
+            }
+          } catch (e) {
+            console.warn("Erreur parsing global_admin_users:", e);
+          }
+        }
 
-          // Fusionner intelligemment Supabase et stored pour ne rien perdre
-          const mergedMap = new Map<string, UserProfile>();
-          stored.forEach((p) => mergedMap.set(p.email.toLowerCase(), p));
-          mapped.forEach((p) => mergedMap.set(p.email.toLowerCase(), p));
-          const merged = Array.from(mergedMap.values());
-          saveStoredProfiles(merged);
-          return merged;
+        // 2. Vérifier les nouvelles demandes d'inscription depuis audit_logs
+        const { data: auditLogs } = await supabase
+          .from("audit_logs")
+          .select("id, payload, created_at")
+          .eq("action", "user_registration_request");
+
+        let activeList: UserProfile[] = cloudUsers ? [...cloudUsers] : [...getStoredProfiles()];
+
+        if (auditLogs && auditLogs.length > 0) {
+          let hasNew = false;
+          for (const item of auditLogs) {
+            const p = item.payload;
+            if (p && p.email) {
+              const emailNormalized = String(p.email).toLowerCase().trim();
+              if (!activeList.some((u) => u.email.toLowerCase() === emailNormalized)) {
+                activeList.push(
+                  cleanProfile({
+                    id: p.id || item.id,
+                    email: emailNormalized,
+                    full_name: p.full_name || "Utilisateur",
+                    company_name: sanitizeText(p.company_name, "SFTLOCATION"),
+                    phone: p.phone,
+                    role: p.role || "admin",
+                    status: p.status || "en_attente",
+                    total_seconds_spent: 0,
+                    created_at: p.created_at || item.created_at || new Date().toISOString(),
+                  })
+                );
+                hasNew = true;
+              }
+            }
+          }
+          if (hasNew) {
+            await adminService.syncUsersToCloud(activeList);
+          }
+        }
+
+        if (activeList.length > 0) {
+          saveStoredProfiles(activeList);
+          return activeList;
         }
       } catch (err) {
-        console.warn("Supabase profiles non accessible, utilisation du cache local", err);
+        console.warn("Erreur chargement Supabase getAllUsers:", err);
       }
     }
 
-    return stored;
+    return getStoredProfiles();
   },
 
+  /**
+   * Valider ou suspendre un compte
+   */
   async updateUserStatus(userId: string, status: "valide" | "en_attente" | "suspendu"): Promise<boolean> {
     const profiles = getStoredProfiles();
     const updated = profiles.map((p) => (p.id === userId ? { ...p, status } : p));
     saveStoredProfiles(updated);
-
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      try {
-        await supabase.from("profiles").update({ status, updated_at: new Date().toISOString() }).eq("id", userId);
-      } catch (err) {
-        console.warn("Erreur Supabase updateUserStatus:", err);
-      }
-    }
-
+    await adminService.syncUsersToCloud(updated);
     return true;
   },
 
+  /**
+   * Modifier le rôle d'un utilisateur
+   */
   async updateUserRole(userId: string, role: UserProfile["role"]): Promise<boolean> {
     const profiles = getStoredProfiles();
     const updated = profiles.map((p) => (p.id === userId ? { ...p, role } : p));
     saveStoredProfiles(updated);
-
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      try {
-        await supabase.from("profiles").update({ role, updated_at: new Date().toISOString() }).eq("id", userId);
-      } catch (err) {
-        console.warn("Erreur Supabase updateUserRole:", err);
-      }
-    }
-
+    await adminService.syncUsersToCloud(updated);
     return true;
   },
 
+  /**
+   * Créer un nouvel utilisateur (+ Nouvel utilisateur)
+   */
   async createUser(data: {
     full_name: string;
     company_name: string;
@@ -254,64 +322,93 @@ export const adminService = {
     password?: string;
   }): Promise<UserProfile> {
     const newId = generateUUID();
-    const newProfile: UserProfile = {
+    const newProfile: UserProfile = cleanProfile({
       id: newId,
       email: data.email.toLowerCase().trim(),
       full_name: data.full_name.trim(),
-      company_name: data.company_name.trim(),
+      company_name: sanitizeText(data.company_name, "SFTLOCATION"),
       phone: data.phone?.trim() || "",
       role: data.role || "admin",
       status: data.status || "valide",
       total_seconds_spent: 0,
       created_at: new Date().toISOString(),
-    };
+    });
 
-    // Sauvegarder immédiatement en local (garantit la réactivité 100%)
-    const profiles = getStoredProfiles();
-    const updated = [newProfile, ...profiles.filter((p) => p.email.toLowerCase() !== newProfile.email.toLowerCase())];
+    // 1. Sauvegarde locale immédiate
+    const currentUsers = getStoredProfiles();
+    const updated = [
+      newProfile,
+      ...currentUsers.filter((p) => p.email.toLowerCase() !== newProfile.email.toLowerCase()),
+    ];
     saveStoredProfiles(updated);
 
-    // Tenter d'insérer dans Supabase
+    // 2. Synchronisation Cloud Supabase
+    await adminService.syncUsersToCloud(updated);
+
+    // 3. Si création depuis un compte non-admin (ex: formulaire d'inscription sur /login)
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
-        await supabase.from("profiles").upsert({
-          id: newProfile.id,
-          email: newProfile.email,
-          full_name: newProfile.full_name,
-          company_name: newProfile.company_name,
-          phone: newProfile.phone,
-          role: newProfile.role,
-          status: newProfile.status,
-          total_seconds_spent: 0,
-          created_at: newProfile.created_at,
-          updated_at: newProfile.created_at,
-        });
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          await supabase.from("audit_logs").insert({
+            user_id: SUPER_ADMIN_ID,
+            action: "user_registration_request",
+            details: `Demande d'inscription: ${newProfile.email}`,
+            payload: newProfile,
+          });
+        }
       } catch (err) {
-        console.warn("Erreur insertion Supabase profile:", err);
+        console.warn("Erreur insertion audit_logs:", err);
       }
     }
 
     return newProfile;
   },
 
+  /**
+   * Supprimer définitivement un utilisateur.
+   * Il ne réapparaîtra jamais, même en ouvrant un autre navigateur.
+   */
   async deleteUser(userId: string): Promise<boolean> {
-    const profiles = getStoredProfiles();
-    const updated = profiles.filter((p) => p.id !== userId);
+    const currentUsers = getStoredProfiles();
+    const target = currentUsers.find((p) => p.id === userId);
+    const updated = currentUsers.filter((p) => p.id !== userId);
+
+    // 1. Mise à jour locale
     saveStoredProfiles(updated);
 
+    // 2. Mise à jour Cloud Supabase
+    await adminService.syncUsersToCloud(updated);
+
+    // 3. Nettoyer les demandes d'inscription dans audit_logs si existant
     const supabase = getSupabaseClient();
-    if (supabase) {
+    if (supabase && target) {
       try {
-        await supabase.from("profiles").delete().eq("id", userId);
+        const { data: logs } = await supabase
+          .from("audit_logs")
+          .select("id, payload")
+          .eq("action", "user_registration_request");
+
+        if (logs && logs.length > 0) {
+          for (const log of logs) {
+            const p = log.payload;
+            if (p && (p.id === userId || String(p.email).toLowerCase() === target.email.toLowerCase())) {
+              await supabase.from("audit_logs").delete().eq("id", log.id);
+            }
+          }
+        }
       } catch (err) {
-        console.warn("Erreur Supabase deleteUser:", err);
+        console.warn("Erreur nettoyage audit_logs deleteUser:", err);
       }
     }
 
     return true;
   },
 
+  /**
+   * Changer le mot de passe utilisateur
+   */
   async updateUserPassword(userId: string, newPassword: string): Promise<boolean> {
     const supabase = getSupabaseClient();
     if (supabase) {
@@ -324,48 +421,74 @@ export const adminService = {
     return true;
   },
 
+  /**
+   * Synchronise les sessions dans le Cloud Supabase
+   */
+  async syncSessionsToCloud(sessions: UserSession[]): Promise<boolean> {
+    const supabase = getSupabaseClient();
+    if (!supabase) return false;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const targetUserId = user?.id || SUPER_ADMIN_ID;
+
+      await supabase.from("app_settings").upsert(
+        {
+          user_id: targetUserId,
+          setting_key: "global_admin_sessions",
+          setting_value: JSON.stringify(sessions),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,setting_key" }
+      );
+      return true;
+    } catch (err) {
+      console.warn("Erreur syncSessionsToCloud:", err);
+      return false;
+    }
+  },
+
+  /**
+   * Récupère l'historique des sessions
+   */
   async getSessions(): Promise<UserSession[]> {
-    const stored = getStoredSessions();
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
-        const { data, error } = await supabase
-          .from("user_sessions_log")
-          .select("*")
-          .order("login_at", { ascending: false })
-          .limit(10);
+        const { data: row } = await supabase
+          .from("app_settings")
+          .select("setting_value")
+          .eq("setting_key", "global_admin_sessions")
+          .maybeSingle();
 
-        if (!error && data && data.length > 0) {
-          const mapped: UserSession[] = data.map((r: any) => ({
-            id: String(r.id),
-            user_id: String(r.user_id),
-            email: String(r.email || ""),
-            full_name: String(r.full_name || ""),
-            company_name: String(r.company_name || ""),
-            login_at: String(r.login_at || ""),
-            duration_seconds: Number(r.duration_seconds || 0),
-            is_active: Boolean(r.is_active),
-          }));
-          saveStoredSessions(mapped);
-          return mapped;
+        if (row?.setting_value) {
+          const parsed = JSON.parse(row.setting_value);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const clean = parsed.map((s: UserSession) => ({
+              ...s,
+              company_name: sanitizeText(s.company_name, "SFTLOCATION"),
+            }));
+            saveStoredSessions(clean);
+            return clean;
+          }
         }
       } catch (err) {
-        console.warn("Sessions Supabase non disponibles, fallback local", err);
+        console.warn("Erreur chargement cloud sessions:", err);
       }
     }
-
-    return stored;
+    return getStoredSessions();
   },
 
+  /**
+   * Enregistre une connexion active
+   */
   async recordLogin(user: { id: string; email: string; fullName: string; companyName?: string }): Promise<void> {
     const nowIso = new Date().toISOString();
     const profiles = getStoredProfiles();
     const updated = profiles.map((p) =>
-      p.email.toLowerCase() === user.email.toLowerCase()
-        ? { ...p, last_login_at: nowIso }
-        : p
+      p.email.toLowerCase() === user.email.toLowerCase() ? { ...p, last_login_at: nowIso } : p
     );
     saveStoredProfiles(updated);
+    await adminService.syncUsersToCloud(updated);
 
     const sessions = getStoredSessions();
     const newSession: UserSession = {
@@ -373,48 +496,24 @@ export const adminService = {
       user_id: user.id,
       email: user.email,
       full_name: user.fullName,
-      company_name: user.companyName || "Entreprise",
+      company_name: sanitizeText(user.companyName, "SFTLOCATION"),
       login_at: nowIso,
       duration_seconds: 0,
       is_active: true,
     };
-    saveStoredSessions([newSession, ...sessions.slice(0, 19)]);
-
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      try {
-        await supabase.from("profiles").update({ last_login_at: nowIso }).eq("id", user.id);
-        await supabase.from("user_sessions_log").insert({
-          user_id: user.id,
-          email: user.email,
-          full_name: user.fullName,
-          company_name: user.companyName || "Entreprise",
-          login_at: nowIso,
-          duration_seconds: 0,
-          is_active: true,
-        });
-      } catch {}
-    }
+    const updatedSessions = [newSession, ...sessions.slice(0, 19)];
+    saveStoredSessions(updatedSessions);
+    await adminService.syncSessionsToCloud(updatedSessions);
   },
 
+  /**
+   * Ajoute du temps actif au profil
+   */
   async addActiveTime(userId: string, seconds: number): Promise<void> {
     const profiles = getStoredProfiles();
     const updated = profiles.map((p) =>
       p.id === userId ? { ...p, total_seconds_spent: (p.total_seconds_spent || 0) + seconds } : p
     );
     saveStoredProfiles(updated);
-
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      try {
-        const user = profiles.find((p) => p.id === userId);
-        if (user) {
-          await supabase
-            .from("profiles")
-            .update({ total_seconds_spent: user.total_seconds_spent + seconds })
-            .eq("id", userId);
-        }
-      } catch {}
-    }
   },
 };

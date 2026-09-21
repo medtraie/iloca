@@ -1,4 +1,4 @@
-﻿-- ==============================================================================
+-- ==============================================================================
 -- SCRIPT SUPABASE : SUPER ADMINISTRATEUR & MULTI-TENANT ISOLATION (VERSION ROBUSTE)
 -- ==============================================================================
 -- Instructions : 
@@ -96,7 +96,7 @@ UPDATE public.profiles
 SET 
     role = 'super_admin',
     status = 'valide',
-    company_name = COALESCE(company_name, 'StockPro SARL')
+    company_name = COALESCE(company_name, 'SFTLOCATION')
 WHERE LOWER(email) = 'medoraelis93@gmail.com';
 
 -- 5. FONCTION VERIFICATION DU SUPER ADMIN
