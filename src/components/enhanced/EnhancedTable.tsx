@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { ChevronUp, ChevronDown, Search, Filter, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -34,6 +34,7 @@ interface EnhancedTableProps<T> {
   filterable?: boolean;
   className?: string;
   tableHeightClass?: string;
+  tableMinWidth?: string;
 }
 
 export function EnhancedTable<T extends { id: string | number }>({
@@ -51,7 +52,8 @@ export function EnhancedTable<T extends { id: string | number }>({
   searchable = true,
   filterable = false,
   className = "",
-  tableHeightClass = "h-[60vh] md:h-[600px]"
+  tableHeightClass = "h-[60vh] md:h-[600px]",
+  tableMinWidth = ""
 }: EnhancedTableProps<T>) {
   const [searchTerm, setSearchTerm] = useState("");
   const isMobile = useIsMobile();
@@ -195,9 +197,9 @@ export function EnhancedTable<T extends { id: string | number }>({
 
           {/* Tableau - desktop only */}
           <div className="hidden md:block">
-            <ScrollArea className={tableHeightClass}>
-              <div className="overflow-x-auto">
-                <Table>
+            <ScrollArea className={cn(tableHeightClass, "w-full")}>
+              <div className="min-w-full overflow-x-auto pb-3">
+                <Table className={cn("w-full", tableMinWidth)}>
                   <TableHeader>
                     <TableRow className="border-b-2 border-muted/30 bg-muted/10 hover:bg-muted/10">
                       {columns.map((column, index) => (
@@ -289,6 +291,7 @@ export function EnhancedTable<T extends { id: string | number }>({
                   </TableBody>
                 </Table>
               </div>
+              <ScrollBar orientation="horizontal" className="z-20 h-2.5 bg-muted/20" />
             </ScrollArea>
           </div>
 

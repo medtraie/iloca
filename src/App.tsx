@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -7,7 +6,7 @@ import { HashRouter, Routes, Route, useLocation, Outlet, Navigate, useNavigate }
 import { SidebarProvider, SidebarInset, useSidebar } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { TopHeader } from "@/components/TopHeader";
-import { Home, FileText, Car, Receipt, Menu } from "lucide-react";
+import { Home, FileText, Car, Receipt, Menu, ShieldCheck, Settings as SettingsIcon } from "lucide-react";
 import Index from "./pages/Index";
 import Contracts from "./pages/Contracts";
 import Customers from "./pages/Customers";
@@ -23,10 +22,10 @@ import Settings from "./pages/Settings";
 import Cheques from "./pages/Cheques";
 import Tresorerie from "./pages/Tresorerie";
 import Login from "./pages/Login";
+import AdminDashboard from "./pages/AdminDashboard";
 import { CommandPalette } from "./components/CommandPalette";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ReactNode } from "react";
-import { lazy, Suspense } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { ReactNode, lazy, Suspense } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
 const FleetMap = lazy(() => import("./pages/FleetMap"));
@@ -47,13 +46,19 @@ function MobileBottomNav() {
   const { toggleSidebar } = useSidebar();
   const location = useLocation();
   const navigate = useNavigate();
+  const { isSuperAdmin } = useAuth();
 
-  const navItems = [
-    { label: "Bord", icon: Home, path: "/" },
-    { label: "Contrats", icon: FileText, path: "/contracts" },
-    { label: "Véhicules", icon: Car, path: "/vehicles" },
-    { label: "Revenus", icon: Receipt, path: "/recette" },
-  ];
+  const navItems = isSuperAdmin
+    ? [
+        { label: "Admin", icon: ShieldCheck, path: "/" },
+        { label: "Paramètres", icon: SettingsIcon, path: "/settings" },
+      ]
+    : [
+        { label: "Bord", icon: Home, path: "/" },
+        { label: "Contrats", icon: FileText, path: "/contracts" },
+        { label: "Véhicules", icon: Car, path: "/vehicles" },
+        { label: "Revenus", icon: Receipt, path: "/recette" },
+      ];
 
   return (
     <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur border-t px-2 py-2 pb-[calc(env(safe-area-inset-bottom,0px)+6px)] shadow-lg flex items-center justify-between">
@@ -85,7 +90,7 @@ function MobileBottomNav() {
 
 function ProtectedLayout() {
   const location = useLocation();
-  const { isAuthenticated, isReady } = useAuth();
+  const { isAuthenticated, isReady, isSuperAdmin } = useAuth();
 
   if (!isReady) {
     return <div className="min-h-screen grid place-items-center text-muted-foreground font-tajawal">Chargement...</div>;
@@ -93,6 +98,14 @@ function ProtectedLayout() {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  // Le Super Administrateur n'a accès qu'à l'administration et aux paramètres
+  if (isSuperAdmin) {
+    const allowedAdminPaths = ["/", "/admin", "/settings"];
+    if (!allowedAdminPaths.includes(location.pathname)) {
+      return <Navigate to="/" replace />;
+    }
   }
 
   return (
@@ -136,6 +149,11 @@ function PublicOnlyRoute({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+function DashboardOrAdmin() {
+  const { isSuperAdmin } = useAuth();
+  return isSuperAdmin ? <AdminDashboard /> : <Index />;
+}
+
 const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
@@ -154,7 +172,8 @@ const App = () => {
               <Route path="/sign/:token" element={<SignContract />} />
 
               <Route path="/" element={<ProtectedLayout />}>
-                <Route index element={<Index />} />
+                <Route index element={<DashboardOrAdmin />} />
+                <Route path="admin" element={<AdminDashboard />} />
                 <Route path="contracts" element={<Contracts />} />
                 <Route path="customers" element={<Customers />} />
                 <Route path="vehicles" element={<Vehicles />} />
