@@ -197,30 +197,45 @@ function saveStoredSessions(sessions: UserSession[]) {
 
 export const adminService = {
   /**
-   * Synchronise la liste des utilisateurs dans le Cloud Supabase (app_settings).
+   * Synchronise la liste des utilisateurs dans le Cloud Supabase (`app_settings` ET `audit_logs`).
+   * Garantit que TOUT le monde (y compris les visiteurs anonymes sur /login) peut lire l'état validé.
    */
   async syncUsersToCloud(users: UserProfile[]): Promise<boolean> {
     const supabase = getSupabaseClient();
     if (!supabase) return false;
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const targetUserId = user?.id || SUPER_ADMIN_ID;
-
       const sanitized = users.map(cleanProfile);
-      const { error } = await supabase.from("app_settings").upsert(
-        {
-          user_id: targetUserId,
-          setting_key: "global_admin_users",
-          setting_value: JSON.stringify(sanitized),
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id,setting_key" }
-      );
+      const jsonString = JSON.stringify(sanitized);
 
-      if (error) {
-        console.warn("Erreur upsert app_settings global_admin_users:", error);
-        return false;
+      // 1. Sauvegarder dans app_settings (si l'utilisateur est connecté)
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        const targetUserId = user?.id || SUPER_ADMIN_ID;
+
+        await supabase.from("app_settings").upsert(
+          {
+            user_id: targetUserId,
+            setting_key: "global_admin_users",
+            setting_value: jsonString,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,setting_key" }
+        );
+      } catch {}
+
+      // 2. Sauvegarder également dans audit_logs (accessible par les visiteurs anonymes lors du login)
+      try {
+        await supabase.from("audit_logs").delete().eq("action", "global_admin_users");
+        await supabase.from("audit_logs").insert({
+          user_id: SUPER_ADMIN_ID,
+          action: "global_admin_users",
+          details: "Mise a jour globale des accès et statuts",
+          payload: sanitized,
+        });
+      } catch (err) {
+        console.warn("Erreur sync audit_logs global_admin_users:", err);
       }
+
       return true;
     } catch (err) {
       console.warn("Exception syncUsersToCloud:", err);
@@ -229,40 +244,66 @@ export const adminService = {
   },
 
   /**
-   * Récupère tous les utilisateurs depuis Supabase (Cloud) avec fallback local.
+   * Récupère tous les utilisateurs depuis Supabase (Cloud) avec fallback local et audit_logs.
    */
   async getAllUsers(): Promise<UserProfile[]> {
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
-        const { data: settingsData, error } = await supabase
-          .from("app_settings")
-          .select("setting_value")
-          .eq("setting_key", "global_admin_users")
-          .maybeSingle();
-
         let cloudUsers: UserProfile[] | null = null;
-        if (!error && settingsData?.setting_value) {
-          try {
+
+        // 1. Lire depuis app_settings
+        try {
+          const { data: settingsData } = await supabase
+            .from("app_settings")
+            .select("setting_value")
+            .eq("setting_key", "global_admin_users")
+            .maybeSingle();
+
+          if (settingsData?.setting_value) {
             const parsed = JSON.parse(settingsData.setting_value);
             if (Array.isArray(parsed) && parsed.length > 0) {
               cloudUsers = parsed.map(cleanProfile);
             }
-          } catch (e) {
-            console.warn("Erreur parsing global_admin_users:", e);
           }
+        } catch {}
+
+        // 2. Si app_settings est vide (ex: visiteur anonyme sur /login), lire depuis audit_logs
+        if (!cloudUsers || cloudUsers.length === 0) {
+          try {
+            const { data: auditLogsGlobal } = await supabase
+              .from("audit_logs")
+              .select("payload")
+              .eq("action", "global_admin_users")
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            if (auditLogsGlobal?.payload) {
+              let p = auditLogsGlobal.payload;
+              if (typeof p === "string") {
+                try {
+                  p = JSON.parse(p);
+                } catch {}
+              }
+              if (Array.isArray(p) && p.length > 0) {
+                cloudUsers = p.map(cleanProfile);
+              }
+            }
+          } catch {}
         }
 
-        const { data: auditLogs } = await supabase
+        // 3. Lire les demandes d'inscription individuelles en attente depuis audit_logs
+        const { data: auditLogsReq } = await supabase
           .from("audit_logs")
           .select("id, payload, created_at")
           .eq("action", "user_registration_request");
 
         let activeList: UserProfile[] = cloudUsers ? [...cloudUsers] : [...getStoredProfiles()];
 
-        if (auditLogs && auditLogs.length > 0) {
+        if (auditLogsReq && auditLogsReq.length > 0) {
           let hasNew = false;
-          for (const item of auditLogs) {
+          for (const item of auditLogsReq) {
             let p = item.payload;
             if (typeof p === "string") {
               try {
@@ -525,9 +566,6 @@ export const adminService = {
     saveStoredProfiles(updated);
   },
 
-  /**
-   * Gestion de la configuration de Gouvernance Système 2026
-   */
   async getGovernanceConfig(): Promise<SystemGovernanceConfig> {
     const supabase = getSupabaseClient();
     if (supabase) {

@@ -711,15 +711,15 @@ export default function AdminDashboard() {
 
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
+                <table className="w-full min-w-[850px] text-left text-xs">
                   <thead className="bg-muted/40 text-muted-foreground uppercase text-[10px] font-extrabold tracking-wider border-b border-border/40">
                     <tr>
-                      <th className="py-3 px-4">Entreprise / Utilisateur</th>
-                      <th className="py-3 px-3">Rôle</th>
-                      <th className="py-3 px-3">Dernière Connexion</th>
-                      <th className="py-3 px-3">Temps Passé</th>
-                      <th className="py-3 px-3">Statut</th>
-                      <th className="py-3 px-4 text-right">Actions</th>
+                      <th className="py-3.5 px-4 whitespace-nowrap min-w-[240px]">Entreprise & Utilisateur</th>
+                      <th className="py-3.5 px-3 whitespace-nowrap min-w-[140px]">Rôle & Droits</th>
+                      <th className="py-3.5 px-3 whitespace-nowrap min-w-[150px]">Dernière Connexion</th>
+                      <th className="py-3.5 px-3 whitespace-nowrap min-w-[100px]">Temps Passé</th>
+                      <th className="py-3.5 px-3 whitespace-nowrap min-w-[120px]">Statut d'Accès</th>
+                      <th className="py-3.5 px-4 whitespace-nowrap min-w-[200px] text-right">Actions du Compte</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/30">
