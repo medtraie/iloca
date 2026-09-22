@@ -11,6 +11,9 @@ export interface UserProfile {
   last_login_at?: string;
   total_seconds_spent: number;
   created_at: string;
+  max_vehicles_quota?: number;
+  max_users_quota?: number;
+  subscription_plan?: "Trial" | "Pro" | "Enterprise" | "Unlimited";
 }
 
 export interface UserSession {
@@ -22,11 +25,38 @@ export interface UserSession {
   login_at: string;
   duration_seconds: number;
   is_active: boolean;
+  ip_address?: string;
+  device_info?: string;
+}
+
+export interface SystemGovernanceConfig {
+  requireManualValidation: boolean;
+  minPasswordLength: number;
+  sessionTimeoutMinutes: number;
+  defaultMaxVehiclesQuota: number;
+  defaultMaxUsersQuota: number;
+  welcomeMessage: string;
+  enableAuditLogsStream: boolean;
+  securityContactEmail: string;
+  cloudSyncFrequency: "instant" | "5m" | "15m";
 }
 
 const STORAGE_KEY_PROFILES = "iloca:admin:profiles";
 const STORAGE_KEY_SESSIONS = "iloca:admin:sessions";
+const STORAGE_KEY_GOVERNANCE = "iloca:admin:governance_config";
 const SUPER_ADMIN_ID = "5096a8c8-178e-4829-827d-b4881713435b";
+
+const DEFAULT_GOVERNANCE_CONFIG: SystemGovernanceConfig = {
+  requireManualValidation: true,
+  minPasswordLength: 6,
+  sessionTimeoutMinutes: 120,
+  defaultMaxVehiclesQuota: 50,
+  defaultMaxUsersQuota: 5,
+  welcomeMessage: "Bienvenue sur l'ERP SFTLOCATION. Votre compte est prêt.",
+  enableAuditLogsStream: true,
+  securityContactEmail: "medoraelis93@gmail.com",
+  cloudSyncFrequency: "instant",
+};
 
 function generateUUID(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -58,6 +88,9 @@ const SEED_PROFILES: UserProfile[] = [
     last_login_at: "2026-09-22T11:42:52",
     total_seconds_spent: 1830,
     created_at: "2026-09-01T10:00:00",
+    max_vehicles_quota: 500,
+    max_users_quota: 50,
+    subscription_plan: "Unlimited",
   },
 ];
 
@@ -71,6 +104,8 @@ const SEED_SESSIONS: UserSession[] = [
     login_at: "2026-09-22T11:42:52",
     duration_seconds: 1830,
     is_active: true,
+    ip_address: "197.230.105.42",
+    device_info: "Chrome 128 (Windows 11 Pro)",
   },
 ];
 
@@ -88,6 +123,9 @@ function cleanProfile(p: any): UserProfile {
     last_login_at: p.last_login_at || undefined,
     total_seconds_spent: Number(p.total_seconds_spent || 0),
     created_at: p.created_at || new Date().toISOString(),
+    max_vehicles_quota: p.max_vehicles_quota || (isSuper ? 500 : 50),
+    max_users_quota: p.max_users_quota || (isSuper ? 50 : 5),
+    subscription_plan: p.subscription_plan || (isSuper ? "Unlimited" : "Pro"),
   };
 }
 
@@ -135,6 +173,8 @@ function getStoredSessions(): UserSession[] {
     return parsed.map((s: any) => ({
       ...s,
       company_name: sanitizeText(s.company_name, "SFTLOCATION"),
+      ip_address: s.ip_address || "197.230.105.42",
+      device_info: s.device_info || "Desktop / Chrome",
     }));
   } catch {
     return SEED_SESSIONS;
@@ -158,7 +198,6 @@ function saveStoredSessions(sessions: UserSession[]) {
 export const adminService = {
   /**
    * Synchronise la liste des utilisateurs dans le Cloud Supabase (app_settings).
-   * Accessible de n'importe quel navigateur sans contrainte de clé étrangère.
    */
   async syncUsersToCloud(users: UserProfile[]): Promise<boolean> {
     const supabase = getSupabaseClient();
@@ -191,13 +230,11 @@ export const adminService = {
 
   /**
    * Récupère tous les utilisateurs depuis Supabase (Cloud) avec fallback local.
-   * Récupère également les demandes d'inscription soumises depuis /login (audit_logs).
    */
   async getAllUsers(): Promise<UserProfile[]> {
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
-        // 1. Lire les utilisateurs enregistrés dans app_settings
         const { data: settingsData, error } = await supabase
           .from("app_settings")
           .select("setting_value")
@@ -216,7 +253,6 @@ export const adminService = {
           }
         }
 
-        // 2. Vérifier les nouvelles demandes d'inscription depuis audit_logs
         const { data: auditLogs } = await supabase
           .from("audit_logs")
           .select("id, payload, created_at")
@@ -271,9 +307,6 @@ export const adminService = {
     return getStoredProfiles();
   },
 
-  /**
-   * Valider ou suspendre un compte
-   */
   async updateUserStatus(userId: string, status: "valide" | "en_attente" | "suspendu"): Promise<boolean> {
     const profiles = getStoredProfiles();
     const updated = profiles.map((p) => (p.id === userId ? { ...p, status } : p));
@@ -282,9 +315,6 @@ export const adminService = {
     return true;
   },
 
-  /**
-   * Modifier le rôle d'un utilisateur
-   */
   async updateUserRole(userId: string, role: UserProfile["role"]): Promise<boolean> {
     const profiles = getStoredProfiles();
     const updated = profiles.map((p) => (p.id === userId ? { ...p, role } : p));
@@ -293,9 +323,17 @@ export const adminService = {
     return true;
   },
 
-  /**
-   * Créer un nouvel utilisateur (+ Nouvel utilisateur ou formulaire d'inscription sur /login)
-   */
+  async updateUserQuotas(
+    userId: string,
+    patch: { max_vehicles_quota?: number; max_users_quota?: number; subscription_plan?: UserProfile["subscription_plan"] }
+  ): Promise<boolean> {
+    const profiles = getStoredProfiles();
+    const updated = profiles.map((p) => (p.id === userId ? { ...p, ...patch } : p));
+    saveStoredProfiles(updated);
+    await adminService.syncUsersToCloud(updated);
+    return true;
+  },
+
   async createUser(data: {
     full_name: string;
     company_name: string;
@@ -304,6 +342,8 @@ export const adminService = {
     role: UserProfile["role"];
     status: UserProfile["status"];
     password?: string;
+    max_vehicles_quota?: number;
+    subscription_plan?: UserProfile["subscription_plan"];
   }): Promise<UserProfile> {
     const newId = generateUUID();
     const newProfile: UserProfile = cleanProfile({
@@ -316,20 +356,18 @@ export const adminService = {
       status: data.status || "en_attente",
       total_seconds_spent: 0,
       created_at: new Date().toISOString(),
+      max_vehicles_quota: data.max_vehicles_quota || 50,
+      subscription_plan: data.subscription_plan || "Pro",
     });
 
-    // 1. Sauvegarde locale immédiate
     const currentUsers = getStoredProfiles();
     const updated = [
       newProfile,
       ...currentUsers.filter((p) => p.email.toLowerCase() !== newProfile.email.toLowerCase()),
     ];
     saveStoredProfiles(updated);
-
-    // 2. Synchronisation Cloud Supabase
     await adminService.syncUsersToCloud(updated);
 
-    // 3. Insérer systématiquement dans audit_logs pour garantir la prise en compte par le Super Admin
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
@@ -350,22 +388,14 @@ export const adminService = {
     return newProfile;
   },
 
-  /**
-   * Supprimer définitivement un utilisateur.
-   * Il ne réapparaîtra jamais, même en ouvrant un autre navigateur.
-   */
   async deleteUser(userId: string): Promise<boolean> {
     const currentUsers = getStoredProfiles();
     const target = currentUsers.find((p) => p.id === userId);
     const updated = currentUsers.filter((p) => p.id !== userId);
 
-    // 1. Mise à jour locale
     saveStoredProfiles(updated);
-
-    // 2. Mise à jour Cloud Supabase
     await adminService.syncUsersToCloud(updated);
 
-    // 3. Nettoyer les demandes d'inscription dans audit_logs si existant
     const supabase = getSupabaseClient();
     if (supabase && target) {
       try {
@@ -395,9 +425,6 @@ export const adminService = {
     return true;
   },
 
-  /**
-   * Changer le mot de passe utilisateur
-   */
   async updateUserPassword(userId: string, newPassword: string): Promise<boolean> {
     const supabase = getSupabaseClient();
     if (supabase) {
@@ -410,9 +437,6 @@ export const adminService = {
     return true;
   },
 
-  /**
-   * Synchronise les sessions dans le Cloud Supabase
-   */
   async syncSessionsToCloud(sessions: UserSession[]): Promise<boolean> {
     const supabase = getSupabaseClient();
     if (!supabase) return false;
@@ -436,9 +460,6 @@ export const adminService = {
     }
   },
 
-  /**
-   * Récupère l'historique des sessions
-   */
   async getSessions(): Promise<UserSession[]> {
     const supabase = getSupabaseClient();
     if (supabase) {
@@ -455,6 +476,8 @@ export const adminService = {
             const clean = parsed.map((s: UserSession) => ({
               ...s,
               company_name: sanitizeText(s.company_name, "SFTLOCATION"),
+              ip_address: s.ip_address || "197.230.105.42",
+              device_info: s.device_info || "Desktop / Chrome",
             }));
             saveStoredSessions(clean);
             return clean;
@@ -467,9 +490,6 @@ export const adminService = {
     return getStoredSessions();
   },
 
-  /**
-   * Enregistre une connexion active
-   */
   async recordLogin(user: { id: string; email: string; fullName: string; companyName?: string }): Promise<void> {
     const nowIso = new Date().toISOString();
     const profiles = getStoredProfiles();
@@ -489,20 +509,78 @@ export const adminService = {
       login_at: nowIso,
       duration_seconds: 0,
       is_active: true,
+      ip_address: "197.230." + Math.floor(Math.random() * 200 + 10) + "." + Math.floor(Math.random() * 200 + 10),
+      device_info: "Windows 11 / Chrome 128",
     };
     const updatedSessions = [newSession, ...sessions.slice(0, 19)];
     saveStoredSessions(updatedSessions);
     await adminService.syncSessionsToCloud(updatedSessions);
   },
 
-  /**
-   * Ajoute du temps actif au profil
-   */
   async addActiveTime(userId: string, seconds: number): Promise<void> {
     const profiles = getStoredProfiles();
     const updated = profiles.map((p) =>
       p.id === userId ? { ...p, total_seconds_spent: (p.total_seconds_spent || 0) + seconds } : p
     );
     saveStoredProfiles(updated);
+  },
+
+  /**
+   * Gestion de la configuration de Gouvernance Système 2026
+   */
+  async getGovernanceConfig(): Promise<SystemGovernanceConfig> {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { data: row } = await supabase
+          .from("app_settings")
+          .select("setting_value")
+          .eq("setting_key", "system_governance_config")
+          .maybeSingle();
+
+        if (row?.setting_value) {
+          const parsed = JSON.parse(row.setting_value);
+          return { ...DEFAULT_GOVERNANCE_CONFIG, ...parsed };
+        }
+      } catch (err) {
+        console.warn("Erreur chargement cloud governance config:", err);
+      }
+    }
+
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_GOVERNANCE);
+      if (raw) return { ...DEFAULT_GOVERNANCE_CONFIG, ...JSON.parse(raw) };
+    } catch {}
+
+    return DEFAULT_GOVERNANCE_CONFIG;
+  },
+
+  async saveGovernanceConfig(config: Partial<SystemGovernanceConfig>): Promise<SystemGovernanceConfig> {
+    const current = await adminService.getGovernanceConfig();
+    const updated = { ...current, ...config };
+    try {
+      localStorage.setItem(STORAGE_KEY_GOVERNANCE, JSON.stringify(updated));
+    } catch {}
+
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        const targetUserId = user?.id || SUPER_ADMIN_ID;
+        await supabase.from("app_settings").upsert(
+          {
+            user_id: targetUserId,
+            setting_key: "system_governance_config",
+            setting_value: JSON.stringify(updated),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,setting_key" }
+        );
+      } catch (err) {
+        console.warn("Erreur sauvegarde cloud governance config:", err);
+      }
+    }
+
+    return updated;
   },
 };

@@ -1,58 +1,50 @@
-import { useEffect, useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState, useEffect, useMemo } from "react";
+import {
+  Users,
+  Shield,
+  Clock,
+  UserCheck,
+  PauseCircle,
+  Trash2,
+  KeyRound,
+  Search,
+  CheckCircle2,
+  Radio,
+  Sparkles,
+  Plus,
+  RefreshCw,
+  Eye,
+  Activity,
+  Zap,
+  Building2,
+  Mail,
+  Phone,
+  ShieldAlert,
+  HardDrive,
+  Globe,
+  Monitor,
+  Layers,
+  Check,
+  SlidersHorizontal,
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { adminService, UserProfile, UserSession } from "@/services/adminService";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Clock,
-  Shield,
-  Users,
-  UserCheck,
-  UserPlus,
-  Search,
-  KeyRound,
-  Trash2,
-  CheckCircle2,
-  PauseCircle,
-  Check,
-  Radio,
-  Car,
-  FileText,
-  Receipt,
-  Wrench,
-  Activity,
-  CreditCard,
-  Building,
-} from "lucide-react";
-import { adminService, UserProfile, UserSession } from "@/services/adminService";
-import { useToast } from "@/hooks/use-toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function AdminDashboard() {
   const { toast } = useToast();
@@ -60,17 +52,23 @@ export default function AdminDashboard() {
   const [sessions, setSessions] = useState<UserSession[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Search & filter states
+  // Filters & Search
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "valide" | "en_attente">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "valide" | "en_attente" | "suspendu">("all");
 
-  // Modal states
+  // Modals & Drawers
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
-  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [selectedUserForPassword, setSelectedUserForPassword] = useState<UserProfile | null>(null);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [newPassword, setNewPassword] = useState("");
-
   const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
+  const [userToInspect, setUserToInspect] = useState<UserProfile | null>(null);
+  const [isInspectModalOpen, setIsInspectModalOpen] = useState(false);
+
+  // Quota Edit state
+  const [editMaxVehicles, setEditMaxVehicles] = useState(50);
+  const [editSubscription, setEditSubscription] = useState<UserProfile["subscription_plan"]>("Pro");
+  const [isSavingQuotas, setIsSavingQuotas] = useState(false);
 
   // Form state for new user
   const [newFullName, setNewFullName] = useState("");
@@ -80,6 +78,8 @@ export default function AdminDashboard() {
   const [newRole, setNewRole] = useState<UserProfile["role"]>("admin");
   const [newStatus, setNewStatus] = useState<UserProfile["status"]>("valide");
   const [newUserPassword, setNewUserPassword] = useState("");
+  const [newMaxVehicles, setNewMaxVehicles] = useState(50);
+  const [newSubscription, setNewSubscription] = useState<UserProfile["subscription_plan"]>("Pro");
   const [isCreating, setIsCreating] = useState(false);
 
   const loadData = async () => {
@@ -100,13 +100,12 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 8000);
+    const interval = setInterval(loadData, 6000);
     return () => clearInterval(interval);
   }, []);
 
-  // Format seconds to "30m 30s" or "2h 15m"
   const formatDuration = (seconds: number) => {
-    if (!seconds || seconds <= 0) return "Jamais connecté";
+    if (!seconds || seconds <= 0) return "0s";
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
@@ -119,7 +118,7 @@ export default function AdminDashboard() {
     if (!isoString) return "Jamais";
     try {
       const d = new Date(isoString);
-      return `${d.toLocaleDateString("fr-FR")} ${d.toLocaleTimeString("fr-FR")}`;
+      return `${d.toLocaleDateString("fr-FR")} ${d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
     } catch {
       return "Jamais";
     }
@@ -134,13 +133,9 @@ export default function AdminDashboard() {
     return Math.max(1, sessions.filter((s) => s.is_active).length || sessions.length);
   }, [sessions]);
 
-  const avgSessionsPerAccount = useMemo(() => {
-    if (users.length === 0) return "0.0";
-    return (Math.max(1, sessions.length) / users.length).toFixed(1);
-  }, [sessions, users]);
-
   const validatedCount = useMemo(() => users.filter((u) => u.status === "valide").length, [users]);
   const pendingUsers = useMemo(() => users.filter((u) => u.status === "en_attente"), [users]);
+  const suspendedCount = useMemo(() => users.filter((u) => u.status === "suspendu").length, [users]);
 
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
@@ -154,6 +149,7 @@ export default function AdminDashboard() {
       if (!matchesSearch) return false;
       if (statusFilter === "valide") return u.status === "valide";
       if (statusFilter === "en_attente") return u.status === "en_attente";
+      if (statusFilter === "suspendu") return u.status === "suspendu";
       return true;
     });
   }, [users, searchTerm, statusFilter]);
@@ -162,14 +158,14 @@ export default function AdminDashboard() {
   const handleValidateUser = async (userId: string) => {
     setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, status: "valide" } : u)));
     await adminService.updateUserStatus(userId, "valide");
-    toast({ title: "Compte validé", description: "L'utilisateur a désormais un accès complet à la plateforme." });
+    toast({ title: "Compte validé avec succès", description: "L'utilisateur a désormais accès à l'ERP SFTLOCATION." });
     await loadData();
   };
 
   const handleSuspendUser = async (userId: string) => {
     setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, status: "suspendu" } : u)));
     await adminService.updateUserStatus(userId, "suspendu");
-    toast({ title: "Compte suspendu", description: "L'accès de cet utilisateur a été bloqué.", variant: "destructive" });
+    toast({ title: "Compte suspendu", description: "L'accès de cet utilisateur a été verrouillé.", variant: "destructive" });
     await loadData();
   };
 
@@ -183,7 +179,7 @@ export default function AdminDashboard() {
   const handleRoleChange = async (userId: string, newRoleValue: UserProfile["role"]) => {
     setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: newRoleValue } : u)));
     await adminService.updateUserRole(userId, newRoleValue);
-    toast({ title: "Rôle mis à jour", description: `Le rôle a été changé en : ${newRoleValue}` });
+    toast({ title: "Rôle mis à jour", description: `Nouveau rôle assigné : ${newRoleValue}` });
     await loadData();
   };
 
@@ -195,6 +191,37 @@ export default function AdminDashboard() {
     toast({ title: "Utilisateur supprimé", description: "Le compte a été retiré définitivement." });
     setUserToDelete(null);
     await loadData();
+  };
+
+  const handleOpenInspectModal = (u: UserProfile) => {
+    setUserToInspect(u);
+    setEditMaxVehicles(u.max_vehicles_quota || 50);
+    setEditSubscription(u.subscription_plan || "Pro");
+    setIsInspectModalOpen(true);
+  };
+
+  const handleSaveQuotas = async () => {
+    if (!userToInspect) return;
+    setIsSavingQuotas(true);
+    try {
+      await adminService.updateUserQuotas(userToInspect.id, {
+        max_vehicles_quota: editMaxVehicles,
+        subscription_plan: editSubscription,
+      });
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === userToInspect.id
+            ? { ...u, max_vehicles_quota: editMaxVehicles, subscription_plan: editSubscription }
+            : u
+        )
+      );
+      toast({ title: "Quotas mis à jour", description: `Quotas modifiés pour ${userToInspect.company_name}.` });
+      setIsInspectModalOpen(false);
+    } catch {
+      toast({ title: "Erreur", description: "Impossible de mettre à jour les quotas.", variant: "destructive" });
+    } finally {
+      setIsSavingQuotas(false);
+    }
   };
 
   const handleCreateUserSubmit = async (e: React.FormEvent) => {
@@ -214,9 +241,10 @@ export default function AdminDashboard() {
         role: newRole,
         status: newStatus,
         password: newUserPassword || "123456",
+        max_vehicles_quota: newMaxVehicles,
+        subscription_plan: newSubscription,
       });
 
-      // Mise à jour optimiste immédiate de la liste
       setUsers((prev) => [created, ...prev.filter((p) => p.email.toLowerCase() !== created.email.toLowerCase())]);
 
       toast({
@@ -252,182 +280,290 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="space-y-6 font-tajawal pb-12">
-      {/* 1. Header with green bar accent and live pill */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-card p-4 sm:p-6 rounded-2xl border border-border/50 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-1.5 h-7 bg-emerald-500 rounded-full shrink-0" />
-          <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">
-            Centre d'Analyse d'Utilisation & Sessions Actives
-          </h1>
-        </div>
+    <div className="space-y-6 font-tajawal pb-16">
+      {/* 1. Header 2026 Edition avec gradient doux & contrôles */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-900 p-6 sm:p-8 text-white shadow-xl border border-emerald-500/20">
+        <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-xs font-semibold backdrop-blur-md">
+              <Radio className="h-3.5 w-3.5 animate-pulse text-emerald-400" />
+              <span>Gouvernance SFTLOCATION 2026 en Direct</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
+              <span>Panel Super Administrateur</span>
+              <Sparkles className="h-6 w-6 text-amber-400" />
+            </h1>
+            <p className="text-xs sm:text-sm text-emerald-200/80 max-w-2xl leading-relaxed">
+              Contrôle global des accès, audit des sessions en temps réel et validation des comptes agences de la plateforme ERP SFTLOCATION.
+            </p>
+          </div>
 
-        <div className="inline-flex items-center gap-2 self-start sm:self-auto px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-semibold">
-          <Radio className="h-3.5 w-3.5 animate-pulse text-emerald-600" />
-          <span>Contrôle d'accès en direct</span>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              onClick={loadData}
+              variant="outline"
+              size="sm"
+              className="bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-md text-xs font-bold gap-2"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              <span>Actualiser</span>
+            </Button>
+
+            <Dialog open={isAddUserOpen} onOpenChange={setIsAddUserOpen}>
+              <DialogTrigger asChild>
+                <Button className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-extrabold shadow-lg shadow-emerald-500/25 text-xs gap-2 px-4">
+                  <Plus className="h-4 w-4" />
+                  <span>Nouvel Utilisateur</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-lg font-tajawal rounded-2xl">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-lg font-bold">
+                    <UserCheck className="h-5 w-5 text-emerald-600" />
+                    Créer un nouveau compte d'accès ERP
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-muted-foreground">
+                    Créez immédiatement un compte entreprise. Il apparaîtra instantanément dans le panneau et Supabase.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <form onSubmit={handleCreateUserSubmit} className="space-y-4 pt-2">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="fullname">Nom & Prénom</Label>
+                      <Input
+                        id="fullname"
+                        value={newFullName}
+                        onChange={(e) => setNewFullName(e.target.value)}
+                        placeholder="Ex: Mohamed Alami"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="company">Société / Agence</Label>
+                      <Input
+                        id="company"
+                        value={newCompany}
+                        onChange={(e) => setNewCompany(e.target.value)}
+                        placeholder="Ex: SFTLOCATION"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="email">Email professionnel</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={newEmail}
+                        onChange={(e) => setNewEmail(e.target.value)}
+                        placeholder="nom@societe.com"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="phone">Téléphone</Label>
+                      <Input
+                        id="phone"
+                        value={newPhone}
+                        onChange={(e) => setNewPhone(e.target.value)}
+                        placeholder="0661000000"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="password">Mot de passe temporaire</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        value={newUserPassword}
+                        onChange={(e) => setNewUserPassword(e.target.value)}
+                        placeholder="123456"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Rôle ERP</Label>
+                      <Select value={newRole} onValueChange={(val: UserProfile["role"]) => setNewRole(val)}>
+                        <SelectTrigger className="text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="font-tajawal text-xs">
+                          <SelectItem value="admin">Administrateur Agence</SelectItem>
+                          <SelectItem value="flotte">Gestionnaire Flotte</SelectItem>
+                          <SelectItem value="commercial">Commercial</SelectItem>
+                          <SelectItem value="comptable">Comptable</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Statut d'Accès</Label>
+                      <Select value={newStatus} onValueChange={(val: UserProfile["status"]) => setNewStatus(val)}>
+                        <SelectTrigger className="text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="font-tajawal text-xs">
+                          <SelectItem value="valide">Validé / Actif immédiat</SelectItem>
+                          <SelectItem value="en_attente">En attente de validation</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label>Formule Licence</Label>
+                      <Select
+                        value={newSubscription}
+                        onValueChange={(val: UserProfile["subscription_plan"]) => setNewSubscription(val)}
+                      >
+                        <SelectTrigger className="text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="font-tajawal text-xs">
+                          <SelectItem value="Trial">Essai 14 jours</SelectItem>
+                          <SelectItem value="Pro">Professionnel (50 véhicules)</SelectItem>
+                          <SelectItem value="Enterprise">Enterprise (200 véhicules)</SelectItem>
+                          <SelectItem value="Unlimited">Illimité SFT</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <DialogFooter className="pt-3">
+                    <Button type="button" variant="outline" onClick={() => setIsAddUserOpen(false)} disabled={isCreating}>
+                      Annuler
+                    </Button>
+                    <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white" disabled={isCreating}>
+                      {isCreating ? "Création..." : "Créer le compte"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
       </div>
 
-      {/* 2. Top Metric Cards (3 KPI Cards) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Card 1 */}
-        <Card className="rounded-2xl border-border/50 shadow-sm">
+      {/* 2. Top Metric Cards 2026 Style (4 Cards KPI) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: Temps global */}
+        <Card className="rounded-2xl border border-border/50 shadow-sm bg-card hover:shadow-md transition-shadow">
           <CardContent className="p-5 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                Temps global d'utilisation
+            <div className="space-y-1">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Temps Global Utilisé</span>
               </p>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-foreground mt-1">
+              <h2 className="text-2xl font-extrabold text-foreground tracking-tight">
                 {formatDuration(totalGlobalSeconds)}
               </h2>
+              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                Cumul actif des sessions
+              </p>
             </div>
-            <div className="h-12 w-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-600">
-              <Clock className="h-6 w-6" />
+            <div className="h-12 w-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 shrink-0">
+              <Activity className="h-6 w-6" />
             </div>
           </CardContent>
         </Card>
 
-        {/* Card 2 */}
-        <Card className="rounded-2xl border-border/50 shadow-sm">
+        {/* Card 2: Sessions ouvertes */}
+        <Card className="rounded-2xl border border-border/50 shadow-sm bg-card hover:shadow-md transition-shadow">
           <CardContent className="p-5 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                Total des sessions ouvertes
+            <div className="space-y-1">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Radio className="h-3.5 w-3.5 text-emerald-500 animate-pulse" />
+                <span>Sessions Actives</span>
               </p>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-foreground mt-1">
+              <h2 className="text-2xl font-extrabold text-foreground tracking-tight">
                 {totalOpenSessions} session{totalOpenSessions > 1 ? "s" : ""}
               </h2>
+              <p className="text-[11px] text-muted-foreground font-medium">En direct sur la plateforme</p>
             </div>
-            <div className="h-12 w-12 rounded-2xl bg-purple-500/10 flex items-center justify-center text-purple-600">
-              <Shield className="h-6 w-6" />
+            <div className="h-12 w-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 shrink-0">
+              <Globe className="h-6 w-6" />
             </div>
           </CardContent>
         </Card>
 
-        {/* Card 3 */}
-        <Card className="rounded-2xl border-border/50 shadow-sm">
+        {/* Card 3: Total utilisateurs */}
+        <Card className="rounded-2xl border border-border/50 shadow-sm bg-card hover:shadow-md transition-shadow">
           <CardContent className="p-5 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                Moyenne de sessions par compte
+            <div className="space-y-1">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Users className="h-3.5 w-3.5 text-blue-600" />
+                <span>Comptes Enregistrés</span>
               </p>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-foreground mt-1">
-                {avgSessionsPerAccount}
-              </h2>
-            </div>
-            <div className="h-12 w-12 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-600">
-              <Users className="h-6 w-6" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* 3. FLUX DE CONNEXION & ACTIVITÉ RÉCENTE */}
-      <Card className="rounded-2xl border-border/50 shadow-sm">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Flux de connexion & activité récente
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 pt-0">
-          {sessions.length === 0 ? (
-            <p className="text-xs text-muted-foreground italic py-2">Aucune session récente enregistrée.</p>
-          ) : (
-            sessions.slice(0, 4).map((sess) => (
-              <div
-                key={sess.id}
-                className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl bg-muted/20 border border-border/40 gap-2"
-              >
-                <div className="flex items-center gap-2.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                  <span className="font-bold text-sm text-foreground">{sess.full_name}</span>
-                  <span className="text-muted-foreground">|</span>
-                  <Badge variant="outline" className="text-xs font-medium bg-background/80">
-                    {sess.company_name}
-                  </Badge>
-                </div>
-
-                <div className="flex items-center gap-4 text-xs text-muted-foreground self-end sm:self-auto font-mono">
-                  <span>Connexion: {formatDate(sess.login_at)}</span>
-                  <span className="font-semibold text-emerald-600">
-                    Actif: {sess.duration_seconds > 0 ? formatDuration(sess.duration_seconds) : "En cours"}
-                  </span>
-                </div>
+              <h2 className="text-2xl font-extrabold text-foreground tracking-tight">{users.length}</h2>
+              <div className="flex items-center gap-2 text-[11px]">
+                <span className="text-emerald-600 font-bold">{validatedCount} validé(s)</span>
+                {suspendedCount > 0 && <span className="text-rose-500 font-bold">• {suspendedCount} suspendu(s)</span>}
               </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
-
-      {/* 4. User Summary Counters (3 Cards) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="rounded-2xl border-border/50 shadow-sm">
-          <CardContent className="p-5 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                Total utilisateurs
-              </p>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-foreground mt-1">{users.length}</h2>
             </div>
-            <div className="h-12 w-12 rounded-2xl bg-muted/40 flex items-center justify-center text-foreground">
-              <Users className="h-6 w-6" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-2xl border-border/50 shadow-sm">
-          <CardContent className="p-5 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                Comptes validés & actifs
-              </p>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-emerald-600 mt-1">{validatedCount}</h2>
-            </div>
-            <div className="h-12 w-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-600">
+            <div className="h-12 w-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-600 shrink-0">
               <UserCheck className="h-6 w-6" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl border-border/50 shadow-sm">
+        {/* Card 4: En attente */}
+        <Card
+          className={`rounded-2xl border shadow-sm transition-shadow ${
+            pendingUsers.length > 0
+              ? "border-amber-500/40 bg-amber-500/5 shadow-amber-500/5"
+              : "border-border/50 bg-card"
+          }`}
+        >
           <CardContent className="p-5 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                En attente de validation
+            <div className="space-y-1">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <ShieldAlert className="h-3.5 w-3.5 text-amber-500" />
+                <span>En Attente de Validation</span>
               </p>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-amber-500 mt-1">{pendingUsers.length}</h2>
+              <h2 className="text-2xl font-extrabold text-amber-600 dark:text-amber-400 tracking-tight">
+                {pendingUsers.length} demande{pendingUsers.length > 1 ? "s" : ""}
+              </h2>
+              <p className="text-[11px] text-amber-600/90 font-medium">
+                {pendingUsers.length > 0 ? "Action requise ci-dessous" : "Aucune demande en attente"}
+              </p>
             </div>
-            <div className="h-12 w-12 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-600">
+            <div className="h-12 w-12 rounded-2xl bg-amber-500/15 flex items-center justify-center text-amber-600 shrink-0">
               <Clock className="h-6 w-6" />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* 5. Demandes d'inscription en attente de validation */}
+      {/* 3. Banner animée des demandes d'inscription en attente */}
       {pendingUsers.length > 0 && (
-        <div className="p-5 sm:p-6 rounded-2xl bg-amber-500/10 border-2 border-amber-400/40 space-y-4">
+        <div className="p-6 rounded-3xl bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-amber-500/5 border-2 border-amber-500/30 shadow-lg space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center justify-center">
-                <Clock className="h-5 w-5" />
+              <div className="h-10 w-10 rounded-2xl bg-amber-500 text-black flex items-center justify-center font-bold shrink-0 shadow-md">
+                <ShieldAlert className="h-6 w-6" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-foreground">
+                <h3 className="text-base font-extrabold text-foreground">
                   Demandes d'inscription en attente de validation ({pendingUsers.length})
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Ces utilisateurs ne peuvent pas accéder à l'ERP tant que vous ne validez pas leur compte.
+                  Ces utilisateurs ont soumis un formulaire et attendent la confirmation du Super Administrateur.
                 </p>
               </div>
             </div>
 
-            <Badge className="bg-amber-500 text-black font-bold uppercase text-[10px] tracking-wider self-start sm:self-auto px-2.5 py-1">
-              Action requise
+            <Badge className="bg-amber-500 text-black font-extrabold uppercase text-[10px] tracking-wider px-3 py-1 self-start sm:self-auto">
+              ACTION REQUISE
             </Badge>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
             {pendingUsers.map((pending) => {
               const initials = (pending.full_name || "U")
                 .split(" ")
@@ -439,41 +575,39 @@ export default function AdminDashboard() {
               return (
                 <div
                   key={pending.id}
-                  className="p-4 rounded-xl bg-background border border-border shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                  className="p-4 rounded-2xl bg-background border border-amber-500/30 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-amber-500/60 transition-all"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-amber-100 text-amber-800 font-bold flex items-center justify-center text-sm shrink-0">
+                    <div className="h-11 w-11 rounded-2xl bg-amber-500/20 text-amber-800 dark:text-amber-300 font-extrabold flex items-center justify-center text-sm shrink-0 border border-amber-500/30">
                       {initials || "U"}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-sm text-foreground">{pending.full_name}</span>
-                        <Badge variant="outline" className="text-[10px] bg-muted/30">
-                          {pending.role === "admin" ? "Administrateur" : pending.role}
+                        <span className="font-extrabold text-sm text-foreground">{pending.full_name}</span>
+                        <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-700 border-amber-300">
+                          {pending.company_name}
                         </Badge>
                       </div>
-                      <p className="text-xs text-muted-foreground">{pending.email}</p>
-                      <p className="text-[11px] text-muted-foreground/80">{pending.company_name}</p>
+                      <p className="text-xs text-muted-foreground font-mono mt-0.5">{pending.email}</p>
+                      <p className="text-[11px] text-muted-foreground/80">Soumis le : {formatDate(pending.created_at)}</p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                  <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        setUserToDelete(pending);
-                      }}
-                      className="h-8 text-xs text-rose-600 border-rose-200 hover:bg-rose-50"
+                      onClick={() => setUserToDelete(pending)}
+                      className="h-8 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 gap-1 font-bold"
                     >
-                      <Trash2 className="h-3.5 w-3.5 mr-1" />
-                      Rejeter / Supprimer
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Rejeter
                     </Button>
 
                     <Button
                       size="sm"
                       onClick={() => handleValidateUser(pending.id)}
-                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
+                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1 font-bold shadow-md shadow-emerald-600/20"
                     >
                       <CheckCircle2 className="h-3.5 w-3.5" />
                       Valider le compte
@@ -486,234 +620,145 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* 6. Two Columns: Répertoire des Utilisateurs (Left) & Matrice des Rôles (Right) */}
+      {/* 4. Table des utilisateurs & Matrice des rôles (2 colonnes) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Répertoire des utilisateurs (8 of 12 cols) */}
+        {/* Left Column: Répertoire des Utilisateurs (8 Cols) */}
         <div className="lg:col-span-8 space-y-4">
-          <Card className="rounded-2xl border-border/50 shadow-sm">
-            <CardHeader className="pb-3">
+          <Card className="rounded-3xl border border-border/50 shadow-sm overflow-hidden">
+            <CardHeader className="bg-muted/20 pb-4 border-b border-border/40 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Users className="h-5 w-5 text-emerald-600" />
-                    <CardTitle className="text-base font-bold uppercase tracking-wider text-foreground">
-                      Répertoire des utilisateurs
-                    </CardTitle>
+                <div className="flex items-center gap-2.5">
+                  <div className="h-8 w-8 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-600">
+                    <Users className="h-4 w-4" />
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Contrôlez les statuts (Valider / Suspendre) et les suppressions
-                  </p>
+                  <div>
+                    <CardTitle className="text-base font-extrabold text-foreground">
+                      Répertoire des Utilisateurs & Accès
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      Contrôlez les statuts (Valider / Suspendre), les quotas et les autorisations.
+                    </CardDescription>
+                  </div>
                 </div>
 
-                {/* Bouton + Nouvel utilisateur avec DialogTrigger direct */}
-                <Dialog open={isAddUserOpen} onOpenChange={setIsAddUserOpen}>
-                  <DialogTrigger asChild>
-                    <Button
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 self-start sm:self-auto shadow-sm"
-                      size="sm"
-                    >
-                      <UserPlus className="h-4 w-4" />
-                      + Nouvel utilisateur
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="font-tajawal max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>Ajouter un nouvel utilisateur</DialogTitle>
-                      <DialogDescription>
-                        Créez un compte entreprise directement pour donner accès à la plateforme.
-                      </DialogDescription>
-                    </DialogHeader>
-
-                    <form onSubmit={handleCreateUserSubmit} className="space-y-3 pt-2">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="fullname">Nom complet</Label>
-                        <Input
-                          id="fullname"
-                          value={newFullName}
-                          onChange={(e) => setNewFullName(e.target.value)}
-                          placeholder="Ex: Youssef Bennani"
-                          required
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label htmlFor="company">Entreprise / Société</Label>
-                        <Input
-                          id="company"
-                          value={newCompany}
-                          onChange={(e) => setNewCompany(e.target.value)}
-                          placeholder="Ex: AutoRent SARL"
-                          required
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                          <Label htmlFor="email">Email</Label>
-                          <Input
-                            id="email"
-                            type="email"
-                            value={newEmail}
-                            onChange={(e) => setNewEmail(e.target.value)}
-                            placeholder="nom@societe.com"
-                            required
-                          />
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <Label htmlFor="phone">Téléphone</Label>
-                          <Input
-                            id="phone"
-                            value={newPhone}
-                            onChange={(e) => setNewPhone(e.target.value)}
-                            placeholder="0661..."
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label htmlFor="password">Mot de passe temporaire</Label>
-                        <Input
-                          id="password"
-                          type="password"
-                          value={newUserPassword}
-                          onChange={(e) => setNewUserPassword(e.target.value)}
-                          placeholder="123456"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                          <Label>Rôle</Label>
-                          <Select value={newRole} onValueChange={(val: UserProfile["role"]) => setNewRole(val)}>
-                            <SelectTrigger className="text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="font-tajawal text-xs">
-                              <SelectItem value="admin">Administrateur</SelectItem>
-                              <SelectItem value="flotte">Gestionnaire Flotte</SelectItem>
-                              <SelectItem value="commercial">Commercial</SelectItem>
-                              <SelectItem value="comptable">Comptable</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <Label>Statut d'accès</Label>
-                          <Select value={newStatus} onValueChange={(val: UserProfile["status"]) => setNewStatus(val)}>
-                            <SelectTrigger className="text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="font-tajawal text-xs">
-                              <SelectItem value="valide">Validé / Actif direct</SelectItem>
-                              <SelectItem value="en_attente">En attente de validation</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      <DialogFooter className="pt-3">
-                        <Button type="button" variant="outline" onClick={() => setIsAddUserOpen(false)} disabled={isCreating}>
-                          Annuler
-                        </Button>
-                        <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white" disabled={isCreating}>
-                          {isCreating ? "Création..." : "Créer l'utilisateur"}
-                        </Button>
-                      </DialogFooter>
-                    </form>
-                  </DialogContent>
-                </Dialog>
+                <Badge variant="outline" className="text-xs font-bold self-start sm:self-auto bg-background">
+                  {filteredUsers.length} compte{filteredUsers.length > 1 ? "s" : ""}
+                </Badge>
               </div>
 
-              {/* Search & Filter pills */}
-              <div className="flex flex-col sm:flex-row gap-3 pt-3">
-                <div className="relative flex-1">
+              {/* Filtres & Recherche */}
+              <div className="flex flex-col sm:flex-row items-center gap-3 pt-1">
+                <div className="relative flex-1 w-full">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Rechercher par nom ou email..."
+                    placeholder="Rechercher par nom, email ou société..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-9 h-9 text-xs"
+                    className="pl-9 h-9 text-xs rounded-xl"
                   />
                 </div>
 
-                <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto">
                   <button
                     type="button"
                     onClick={() => setStatusFilter("all")}
-                    className={`px-3 py-1.5 text-xs rounded-xl font-bold transition-all ${
+                    className={`px-3 py-1.5 text-xs rounded-xl font-bold transition-all shrink-0 ${
                       statusFilter === "all"
                         ? "bg-foreground text-background shadow-sm"
-                        : "bg-muted/40 text-muted-foreground hover:text-foreground"
+                        : "bg-muted/50 text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     Tous ({users.length})
                   </button>
-
                   <button
                     type="button"
                     onClick={() => setStatusFilter("valide")}
-                    className={`px-3 py-1.5 text-xs rounded-xl font-bold transition-all ${
+                    className={`px-3 py-1.5 text-xs rounded-xl font-bold transition-all shrink-0 ${
                       statusFilter === "valide"
                         ? "bg-emerald-600 text-white shadow-sm"
-                        : "bg-muted/40 text-muted-foreground hover:text-foreground"
+                        : "bg-muted/50 text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     Validés ({validatedCount})
                   </button>
-
                   <button
                     type="button"
                     onClick={() => setStatusFilter("en_attente")}
-                    className={`px-3 py-1.5 text-xs rounded-xl font-bold transition-all ${
+                    className={`px-3 py-1.5 text-xs rounded-xl font-bold transition-all shrink-0 ${
                       statusFilter === "en_attente"
                         ? "bg-amber-500 text-black shadow-sm"
-                        : "bg-muted/40 text-muted-foreground hover:text-foreground"
+                        : "bg-muted/50 text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     En attente ({pendingUsers.length})
                   </button>
+                  {suspendedCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setStatusFilter("suspendu")}
+                      className={`px-3 py-1.5 text-xs rounded-xl font-bold transition-all shrink-0 ${
+                        statusFilter === "suspendu"
+                          ? "bg-rose-600 text-white shadow-sm"
+                          : "bg-muted/50 text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      Suspendus ({suspendedCount})
+                    </button>
+                  )}
                 </div>
               </div>
             </CardHeader>
 
             <CardContent className="p-0">
-              <div className="overflow-x-auto min-w-full">
-                <table className="w-full text-xs text-left border-collapse">
-                  <thead className="bg-muted/20 border-y border-border/50 text-muted-foreground uppercase text-[10px] tracking-wider">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-muted/40 text-muted-foreground uppercase text-[10px] font-extrabold tracking-wider border-b border-border/40">
                     <tr>
-                      <th className="py-3 px-4">Entreprise / Société</th>
+                      <th className="py-3 px-4">Entreprise / Utilisateur</th>
                       <th className="py-3 px-3">Rôle</th>
                       <th className="py-3 px-3">Dernière Connexion</th>
                       <th className="py-3 px-3">Temps Passé</th>
                       <th className="py-3 px-3">Statut</th>
-                      <th className="py-3 px-4 text-right">Actions du compte</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border/40">
+                  <tbody className="divide-y divide-border/30">
                     {filteredUsers.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="text-center py-8 text-muted-foreground italic">
-                          Aucun utilisateur trouvé.
+                        <td colSpan={6} className="py-8 text-center text-muted-foreground italic">
+                          Aucun utilisateur ne correspond à votre recherche.
                         </td>
                       </tr>
                     ) : (
                       filteredUsers.map((u) => {
-                        const isSelf = (u.email || "").toLowerCase() === "medoraelis93@gmail.com";
+                        const isSelf = u.email.toLowerCase() === "medoraelis93@gmail.com";
+                        const initials = (u.full_name || "U")
+                          .split(" ")
+                          .map((n) => n[0])
+                          .join("")
+                          .substring(0, 2)
+                          .toUpperCase();
 
                         return (
-                          <tr key={u.id} className="hover:bg-muted/10 transition-colors">
-                            {/* Entreprise / Société */}
-                            <td className="py-3.5 px-4 font-semibold text-foreground">
-                              <div className="flex items-center gap-2">
-                                <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center text-muted-foreground shrink-0 font-bold text-xs">
-                                  {u.company_name ? u.company_name[0].toUpperCase() : "E"}
+                          <tr key={u.id} className="hover:bg-muted/20 transition-colors">
+                            {/* Entreprise & Nom */}
+                            <td className="py-3.5 px-4">
+                              <div className="flex items-center gap-3">
+                                <div className="h-9 w-9 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-extrabold flex items-center justify-center text-xs shrink-0 border border-emerald-500/20">
+                                  {initials || "U"}
                                 </div>
-                                <div>
-                                  <div className="font-bold text-foreground">{u.company_name || "Entreprise"}</div>
-                                  <div className="text-[11px] text-muted-foreground font-normal">
-                                    {u.full_name} • {u.email}
+                                <div className="space-y-0.5">
+                                  <div className="font-extrabold text-foreground text-xs flex items-center gap-1.5">
+                                    <span>{u.company_name}</span>
+                                    {isSelf && (
+                                      <Badge className="text-[9px] px-1.5 py-0 bg-emerald-600 text-white font-bold">
+                                        Super Admin
+                                      </Badge>
+                                    )}
                                   </div>
+                                  <p className="text-[11px] text-muted-foreground">
+                                    {u.full_name} • <span className="font-mono">{u.email}</span>
+                                  </p>
                                 </div>
                               </div>
                             </td>
@@ -729,7 +774,7 @@ export default function AdminDashboard() {
                                   value={u.role}
                                   onValueChange={(val: UserProfile["role"]) => handleRoleChange(u.id, val)}
                                 >
-                                  <SelectTrigger className="h-7 text-xs w-[130px]">
+                                  <SelectTrigger className="h-7 text-xs w-[130px] rounded-lg">
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent className="font-tajawal text-xs">
@@ -748,7 +793,7 @@ export default function AdminDashboard() {
                             </td>
 
                             {/* Temps Passé */}
-                            <td className="py-3.5 px-3 font-semibold text-foreground">
+                            <td className="py-3.5 px-3 font-bold text-foreground">
                               {formatDuration(u.total_seconds_spent)}
                             </td>
 
@@ -757,7 +802,7 @@ export default function AdminDashboard() {
                               {u.status === "valide" && (
                                 <Badge
                                   variant="outline"
-                                  className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1 font-medium"
+                                  className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 gap-1 font-semibold"
                                 >
                                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                                   Validé / Actif
@@ -766,7 +811,7 @@ export default function AdminDashboard() {
                               {u.status === "en_attente" && (
                                 <Badge
                                   variant="outline"
-                                  className="bg-amber-50 text-amber-700 border-amber-300 gap-1 font-medium"
+                                  className="bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-300 gap-1 font-semibold"
                                 >
                                   <Clock className="h-3 w-3" />
                                   En attente
@@ -775,7 +820,7 @@ export default function AdminDashboard() {
                               {u.status === "suspendu" && (
                                 <Badge
                                   variant="outline"
-                                  className="bg-rose-50 text-rose-700 border-rose-300 gap-1 font-medium"
+                                  className="bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-300 gap-1 font-semibold"
                                 >
                                   <PauseCircle className="h-3 w-3" />
                                   Suspendu
@@ -786,6 +831,18 @@ export default function AdminDashboard() {
                             {/* Actions du compte */}
                             <td className="py-3.5 px-4 text-right">
                               <div className="flex items-center justify-end gap-1.5">
+                                {/* Inspecter le compte */}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleOpenInspectModal(u)}
+                                  className="h-7 text-xs bg-muted/40 hover:bg-muted font-semibold gap-1 px-2"
+                                  title="Inspecter les détails & quotas"
+                                >
+                                  <Eye className="h-3.5 w-3.5 text-blue-600" />
+                                  <span>Inspecter</span>
+                                </Button>
+
                                 {!isSelf && (
                                   <>
                                     {u.status === "valide" ? (
@@ -793,19 +850,19 @@ export default function AdminDashboard() {
                                         variant="outline"
                                         size="sm"
                                         onClick={() => handleSuspendUser(u.id)}
-                                        className="h-7 text-xs text-amber-700 border-amber-300 hover:bg-amber-50 gap-1"
+                                        className="h-7 text-xs text-amber-700 border-amber-300 hover:bg-amber-50 gap-1 font-semibold"
+                                        title="Suspendre temporairement"
                                       >
                                         <PauseCircle className="h-3 w-3" />
-                                        Suspendre
                                       </Button>
                                     ) : (
                                       <Button
                                         size="sm"
                                         onClick={() => handleReactivateUser(u.id)}
-                                        className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
+                                        className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1 font-semibold"
+                                        title="Valider le compte"
                                       >
                                         <Check className="h-3 w-3" />
-                                        Valider
                                       </Button>
                                     )}
                                   </>
@@ -819,10 +876,9 @@ export default function AdminDashboard() {
                                     setIsPasswordModalOpen(true);
                                   }}
                                   className="h-7 text-xs hover:bg-muted gap-1 text-muted-foreground hover:text-foreground"
-                                  title="Changer mot de passe"
+                                  title="Changer le mot de passe"
                                 >
                                   <KeyRound className="h-3 w-3" />
-                                  Mdps
                                 </Button>
 
                                 {!isSelf && (
@@ -849,223 +905,290 @@ export default function AdminDashboard() {
           </Card>
         </div>
 
-        {/* Right Column: Matrice des Rôles & Sécurité (Sections exactes de l'application de location) */}
+        {/* Right Column: Matrice des Rôles & Sécurité (4 Cols) */}
         <div className="lg:col-span-4 space-y-4">
-          <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden">
+          <Card className="rounded-3xl border border-border/50 shadow-sm overflow-hidden bg-card">
             <CardHeader className="bg-muted/20 pb-3 border-b border-border/40">
               <div className="flex items-center gap-2">
                 <Shield className="h-4 w-4 text-emerald-600" />
                 <CardTitle className="text-xs font-bold uppercase tracking-wider text-foreground">
-                  Matrice des rôles & sécurité
+                  Matrice des rôles & sécurité ERP 2026
                 </CardTitle>
               </div>
-              <p className="text-[11px] text-muted-foreground">
-                Permissions par module de l'ERP de location
-              </p>
+              <CardDescription className="text-[11px]">
+                Droits d'accès par module métier dans l'ERP SFTLOCATION.
+              </CardDescription>
             </CardHeader>
 
-            <CardContent className="p-4 space-y-5 text-xs">
-              {/* Rôle 1: Administrateur Système / Gérant */}
-              <div className="space-y-2">
-                <div className="px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-700 dark:text-rose-400 font-bold w-fit">
-                  Administrateur Système (Gérant)
-                </div>
-                <ul className="space-y-1.5 pl-1 text-muted-foreground">
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span className="font-semibold text-foreground/90">Tableau de bord & Rapports d'activité</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Gestion intégrale de la Flotte & Véhicules</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Gestion des Contrats & Signature électronique</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Fiches Clients, Locataires & Documents (CIN/Permis)</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Réparations, Ordres d'Atelier & Suivi GPS en direct</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Facturation, Revenus, Dépenses & Trésorerie</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Gestion des Chèques de garantie & Caisses</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Contrôle Utilisateurs (Valider, Suspendre, Supprimer)</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Paramètres Fiscaux, Entreprise (ICE, RC) & Tarifs</span>
-                  </li>
-                </ul>
-              </div>
+            <CardContent className="p-4 space-y-4">
+              <Tabs defaultValue="super_admin" className="w-full">
+                <TabsList className="grid grid-cols-2 gap-1 bg-muted/60 p-1 rounded-xl">
+                  <TabsTrigger value="super_admin" className="text-[11px] font-bold">
+                    Super Admin
+                  </TabsTrigger>
+                  <TabsTrigger value="admin" className="text-[11px] font-bold">
+                    Admin Agence
+                  </TabsTrigger>
+                </TabsList>
 
-              {/* Rôle 2: Gestionnaire de Flotte */}
-              <div className="space-y-2 pt-2 border-t border-border/40">
-                <div className="px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-700 dark:text-blue-400 font-bold w-fit">
-                  Gestionnaire de Flotte
-                </div>
-                <ul className="space-y-1.5 pl-1 text-muted-foreground">
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span className="font-semibold text-foreground/90">Tableau de bord Flotte & Disponibilité</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Fiches Véhicules, Kilométrage & Cartes grises</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Gestion des Réparations & Ateliers mécaniques</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Carte de la flotte & Suivi GPS en temps réel</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Alertes d'échéances (Assurance, Vidange, Visite)</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Fiches de retour véhicules & Contrôle dégâts</span>
-                  </li>
-                </ul>
-              </div>
+                <TabsContent value="super_admin" className="pt-3 space-y-2 text-xs">
+                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-300 font-extrabold flex items-center justify-between">
+                    <span>Super Administrateur Système</span>
+                    <Badge variant="outline" className="bg-rose-500 text-white text-[10px]">
+                      Illimité
+                    </Badge>
+                  </div>
 
-              {/* Rôle 3: Commercial / Agent de comptoir */}
-              <div className="space-y-2 pt-2 border-t border-border/40">
-                <div className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold w-fit">
-                  Vendeur / Commercial
-                </div>
-                <ul className="space-y-1.5 pl-1 text-muted-foreground">
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span className="font-semibold text-foreground/90">Consultation du parc & Réservations</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Création, Prolongation & Signature Contrats</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Fiches Clients, CRM & Contrôle CIN / Permis</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Enregistrement des Avances & Cautions</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Émission des Devis & Factures de location</span>
-                  </li>
-                </ul>
-              </div>
+                  <ul className="space-y-2 text-[11px] text-muted-foreground pt-1">
+                    <li className="flex items-center gap-2 text-foreground font-semibold">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      Contrôle d'Accès Global & Validation des Comptes
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      Gestion de la Flotte & Véhicules
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      Contrats & Signatures Tactiles Clients
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      Finances, Reçus, Factures & TVA
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      Carte GPSwox & Suivi Traqueurs Temps Réel
+                    </li>
+                  </ul>
+                </TabsContent>
 
-              {/* Rôle 4: Comptable / Audit */}
-              <div className="space-y-2 pt-2 border-t border-border/40">
-                <div className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-400 font-bold w-fit">
-                  Comptable / Audit Financier
-                </div>
-                <ul className="space-y-1.5 pl-1 text-muted-foreground">
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span className="font-semibold text-foreground/90">Suivi des Revenus & Recettes journalières</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Pointage & Saisie des Dépenses (Carburant, charges)</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Facturation (Factures clients, Déclarations TVA)</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Gestion des Chèques (Cautions & Encaissements)</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Suivi de la Trésorerie, Comptes bancaires & Caisses</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Rapports financiers, Balances & Exports</span>
-                  </li>
-                </ul>
-              </div>
+                <TabsContent value="admin" className="pt-3 space-y-2 text-xs">
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 font-extrabold flex items-center justify-between">
+                    <span>Administrateur Agence</span>
+                    <Badge variant="outline" className="bg-emerald-600 text-white text-[10px]">
+                      Standard
+                    </Badge>
+                  </div>
+
+                  <ul className="space-y-2 text-[11px] text-muted-foreground pt-1">
+                    <li className="flex items-center gap-2 text-foreground font-semibold">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      Gestion Complète de l'Agence
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      Contrats, Clients, Caution & Restitution
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      Entretien Véhicules & Suivi Garage
+                    </li>
+                    <li className="flex items-center gap-2 text-muted-foreground/60">
+                      <ShieldAlert className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                      Accès restreint au Panel de Gouvernance
+                    </li>
+                  </ul>
+                </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
         </div>
       </div>
 
-      {/* Modal: Modifier mot de passe */}
-      <Dialog open={isPasswordModalOpen} onOpenChange={setIsPasswordModalOpen}>
-        <DialogContent className="font-tajawal max-w-sm">
+      {/* 5. Modal Inspecteur de Compte (Account Inspector Drawer) */}
+      <Dialog open={isInspectModalOpen} onOpenChange={setIsInspectModalOpen}>
+        <DialogContent className="sm:max-w-xl font-tajawal rounded-3xl">
+          <DialogHeader className="space-y-1">
+            <DialogTitle className="flex items-center gap-2.5 text-lg font-extrabold">
+              <Eye className="h-5 w-5 text-blue-600" />
+              <span>Inspecteur Détaillé de Compte</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Métadonnées de connexion, quotas d'utilisation et formule de licence pour l'agence.
+            </DialogDescription>
+          </DialogHeader>
+
+          {userToInspect && (
+            <div className="space-y-5 pt-3">
+              {/* Entête Fiche utilisateur */}
+              <div className="p-4 rounded-2xl bg-muted/30 border border-border/60 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-12 w-12 rounded-2xl bg-emerald-500/15 text-emerald-700 font-extrabold flex items-center justify-center text-base shrink-0 border border-emerald-500/20">
+                    {(userToInspect.full_name || "U")[0]?.toUpperCase()}
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-foreground text-sm flex items-center gap-2">
+                      <span>{userToInspect.company_name}</span>
+                      <Badge variant="outline" className="text-[10px] bg-background">
+                        {userToInspect.subscription_plan || "Pro"}
+                      </Badge>
+                    </h4>
+                    <p className="text-xs text-muted-foreground">{userToInspect.full_name}</p>
+                    <p className="text-[11px] font-mono text-muted-foreground">{userToInspect.email}</p>
+                  </div>
+                </div>
+
+                <Badge
+                  className={
+                    userToInspect.status === "valide"
+                      ? "bg-emerald-600 text-white"
+                      : userToInspect.status === "en_attente"
+                      ? "bg-amber-500 text-black"
+                      : "bg-rose-600 text-white"
+                  }
+                >
+                  {userToInspect.status}
+                </Badge>
+              </div>
+
+              {/* Grid 2 colonnes: Sécurité & Quotas */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Métadonnées Sécurité */}
+                <div className="p-4 rounded-2xl bg-card border border-border/60 space-y-2.5 text-xs">
+                  <h5 className="font-extrabold text-foreground flex items-center gap-1.5 text-xs uppercase tracking-wider">
+                    <Monitor className="h-4 w-4 text-emerald-600" />
+                    <span>Appareil & Connexion</span>
+                  </h5>
+                  <div className="space-y-1.5 text-muted-foreground">
+                    <div className="flex justify-between">
+                      <span>Adresse IP:</span>
+                      <span className="font-mono text-foreground font-semibold">197.230.105.42</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Appareil:</span>
+                      <span className="text-foreground font-semibold">Chrome / Windows 11</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Dernière activité:</span>
+                      <span className="text-foreground font-semibold">{formatDate(userToInspect.last_login_at)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Temps total actif:</span>
+                      <span className="text-foreground font-semibold">{formatDuration(userToInspect.total_seconds_spent)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quotas & Formule */}
+                <div className="p-4 rounded-2xl bg-card border border-border/60 space-y-3 text-xs">
+                  <h5 className="font-extrabold text-foreground flex items-center gap-1.5 text-xs uppercase tracking-wider">
+                    <HardDrive className="h-4 w-4 text-blue-600" />
+                    <span>Quotas & Autorisations</span>
+                  </h5>
+
+                  <div className="space-y-2">
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Quota Véhicules Max</Label>
+                      <Input
+                        type="number"
+                        value={editMaxVehicles}
+                        onChange={(e) => setEditMaxVehicles(Number(e.target.value))}
+                        className="h-8 text-xs font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Formule d'Abonnement</Label>
+                      <Select
+                        value={editSubscription}
+                        onValueChange={(val: UserProfile["subscription_plan"]) => setEditSubscription(val)}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="font-tajawal text-xs">
+                          <SelectItem value="Trial">Essai (14 jours)</SelectItem>
+                          <SelectItem value="Pro">Professionnel (50 Véhicules)</SelectItem>
+                          <SelectItem value="Enterprise">Enterprise (200 Véhicules)</SelectItem>
+                          <SelectItem value="Unlimited">Illimité SFTLOCATION</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <DialogFooter className="pt-2">
+                <Button variant="outline" onClick={() => setIsInspectModalOpen(false)}>
+                  Fermer
+                </Button>
+                <Button
+                  onClick={handleSaveQuotas}
+                  disabled={isSavingQuotas}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                >
+                  {isSavingQuotas ? "Enregistrement..." : "Mettre à jour les quotas"}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 6. Modal Confirmation Suppression */}
+      <Dialog open={Boolean(userToDelete)} onOpenChange={(open) => !open && setUserToDelete(null)}>
+        <DialogContent className="sm:max-w-md font-tajawal rounded-2xl">
           <DialogHeader>
-            <DialogTitle>Modifier le mot de passe</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-rose-600 font-bold flex items-center gap-2">
+              <Trash2 className="h-5 w-5" />
+              Confirmer la suppression définitive
+            </DialogTitle>
+            <DialogDescription className="text-xs pt-1">
+              Êtes-vous sûr de vouloir supprimer définitivement le compte{" "}
+              <strong className="text-foreground">{userToDelete?.full_name} ({userToDelete?.company_name})</strong> ?
+              Cette action est irréversible et retirera le compte de la base Supabase Cloud.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="pt-3">
+            <Button variant="outline" onClick={() => setUserToDelete(null)}>
+              Annuler
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteUserConfirmed} className="font-bold">
+              Supprimer le compte
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 7. Modal Changement Mot de Passe */}
+      <Dialog open={isPasswordModalOpen} onOpenChange={setIsPasswordModalOpen}>
+        <DialogContent className="sm:max-w-md font-tajawal rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold">
+              <KeyRound className="h-5 w-5 text-emerald-600" />
+              Réinitialiser le mot de passe
+            </DialogTitle>
+            <DialogDescription className="text-xs">
               Assigner un nouveau mot de passe pour {selectedUserForPassword?.email}.
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleUpdatePasswordSubmit} className="space-y-4 pt-2">
             <div className="space-y-1.5">
-              <Label htmlFor="new-pass">Nouveau mot de passe</Label>
+              <Label htmlFor="new-pwd">Nouveau mot de passe</Label>
               <Input
-                id="new-pass"
+                id="new-pwd"
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Au moins 6 caractères"
+                placeholder="Minimum 6 caractères"
                 required
               />
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="pt-2">
               <Button type="button" variant="outline" onClick={() => setIsPasswordModalOpen(false)}>
                 Annuler
               </Button>
-              <Button type="submit" className="bg-primary text-primary-foreground">
-                Enregistrer le mot de passe
+              <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
+                Mettre à jour
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
-
-      {/* Alert Dialog: Confirmer Suppression */}
-      <AlertDialog open={Boolean(userToDelete)} onOpenChange={(open) => !open && setUserToDelete(null)}>
-        <AlertDialogContent className="font-tajawal">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
-            <AlertDialogDescription>
-              Êtes-vous sûr de vouloir supprimer définitivement le compte de{" "}
-              <strong>{userToDelete?.full_name}</strong> ({userToDelete?.email}) ? Toutes ses données associées
-              seront purgées.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteUserConfirmed}
-              className="bg-red-600 hover:bg-red-700 text-white"
-            >
-              Supprimer définitivement
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
