@@ -55,21 +55,9 @@ const SEED_PROFILES: UserProfile[] = [
     phone: "0661000000",
     role: "super_admin",
     status: "valide",
-    last_login_at: "2026-09-21T23:24:12",
+    last_login_at: "2026-09-22T11:42:52",
     total_seconds_spent: 1830,
     created_at: "2026-09-01T10:00:00",
-  },
-  {
-    id: "b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e",
-    email: "med@meira.com",
-    full_name: "med",
-    company_name: "meira",
-    phone: "0662345678",
-    role: "admin",
-    status: "valide",
-    last_login_at: "2026-09-19T14:12:04",
-    total_seconds_spent: 10,
-    created_at: "2026-09-10T12:00:00",
   },
 ];
 
@@ -80,19 +68,9 @@ const SEED_SESSIONS: UserSession[] = [
     email: "medoraelis93@gmail.com",
     full_name: "Super Administrateur",
     company_name: "SFTLOCATION",
-    login_at: "2026-09-21T23:24:12",
+    login_at: "2026-09-22T11:42:52",
     duration_seconds: 1830,
     is_active: true,
-  },
-  {
-    id: "sess-2",
-    user_id: "b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e",
-    email: "med@meira.com",
-    full_name: "med",
-    company_name: "meira",
-    login_at: "2026-09-19T14:12:04",
-    duration_seconds: 10,
-    is_active: false,
   },
 ];
 
@@ -102,8 +80,8 @@ function cleanProfile(p: any): UserProfile {
   return {
     id: String(p.id || generateUUID()),
     email,
-    full_name: sanitizeText(p.full_name, isSuper ? "Super Administrateur" : "Utilisateur"),
-    company_name: sanitizeText(p.company_name, "SFTLOCATION"),
+    full_name: sanitizeText(p.full_name || p.fullName, isSuper ? "Super Administrateur" : "Utilisateur"),
+    company_name: sanitizeText(p.company_name || p.companyName, "SFTLOCATION"),
     phone: p.phone || undefined,
     role: (p.role || (isSuper ? "super_admin" : "admin")) as any,
     status: (p.status || (isSuper ? "valide" : "en_attente")) as any,
@@ -213,7 +191,7 @@ export const adminService = {
 
   /**
    * Récupère tous les utilisateurs depuis Supabase (Cloud) avec fallback local.
-   * La base Supabase fait autorité universelle entre tous les navigateurs.
+   * Récupère également les demandes d'inscription soumises depuis /login (audit_logs).
    */
   async getAllUsers(): Promise<UserProfile[]> {
     const supabase = getSupabaseClient();
@@ -249,16 +227,22 @@ export const adminService = {
         if (auditLogs && auditLogs.length > 0) {
           let hasNew = false;
           for (const item of auditLogs) {
-            const p = item.payload;
-            if (p && p.email) {
+            let p = item.payload;
+            if (typeof p === "string") {
+              try {
+                p = JSON.parse(p);
+              } catch {}
+            }
+
+            if (p && typeof p === "object" && p.email) {
               const emailNormalized = String(p.email).toLowerCase().trim();
               if (!activeList.some((u) => u.email.toLowerCase() === emailNormalized)) {
                 activeList.push(
                   cleanProfile({
                     id: p.id || item.id,
                     email: emailNormalized,
-                    full_name: p.full_name || "Utilisateur",
-                    company_name: sanitizeText(p.company_name, "SFTLOCATION"),
+                    full_name: p.full_name || p.fullName || "Utilisateur",
+                    company_name: sanitizeText(p.company_name || p.companyName, "SFTLOCATION"),
                     phone: p.phone,
                     role: p.role || "admin",
                     status: p.status || "en_attente",
@@ -310,7 +294,7 @@ export const adminService = {
   },
 
   /**
-   * Créer un nouvel utilisateur (+ Nouvel utilisateur)
+   * Créer un nouvel utilisateur (+ Nouvel utilisateur ou formulaire d'inscription sur /login)
    */
   async createUser(data: {
     full_name: string;
@@ -329,7 +313,7 @@ export const adminService = {
       company_name: sanitizeText(data.company_name, "SFTLOCATION"),
       phone: data.phone?.trim() || "",
       role: data.role || "admin",
-      status: data.status || "valide",
+      status: data.status || "en_attente",
       total_seconds_spent: 0,
       created_at: new Date().toISOString(),
     });
@@ -345,12 +329,12 @@ export const adminService = {
     // 2. Synchronisation Cloud Supabase
     await adminService.syncUsersToCloud(updated);
 
-    // 3. Si création depuis un compte non-admin (ex: formulaire d'inscription sur /login)
+    // 3. Insérer systématiquement dans audit_logs pour garantir la prise en compte par le Super Admin
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
+        if (!user || newProfile.status === "en_attente") {
           await supabase.from("audit_logs").insert({
             user_id: SUPER_ADMIN_ID,
             action: "user_registration_request",
@@ -392,8 +376,13 @@ export const adminService = {
 
         if (logs && logs.length > 0) {
           for (const log of logs) {
-            const p = log.payload;
-            if (p && (p.id === userId || String(p.email).toLowerCase() === target.email.toLowerCase())) {
+            let p = log.payload;
+            if (typeof p === "string") {
+              try {
+                p = JSON.parse(p);
+              } catch {}
+            }
+            if (p && (p.id === userId || String(p.email || "").toLowerCase() === target.email.toLowerCase())) {
               await supabase.from("audit_logs").delete().eq("id", log.id);
             }
           }
