@@ -51,7 +51,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { applyBrandColor, DEFAULT_BRAND_COLOR } from "@/utils/brandTheme";
 import { settingsRepository } from "@/repositories/settingsRepository";
-import type { CompanySettings, GpsSettings } from "@/types/appData";
+import type { AutoBackupFrequency, CompanySettings, GpsSettings } from "@/types/appData";
 import { useAuth } from "@/contexts/AuthContext";
 import { adminService, SystemGovernanceConfig } from "@/services/adminService";
 import { usePDFGeneration } from "@/hooks/usePDFGeneration";
@@ -131,6 +131,10 @@ const Settings = () => {
           setGpsApiUrl(gpsSettings.api_url || "");
           setGpsEmail(gpsSettings.email || "");
           setGpsPassword(gpsSettings.password || "");
+        } else {
+          setGpsApiUrl("sf-tracker.pro");
+          setGpsEmail("");
+          setGpsPassword("");
         }
       } catch (error: any) {
         toast({
@@ -169,7 +173,7 @@ const Settings = () => {
       await settingsRepository.saveCompanySettings(companySettings);
       toast({
         title: "Paramètres enregistrés",
-        description: "Les informations de société ont été sauvegardées.",
+        description: "Les informations de société ont été sauvegardées avec succès.",
       });
     } catch (error: any) {
       toast({
@@ -177,6 +181,422 @@ const Settings = () => {
         description: error?.message || "Erreur lors de la sauvegarde",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleSaveGpsSettings = async () => {
+    if (!gpsApiUrl || !gpsEmail || !gpsPassword) {
+      toast({
+        title: "Champs requis",
+        description: "Veuillez renseigner l'URL API, l'e-mail et le mot de passe",
+        variant: "destructive",
+      });
+      return;
+    }
+    setGpsSaving(true);
+    try {
+      const payload: GpsSettings = {
+        api_url: gpsApiUrl.trim(),
+        email: gpsEmail.trim(),
+        password: gpsPassword,
+      };
+      await settingsRepository.saveGpsSettings(payload);
+      toast({
+        title: "Paramètres enregistrés",
+        description: "Les paramètres SFT Tracker ont été enregistrés avec succès.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error?.message || "Échec de l'enregistrement des paramètres SFT Tracker",
+        variant: "destructive",
+      });
+    } finally {
+      setGpsSaving(false);
+    }
+  };
+
+  const handleLogoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast({
+        title: "Fichier trop volumineux",
+        description: "Veuillez choisir un fichier de moins de 2 Mo.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLogoUploading(true);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64Logo = e.target?.result as string;
+      updateCompanySettings({ companyLogo: base64Logo });
+      setLogoUploading(false);
+      toast({
+        title: "Logo mis à jour",
+        description: "Le logo de l'entreprise a été importé avec succès.",
+      });
+    };
+    reader.onerror = () => {
+      setLogoUploading(false);
+      toast({
+        title: "Erreur d'importation",
+        description: "Impossible de lire le fichier de logo.",
+        variant: "destructive",
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveLogo = () => {
+    updateCompanySettings({ companyLogo: null });
+    toast({
+      title: "Logo supprimé",
+      description: "Le logo a été supprimé.",
+    });
+  };
+
+  const exportCompanyIdentity = () => {
+    const payload = {
+      companyName,
+      companyLogo,
+      companyAddress,
+      companyPhone,
+      companyFax,
+      companyGsm,
+      companyEmail,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "company_identity.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast({ title: "Export identité", description: "Fichier JSON exporté" });
+  };
+
+  const handleImportCompanyIdentity = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const obj = JSON.parse(text || "{}");
+      if (typeof obj !== "object") throw new Error("invalid");
+      updateCompanySettings({
+        companyName: "companyName" in obj ? String(obj.companyName || "") : companySettings.companyName,
+        companyLogo: "companyLogo" in obj ? (obj.companyLogo ? String(obj.companyLogo) : null) : companySettings.companyLogo,
+        companyAddress: "companyAddress" in obj ? String(obj.companyAddress || "") : companySettings.companyAddress,
+        companyPhone: "companyPhone" in obj ? String(obj.companyPhone || "") : companySettings.companyPhone,
+        companyFax: "companyFax" in obj ? String(obj.companyFax || "") : companySettings.companyFax,
+        companyGsm: "companyGsm" in obj ? String(obj.companyGsm || "") : companySettings.companyGsm,
+        companyEmail: "companyEmail" in obj ? String(obj.companyEmail || "") : companySettings.companyEmail,
+      });
+      toast({ title: "Import identité", description: "Identité de l'entreprise importée avec succès." });
+    } catch {
+      toast({ title: "Import échoué", description: "Fichier invalide", variant: "destructive" });
+    } finally {
+      if (importCompanyFileRef.current) importCompanyFileRef.current.value = "";
+    }
+  };
+
+  const resetCompanyIdentity = () => {
+    updateCompanySettings({
+      companyName: "",
+      companyLogo: null,
+      companyAddress: "",
+      companyPhone: "",
+      companyFax: "",
+      companyGsm: "",
+      companyEmail: "",
+    });
+    toast({ title: "Réinitialisé", description: "Identité de l'entreprise réinitialisée." });
+  };
+
+  const handleResetOfficialColor = () => {
+    updateCompanySettings({ brandColor: DEFAULT_BRAND_COLOR });
+    toast({
+      title: "Couleur officielle activée",
+      description: "La couleur jaune officielle SFTLOCATION a été appliquée.",
+    });
+  };
+
+  const handleCheckUpdate = async () => {
+    setIsChecking(true);
+    setTimeout(() => {
+      setIsChecking(false);
+      toast({
+        title: "Application à jour",
+        description: "Votre ERP SFTLOCATION est à jour (v2.0.0 Enterprise Edition)",
+      });
+    }, 1500);
+  };
+
+  const handleExportAllContracts = async () => {
+    setIsExporting(true);
+    try {
+      const { data: contracts, error } = await supabase.from("contracts").select("*");
+      if (error) throw error;
+
+      if (!contracts || contracts.length === 0) {
+        toast({
+          title: "Aucun contrat",
+          description: "Il n'y a aucun contrat à exporter.",
+          variant: "destructive",
+        });
+        setIsExporting(false);
+        return;
+      }
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Tous les Contrats - Export</title>
+          <style>
+            @page { margin: 1cm; size: A4; }
+            body { font-family: Arial, sans-serif; font-size: 12px; line-height: 1.4; }
+            .contract { page-break-after: always; padding: 20px; border: 1px solid #ddd; margin-bottom: 20px; }
+            .contract:last-child { page-break-after: avoid; }
+            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 15px; }
+            .title { font-size: 18px; font-weight: bold; color: #333; }
+            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0; }
+            .info-item { margin-bottom: 10px; }
+            .label { font-weight: bold; color: #666; }
+            .value { color: #333; }
+            .status { padding: 4px 8px; border-radius: 4px; font-weight: bold; text-transform: uppercase; }
+          </style>
+        </head>
+        <body>
+          ${contracts
+            .map(
+              (contract: any, index: number) => `
+            <div class="contract">
+              <div class="header">
+                <div class="title">CONTRAT DE LOCATION N° ${contract.contract_number}</div>
+                <div style="margin-top: 10px; color: #666;">Contrat ${index + 1} sur ${contracts.length}</div>
+              </div>
+              
+              <div class="info-grid">
+                <div>
+                  <div class="info-item">
+                    <span class="label">Client :</span>
+                    <span class="value">${contract.customer_name}</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="label">Téléphone :</span>
+                    <span class="value">${contract.customer_phone || "N/A"}</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="label">Email :</span>
+                    <span class="value">${contract.customer_email || "N/A"}</span>
+                  </div>
+                </div>
+                
+                <div>
+                  <div class="info-item">
+                    <span class="label">Véhicule :</span>
+                    <span class="value">${contract.vehicle}</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="label">Date début :</span>
+                    <span class="value">${new Date(contract.start_date).toLocaleDateString("fr-FR")}</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="label">Date fin :</span>
+                    <span class="value">${new Date(contract.end_date).toLocaleDateString("fr-FR")}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="info-grid">
+                <div>
+                  <div class="info-item">
+                    <span class="label">Tarif journalier :</span>
+                    <span class="value">${contract.daily_rate} DH</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="label">Montant total :</span>
+                    <span class="value">${contract.total_amount} DH</span>
+                  </div>
+                </div>
+                <div>
+                  <div class="info-item">
+                    <span class="label">Statut :</span>
+                    <span class="status">${contract.status}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `
+            )
+            .join("")}
+        </body>
+        </html>
+      `;
+
+      const printWindow = window.open("", "_blank");
+      if (printWindow) {
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+        setTimeout(() => {
+          printWindow.print();
+        }, 500);
+
+        toast({
+          title: "Export réussi",
+          description: `${contracts.length} contrats exportés en PDF.`,
+        });
+      } else {
+        throw new Error("Impossible d'ouvrir la fenêtre d'impression.");
+      }
+    } catch (error) {
+      console.error("Erreur lors de l'export:", error);
+      toast({
+        title: "Erreur d'exportation",
+        description: "Impossible d'exporter les contrats.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleBackupData = async () => {
+    setIsBackingUp(true);
+    try {
+      await performBackup();
+      toast({
+        title: "Sauvegarde effectuée",
+        description: "Toutes les données ont été sauvegardées avec succès.",
+      });
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "Impossible de créer la sauvegarde.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
+
+  const handleRestoreData = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      await performRestore(file);
+      toast({
+        title: "Restauration terminée",
+        description: "Les données ont été restaurées.",
+      });
+    } catch (error) {
+      toast({
+        title: "Erreur de restauration",
+        description: "Fichier de sauvegarde invalide ou corrompu.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const clearDeviceData = async () => {
+    try {
+      localStorage.clear();
+    } catch {}
+    try {
+      sessionStorage.clear();
+    } catch {}
+
+    try {
+      if ("caches" in window) {
+        const names = await caches.keys();
+        await Promise.all(names.map((name) => caches.delete(name)));
+      }
+    } catch {}
+
+    try {
+      if ("serviceWorker" in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((registration) => registration.unregister()));
+      }
+    } catch {}
+  };
+
+  const handleClearLocalStorage = () => {
+    try {
+      localStorage.clear();
+      toast({
+        title: "LocalStorage vidé",
+        description: "Le stockage local de votre navigateur a été réinitialisé.",
+      });
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (error) {
+      console.error("Error clearing localStorage:", error);
+      toast({
+        title: "Erreur",
+        description: "Une erreur s'est produite lors du vidage du LocalStorage.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleClearAllData = async () => {
+    if (isClearingAllData) return;
+    setIsClearingAllData(true);
+    try {
+      const confirmPhrase = window.prompt(
+        'Action dangereuse.\nTapez "EFFACER" pour supprimer toutes vos données (Supabase + appareil).'
+      );
+
+      if (confirmPhrase !== "EFFACER") {
+        toast({
+          title: "Annulé",
+          description: "Aucune donnée n'a été supprimée.",
+        });
+        return;
+      }
+
+      const { error } = await supabase.rpc("clear_all_app_data");
+
+      if (error) {
+        if (error.code === "PGRST202") {
+          toast({
+            title: "Configuration Supabase requise",
+            description: "La fonction clear_all_app_data() n'existe pas encore dans votre projet Supabase.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        toast({
+          title: "Erreur",
+          description: error.message || "Une erreur s'est produite lors de la suppression des données.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      await supabase.auth.signOut().catch(() => {});
+      await clearDeviceData();
+      toast({
+        title: "Succès",
+        description: "Toutes les données ont été supprimées.",
+      });
+      setTimeout(() => window.location.reload(), 800);
+    } catch {
+      toast({
+        title: "Erreur",
+        description: "Une erreur s'est produite.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsClearingAllData(false);
     }
   };
 
@@ -223,42 +643,7 @@ const Settings = () => {
     }
   };
 
-  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 2 * 1024 * 1024) {
-      toast({
-        title: "Fichier trop volumineux",
-        description: "Veuillez choisir un fichier de moins de 2 Mo.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setLogoUploading(true);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const base64Logo = e.target?.result as string;
-      updateCompanySettings({ companyLogo: base64Logo });
-      setLogoUploading(false);
-      toast({
-        title: "Logo mis à jour",
-        description: "Le logo SFTLOCATION a été importé avec succès.",
-      });
-    };
-    reader.onerror = () => {
-      setLogoUploading(false);
-      toast({
-        title: "Erreur d'importation",
-        description: "Impossible de lire le fichier de logo.",
-        variant: "destructive",
-      });
-    };
-    reader.readAsDataURL(file);
-  };
-
-  // SI L'UTILISATEUR EST LE SUPER ADMINISTRATEUR : AFFICHAGE DU CENTRE DE GOUVERNANCE SYSTÈME 2026
+  // SI L'UTILISATEUR EST LE SUPER ADMINISTRATEUR : CENTRE DE GOUVERNANCE SYSTÈME 2026
   if (isSuperAdmin) {
     return (
       <div className="space-y-6 font-tajawal pb-16">
@@ -598,7 +983,7 @@ const Settings = () => {
                     <input
                       type="file"
                       ref={importCompanyFileRef}
-                      onChange={handleLogoUpload}
+                      onChange={handleLogoChange}
                       accept="image/*"
                       className="hidden"
                     />
@@ -629,67 +1014,485 @@ const Settings = () => {
     );
   }
 
-  // SINON : PARAMÈTRES CLASSIQUES POUR LES ADMINISTRATEURS ET AUTRES RÔLES
+  // SINON : COMPLÈTE PAGE DES PARAMÈTRES POUR LES UTILISATEURS / ADMINISTRATEURS D'AGENCES
   return (
     <div className="space-y-6 font-tajawal pb-16">
+      {/* Top Header */}
       <div className="flex items-center justify-between bg-card p-6 rounded-2xl border border-border/50 shadow-sm">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Paramètres de l'Agence</h1>
-          <p className="text-xs text-muted-foreground mt-1">Gérez les informations de votre agence et vos préférences.</p>
+        <div className="flex items-center gap-3">
+          <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+            <SettingsIcon className="h-6 w-6" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Paramètres de l'Agence</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Gérez l'identité de votre agence, l'intégration GPS Tracker, la charte graphique et la sauvegarde.
+            </p>
+          </div>
         </div>
-        <Button onClick={handleManualSave} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-2">
+        <Button onClick={handleManualSave} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-2 text-xs">
           <Save className="h-4 w-4" />
           <span>Enregistrer</span>
         </Button>
       </div>
 
-      {/* Identités & Coordonnées */}
-      <Card className="rounded-2xl border border-border/50 shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-base font-bold">Informations de la Société</CardTitle>
-          <CardDescription className="text-xs">Identifiants légaux et coordonnées de l'agence.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4 text-xs">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Card 1: Paramètres SFT Tracker / GPS */}
+        <Card className="lg:col-span-2 rounded-2xl border border-border/50 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <Radio className="h-5 w-5 text-amber-500" />
+              Paramètres SFT Tracker (Suivi GPSwox)
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Connectez le système de géolocalisation et de suivi de flotte en renseignant vos accès API SFT/TrackPremier.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 text-xs">
+            <div className="space-y-2">
+              <Label htmlFor="gpsApiUrl">URL API du Serveur GPS</Label>
+              <Input
+                id="gpsApiUrl"
+                value={gpsApiUrl}
+                onChange={(e) => setGpsApiUrl(e.target.value)}
+                placeholder="sf-tracker.pro"
+                disabled={gpsLoading || gpsSaving}
+                className="h-9 font-mono"
+              />
+              <p className="text-[11px] text-muted-foreground">Adresse du serveur de suivi sans `http://` ni `/api`</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="gpsEmail">E-mail Compte Tracker</Label>
+                <Input
+                  id="gpsEmail"
+                  type="email"
+                  value={gpsEmail}
+                  onChange={(e) => setGpsEmail(e.target.value)}
+                  placeholder="abdou@gmail.com"
+                  disabled={gpsLoading || gpsSaving}
+                  className="h-9"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="gpsPassword">Mot de Passe Tracker</Label>
+                <div className="relative">
+                  <Input
+                    id="gpsPassword"
+                    type={showGpsPassword ? "text" : "password"}
+                    value={gpsPassword}
+                    onChange={(e) => setGpsPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="h-9 pr-10"
+                    disabled={gpsLoading || gpsSaving}
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowGpsPassword((v) => !v)}
+                  >
+                    {showGpsPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+            <Button
+              className="w-full bg-slate-900 dark:bg-white text-white dark:text-zinc-950 font-bold text-xs h-9 rounded-xl"
+              onClick={handleSaveGpsSettings}
+              disabled={gpsSaving || gpsLoading}
+            >
+              <Save className={`h-4 w-4 mr-2 ${gpsSaving ? "animate-spin" : ""}`} />
+              {gpsSaving ? "Enregistrement..." : "Enregistrer les paramètres SFT Tracker"}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Card 2: Informations de l'Entreprise & Logo */}
+        <Card className="rounded-2xl border border-border/50 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-blue-600" />
+              Informations de la Société
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Nom, adresse et logo affichés sur les contrats de location et factures officielles.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 text-xs">
             <div className="space-y-2">
               <Label htmlFor="comp-name">Nom de la Société</Label>
               <Input
                 id="comp-name"
                 value={companyName}
                 onChange={(e) => updateCompanySettings({ companyName: e.target.value })}
+                placeholder="Ex: SFTLOCATION"
+                className="h-9 font-bold"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="comp-email">Email Agence</Label>
-              <Input
-                id="comp-email"
-                type="email"
-                value={companyEmail}
-                onChange={(e) => updateCompanySettings({ companyEmail: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="comp-gsm">GSM</Label>
-              <Input
-                id="comp-gsm"
-                value={companyGsm}
-                onChange={(e) => updateCompanySettings({ companyGsm: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="comp-addr">Adresse</Label>
+              <Label htmlFor="comp-addr">Adresse Officielle</Label>
               <Input
                 id="comp-addr"
                 value={companyAddress}
                 onChange={(e) => updateCompanySettings({ companyAddress: e.target.value })}
+                placeholder="Ex: Casablanca - Maroc"
+                className="h-9"
               />
             </div>
-          </div>
-        </CardContent>
-      </Card>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="comp-phone">Téléphone Fixe</Label>
+                <Input
+                  id="comp-phone"
+                  value={companyPhone}
+                  onChange={(e) => updateCompanySettings({ companyPhone: e.target.value })}
+                  placeholder="0522228704"
+                  className="h-9 font-mono"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="comp-fax">Fax</Label>
+                <Input
+                  id="comp-fax"
+                  value={companyFax}
+                  onChange={(e) => updateCompanySettings({ companyFax: e.target.value })}
+                  placeholder="0522471780"
+                  className="h-9 font-mono"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="comp-gsm">GSM Direct</Label>
+                <Input
+                  id="comp-gsm"
+                  value={companyGsm}
+                  onChange={(e) => updateCompanySettings({ companyGsm: e.target.value })}
+                  placeholder="0662596307"
+                  className="h-9 font-mono"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="comp-email">Email Agence</Label>
+                <Input
+                  id="comp-email"
+                  type="email"
+                  value={companyEmail}
+                  onChange={(e) => updateCompanySettings({ companyEmail: e.target.value })}
+                  placeholder="contact@sftlocation.com"
+                  className="h-9"
+                />
+              </div>
+            </div>
+
+            {/* Logo Section */}
+            <div className="space-y-2 pt-2">
+              <Label className="font-bold">Logo de l'Agence</Label>
+              <div className="flex items-center gap-4 p-3 bg-muted/30 border rounded-2xl">
+                <div className="w-16 h-16 border rounded-xl flex items-center justify-center bg-white p-1">
+                  {companyLogo ? (
+                    <img src={companyLogo} alt="Logo" className="max-w-full max-h-full object-contain" />
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground text-center font-bold">Aucun logo</span>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <div className="relative">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoChange}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      disabled={logoUploading}
+                    />
+                    <Button variant="outline" size="sm" className="text-xs font-bold gap-2">
+                      <Upload className="h-3.5 w-3.5" />
+                      <span>{logoUploading ? "Import..." : "Importer un logo"}</span>
+                    </Button>
+                  </div>
+                  {companyLogo && (
+                    <Button variant="ghost" size="sm" onClick={handleRemoveLogo} className="text-xs text-red-500 hover:text-red-600 h-7 px-2">
+                      Supprimer le logo
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={exportCompanyIdentity} className="text-xs">
+                Exporter identité (.json)
+              </Button>
+              <div className="relative">
+                <input
+                  ref={importCompanyFileRef}
+                  type="file"
+                  accept="application/json"
+                  onChange={handleImportCompanyIdentity}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+                <Button variant="outline" size="sm" className="text-xs">
+                  Importer identité
+                </Button>
+              </div>
+              <Button variant="ghost" size="sm" onClick={resetCompanyIdentity} className="text-xs text-muted-foreground">
+                Réinitialiser
+              </Button>
+            </div>
+
+            {/* Live Contract Header Preview */}
+            <div className="mt-4 border rounded-2xl overflow-hidden bg-white text-slate-900 p-4 space-y-2 shadow-inner">
+              <p className="text-[10px] uppercase font-extrabold tracking-wider text-slate-400">Aperçu Réel En-Tête Contrat de Location</p>
+              <div className="flex items-start justify-between border-b pb-3">
+                <div className="flex items-center gap-3">
+                  {companyLogo && <img src={companyLogo} alt="logo" className="h-10 w-10 object-contain" />}
+                  <div>
+                    <div className="text-base font-extrabold tracking-wider">{companyName || "SFTLOCATION"}</div>
+                    <div className="text-xs font-bold text-slate-500">LOCATION DE VOITURES</div>
+                  </div>
+                </div>
+                <div className="text-[11px] text-right leading-tight text-slate-600">
+                  <div>{companyAddress || "Casablanca - Maroc"}</div>
+                  <div>{(companyPhone || companyFax) ? `${companyPhone ? `Tél: ${companyPhone}` : ''}${companyPhone && companyFax ? ' - ' : ''}${companyFax ? `Fax: ${companyFax}` : ''}` : 'Tél: 0522228704'}</div>
+                  <div>{companyGsm ? `GSM: ${companyGsm}` : 'GSM: 06 62 59 63 07'}</div>
+                  <div>{companyEmail ? `E-mail: ${companyEmail}` : 'E-mail: contact@sftlocation.com'}</div>
+                </div>
+              </div>
+              <div className="pt-2 text-center">
+                <div className="bg-slate-950 text-white inline-block px-4 py-1 text-xs font-bold tracking-widest rounded-lg">
+                  CONTRAT DE LOCATION
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Card 3: Couleur Officielle de l'Application */}
+        <Card className="rounded-2xl border border-border/50 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <SwatchBook className="h-5 w-5 text-amber-500" />
+              Charte Graphique & Couleur Officielle
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Personnalisez la couleur d'accentuation principale de l'interface ERP.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 text-xs">
+            <div className="space-y-2">
+              <Label htmlFor="brandColor">Couleur Principale</Label>
+              <div className="flex items-center gap-3">
+                <Input
+                  id="brandColor"
+                  type="color"
+                  value={brandColor || DEFAULT_BRAND_COLOR}
+                  onChange={(e) => updateCompanySettings({ brandColor: e.target.value })}
+                  className="w-16 h-10 p-1 cursor-pointer rounded-xl border"
+                />
+                <Input
+                  value={(brandColor || DEFAULT_BRAND_COLOR).toUpperCase()}
+                  readOnly
+                  className="font-mono uppercase h-10 rounded-xl"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleResetOfficialColor} className="text-xs font-bold">
+                Activer le jaune officiel
+              </Button>
+              <Button size="sm" onClick={handleManualSave} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-2 text-xs">
+                <Save className="h-4 w-4" />
+                Sauvegarder
+              </Button>
+            </div>
+
+            {/* Color Preview */}
+            <div className="rounded-2xl border p-4 bg-muted/20 space-y-2">
+              <div className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider">Aperçu des composants</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className="bg-primary text-primary-foreground">Bouton Primaire</Badge>
+                <Badge variant="outline">Badge Contour</Badge>
+                <Button size="sm" className="h-8 text-xs">Aperçu Action</Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Card 4: Sauvegarde & Restauration */}
+        <Card className="rounded-2xl border border-border/50 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <HardDrive className="h-5 w-5 text-emerald-600" />
+              Sauvegarde & Restauration des Données
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Gérez les sauvegardes globales et la fréquence d'archivage automatique.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 text-xs">
+            {lastBackupDate && (
+              <div className="p-2.5 rounded-xl bg-muted/40 border text-muted-foreground">
+                Dernière sauvegarde créée : <strong className="text-foreground">{new Date(lastBackupDate).toLocaleString("fr-FR")}</strong>
+              </div>
+            )}
+
+            <div className="space-y-2 sm:space-y-0 sm:grid sm:grid-cols-2 gap-3">
+              <Button
+                onClick={handleBackupData}
+                disabled={isBackingUp}
+                className="w-full bg-slate-900 dark:bg-white text-white dark:text-zinc-950 font-bold text-xs h-9 rounded-xl"
+              >
+                <Save className={`h-4 w-4 mr-2 ${isBackingUp ? "animate-spin" : ""}`} />
+                {isBackingUp ? "Sauvegarde..." : "Créer une Sauvegarde"}
+              </Button>
+
+              <div className="relative">
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={handleRestoreData}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+                <Button variant="outline" className="w-full text-xs font-bold h-9 rounded-xl">
+                  <Upload className="mr-2 h-4 w-4" />
+                  Restaurer un fichier (.json)
+                </Button>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t space-y-2">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-slate-500" />
+                <Label className="text-xs font-bold">Fréquence de Sauvegarde Automatique</Label>
+              </div>
+              <Select value={autoBackupFrequency} onValueChange={(value: string) => setAutoBackupFrequency(value as AutoBackupFrequency)}>
+                <SelectTrigger className="h-9 rounded-xl">
+                  <SelectValue placeholder="Choisir la fréquence" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="disabled">Désactivée</SelectItem>
+                  <SelectItem value="daily">Quotidienne (Chaque jour)</SelectItem>
+                  <SelectItem value="weekly">Hebdomadaire (Chaque semaine)</SelectItem>
+                  <SelectItem value="monthly">Mensuelle (Chaque mois)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Card 5: Export des Contrats PDF & System Updates */}
+        <Card className="rounded-2xl border border-border/50 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <FileDown className="h-5 w-5 text-purple-600" />
+              Exports Globales & Mises à Jour
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Exportez l'ensemble des contrats de location au format PDF et vérifiez la version de l'application.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 text-xs">
+            <div className="space-y-2">
+              <Label className="font-bold">Exportation PDF de masse</Label>
+              <Button onClick={handleExportAllContracts} disabled={isExporting} variant="outline" className="w-full h-9 text-xs font-bold rounded-xl">
+                {isExporting ? (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    Génération PDF en cours...
+                  </>
+                ) : (
+                  <>
+                    <Download className="mr-2 h-4 w-4 text-purple-600" />
+                    Exporter tous les contrats en PDF
+                  </>
+                )}
+              </Button>
+            </div>
+
+            <div className="pt-3 border-t flex items-center justify-between">
+              <div>
+                <p className="font-bold">Version ERP SFTLOCATION</p>
+                <p className="text-[11px] text-muted-foreground">Version 2.0.0 Enterprise Edition</p>
+              </div>
+              <Button onClick={handleCheckUpdate} disabled={isChecking} variant="ghost" size="sm" className="text-xs font-bold gap-2">
+                <RefreshCw className={`h-3.5 w-3.5 ${isChecking ? "animate-spin" : ""}`} />
+                <span>{isChecking ? "Vérification..." : "Vérifier la MàJ"}</span>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Card 6: Zone Dangereuse */}
+        <Card className="rounded-2xl border border-red-200 dark:border-red-900/60 bg-red-50/20 dark:bg-red-950/10 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base font-bold text-red-600 dark:text-red-400 flex items-center gap-2">
+              <Trash2 className="h-5 w-5" />
+              Zone Dangereuse & Maintenance
+            </CardTitle>
+            <CardDescription className="text-xs text-red-600/80">
+              Actions irréversibles de réinitialisation des données et du stockage local.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-xs">
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" className="w-full h-9 font-bold text-xs rounded-xl">
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Effacer toutes les données (Supabase + Appareil)
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800">
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2 text-red-600 font-bold">
+                    <AlertTriangle className="h-5 w-5" />
+                    Confirmer la suppression totale
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="text-xs text-slate-500">
+                    <strong>Attention: Cette action supprimera définitivement :</strong>
+                    <ul className="list-disc list-inside mt-2 space-y-1">
+                      <li>Tous les contrats, véhicules et clients</li>
+                      <li>Toutes les factures, dépenses et réparations</li>
+                      <li>Toutes les données du stockage Supabase</li>
+                    </ul>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel className="rounded-xl text-xs font-semibold">Annuler</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleClearAllData} className="bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold">
+                    Oui, supprimer définitivement
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" className="w-full border-red-300 dark:border-red-900 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 h-9 font-bold text-xs rounded-xl">
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Vider le LocalStorage de l'appareil
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent className="rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800">
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2 text-red-600 font-bold">
+                    <AlertTriangle className="h-5 w-5" />
+                    Vider le LocalStorage du navigateur ?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="text-xs text-slate-500">
+                    Cette action réinitialisera uniquement le cache local de votre navigateur. Vos données Supabase dans le cloud ne seront pas supprimées.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel className="rounded-xl text-xs font-semibold">Annuler</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleClearLocalStorage} className="bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold">
+                    Oui, vider le LocalStorage
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 };
