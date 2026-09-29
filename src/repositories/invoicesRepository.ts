@@ -3,6 +3,32 @@ import type { Invoice } from "@/types/appData";
 
 type InvoiceRow = Record<string, any>;
 
+const STORAGE_KEY_LOCAL_INVOICES = "iloca:invoices:local";
+
+function getLocalInvoices(): Invoice[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_LOCAL_INVOICES);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalInvoices(invoices: Invoice[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY_LOCAL_INVOICES, JSON.stringify(invoices));
+  } catch (e) {
+    console.warn("Could not save local invoices:", e);
+  }
+}
+
+const isValidUuid = (id: string | null | undefined): boolean => {
+  if (!id) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+};
+
 const requireSupabase = () => {
   const supabase = getSupabaseClient();
   if (!supabase) {
@@ -88,58 +114,137 @@ const buildInvoicePayload = (invoice: Partial<Invoice>) => {
 };
 
 async function listInvoices(): Promise<Invoice[]> {
-  const supabase = requireSupabase();
-  const { data, error } = await supabase.from("invoices").select("*").order("updated_at", { ascending: false });
-  if (error) throw error;
-  return (data || []).map(mapInvoiceRow);
+  const localList = getLocalInvoices();
+  try {
+    const supabase = requireSupabase();
+    const { data, error } = await supabase.from("invoices").select("*").order("updated_at", { ascending: false });
+    if (!error && data) {
+      const remoteList = data.map(mapInvoiceRow);
+      const remoteIds = new Set(remoteList.map((i) => i.id));
+      const combined = [...remoteList, ...localList.filter((i) => !remoteIds.has(i.id))];
+      saveLocalInvoices(combined);
+      return combined;
+    }
+  } catch (err) {
+    console.warn("Error loading invoices from Supabase, using local cache:", err);
+  }
+  return localList;
 }
 
 async function createInvoice(input: Omit<Invoice, "id" | "created_at" | "updated_at">): Promise<Invoice> {
-  const supabase = requireSupabase();
-  const { data: { user } } = await supabase.auth.getUser();
-  const payload = { ...buildInvoicePayload(input), user_id: user?.id };
-  const { data, error } = await supabase.from("invoices").insert(payload).select("*").single();
-  if (error) throw error;
-  return mapInvoiceRow(data);
+  const activeUserStr = typeof window !== "undefined" ? localStorage.getItem("iloca:active_user") : null;
+  let activeUserId: string | null = null;
+  if (activeUserStr) {
+    try {
+      activeUserId = JSON.parse(activeUserStr)?.id || null;
+    } catch {}
+  }
+
+  const now = new Date().toISOString();
+  const fallbackInvoice: Invoice = {
+    id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `inv-${Date.now()}`,
+    ...input,
+    created_at: now,
+    updated_at: now,
+  };
+
+  try {
+    const supabase = requireSupabase();
+    const { data: authData } = await supabase.auth.getUser();
+    const candidateUserId = authData.user?.id || activeUserId;
+    const userId = isValidUuid(candidateUserId) ? candidateUserId : null;
+
+    const payload: Record<string, any> = { ...buildInvoicePayload(input) };
+    if (userId) payload.user_id = userId;
+
+    const { data, error } = await supabase.from("invoices").insert(payload).select("*").single();
+    if (!error && data) {
+      const saved = mapInvoiceRow(data);
+      const local = getLocalInvoices().filter((i) => i.id !== saved.id);
+      saveLocalInvoices([saved, ...local]);
+      return saved;
+    }
+  } catch (err) {
+    console.warn("Supabase invoice insert exception (storing locally):", err);
+  }
+
+  const currentLocal = getLocalInvoices().filter((i) => i.id !== fallbackInvoice.id);
+  saveLocalInvoices([fallbackInvoice, ...currentLocal]);
+  return fallbackInvoice;
 }
 
 async function updateInvoice(id: string, updates: Partial<Invoice>): Promise<Invoice> {
-  const supabase = requireSupabase();
-  const { data, error } = await supabase
-    .from("invoices")
-    .update(buildInvoicePayload(updates))
-    .eq("id", id)
-    .select("*")
-    .single();
-  if (error) throw error;
-  return mapInvoiceRow(data);
+  let updatedInvoice: Invoice | null = null;
+  try {
+    const supabase = requireSupabase();
+    const { data, error } = await supabase
+      .from("invoices")
+      .update(buildInvoicePayload(updates))
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (!error && data) {
+      updatedInvoice = mapInvoiceRow(data);
+    }
+  } catch (err) {
+    console.warn("Supabase invoice update exception:", err);
+  }
+
+  const local = getLocalInvoices();
+  const existing = local.find((i) => i.id === id);
+  const now = new Date().toISOString();
+  const merged: Invoice = updatedInvoice || {
+    ...(existing || { id, invoiceNumber: "", customerName: "", totalHT: 0, tva: 0, totalTTC: 0, paymentMethod: "AUTRE", status: "pending", created_at: now, updated_at: now }),
+    ...updates,
+    updated_at: now,
+  };
+
+  const nextLocal = local.map((i) => (i.id === id ? merged : i));
+  if (!existing && !updatedInvoice) {
+    nextLocal.push(merged);
+  }
+  saveLocalInvoices(nextLocal);
+  return merged;
 }
 
 async function deleteInvoice(id: string): Promise<void> {
-  const supabase = requireSupabase();
-  const { error } = await supabase.from("invoices").delete().eq("id", id);
-  if (error) throw error;
+  try {
+    const supabase = requireSupabase();
+    await supabase.from("invoices").delete().eq("id", id);
+  } catch (err) {
+    console.warn("Supabase invoice delete exception:", err);
+  }
+  const local = getLocalInvoices().filter((i) => i.id !== id);
+  saveLocalInvoices(local);
 }
 
 async function replaceInvoices(invoices: Invoice[]): Promise<void> {
-  const supabase = requireSupabase();
-  const { error: deleteError } = await supabase.from("invoices").delete().not("id", "is", null);
-  if (deleteError) throw deleteError;
-  if (!invoices.length) return;
-  const payload = invoices.map((invoice) => ({
-    id: invoice.id,
-    ...buildInvoicePayload(invoice),
-    created_at: invoice.created_at,
-    updated_at: invoice.updated_at,
-  }));
-  const { error } = await supabase.from("invoices").insert(payload);
-  if (error) throw error;
+  saveLocalInvoices(invoices);
+  try {
+    const supabase = requireSupabase();
+    const { error: deleteError } = await supabase.from("invoices").delete().not("id", "is", null);
+    if (deleteError) return;
+    if (!invoices.length) return;
+    const payload = invoices.map((invoice) => ({
+      id: invoice.id,
+      ...buildInvoicePayload(invoice),
+      created_at: invoice.created_at,
+      updated_at: invoice.updated_at,
+    }));
+    await supabase.from("invoices").insert(payload);
+  } catch (err) {
+    console.warn("Supabase replaceInvoices exception:", err);
+  }
 }
 
 async function clearInvoices(): Promise<void> {
-  const supabase = requireSupabase();
-  const { error } = await supabase.from("invoices").delete().not("id", "is", null);
-  if (error) throw error;
+  saveLocalInvoices([]);
+  try {
+    const supabase = requireSupabase();
+    await supabase.from("invoices").delete().not("id", "is", null);
+  } catch (err) {
+    console.warn("Supabase clearInvoices exception:", err);
+  }
 }
 
 export const invoicesRepository = {
@@ -150,3 +255,4 @@ export const invoicesRepository = {
   replaceInvoices,
   clearInvoices,
 };
+

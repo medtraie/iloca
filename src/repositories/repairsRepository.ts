@@ -65,77 +65,172 @@ const buildRepairPayload = (input: Partial<Repair>) => {
   return payload;
 };
 
+const STORAGE_KEY_LOCAL_REPAIRS = "iloca:repairs:local";
+
+function getLocalRepairs(): Repair[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_LOCAL_REPAIRS);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalRepairs(repairs: Repair[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY_LOCAL_REPAIRS, JSON.stringify(repairs));
+  } catch (e) {
+    console.warn("Could not save local repairs:", e);
+  }
+}
+
+const isValidUuid = (id: string | null | undefined): boolean => {
+  if (!id) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+};
+
 export const repairsRepository = {
   async getAll(): Promise<Repair[]> {
-    const supabase = getSupabaseClient();
-    const { data, error } = await supabase.from("repairs").select("*").order("created_at", { ascending: false });
-    if (error) throw error;
-    return (data || []).map(mapRepairRow);
+    const localList = getLocalRepairs();
+    try {
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        const { data, error } = await supabase.from("repairs").select("*").order("created_at", { ascending: false });
+        if (!error && data) {
+          const remoteList = (data || []).map(mapRepairRow);
+          const remoteIds = new Set(remoteList.map((r) => r.id));
+          const combined = [...remoteList, ...localList.filter((r) => !remoteIds.has(r.id))];
+          saveLocalRepairs(combined);
+          return combined;
+        }
+      }
+    } catch (err) {
+      console.warn("Error loading repairs:", err);
+    }
+    return localList;
   },
 
   async getById(id: string): Promise<Repair | null> {
-    const supabase = getSupabaseClient();
-    const { data, error } = await supabase.from("repairs").select("*").eq("id", id).single();
-    if (error && error.code !== "PGRST116") throw error;
-    return data ? mapRepairRow(data as RepairRow) : null;
+    try {
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        const { data, error } = await supabase.from("repairs").select("*").eq("id", id).single();
+        if (!error && data) return mapRepairRow(data as RepairRow);
+      }
+    } catch (err) {
+      console.warn("Error getting repair by ID:", err);
+    }
+    const local = getLocalRepairs();
+    return local.find((r) => r.id === id) || null;
   },
 
   async getByVehicleId(vehicleId: string): Promise<Repair[]> {
-    const supabase = getSupabaseClient();
-    for (const col of VEHICLE_ID_COLUMNS) {
-      const { data, error } = await supabase
-        .from("repairs")
-        .select("*")
-        .eq(col, vehicleId)
-        .order("created_at", { ascending: false });
-      if (!error) return (data || []).map(mapRepairRow);
-      if (!isMissingColumnError(error)) throw error;
-    }
-    return [];
+    const all = await this.getAll();
+    return all.filter((r) => r.vehicleId === vehicleId);
   },
 
   async create(repair: Omit<Repair, "id" | "created_at" | "updated_at">): Promise<Repair> {
-    const supabase = getSupabaseClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    const basePayload = {
-      ...buildRepairPayload(repair),
-      user_id: user?.id,
-    };
-
-    for (const col of VEHICLE_ID_COLUMNS) {
-      const payload = { ...basePayload, [col]: repair.vehicleId };
-      const { data, error } = await supabase.from("repairs").insert([payload]).select("*").single();
-      if (!error) return mapRepairRow(data as RepairRow);
-      if (!isMissingColumnError(error)) throw error;
+    const activeUserStr = typeof window !== "undefined" ? localStorage.getItem("iloca:active_user") : null;
+    let activeUserId: string | null = null;
+    if (activeUserStr) {
+      try {
+        activeUserId = JSON.parse(activeUserStr)?.id || null;
+      } catch {}
     }
 
-    throw new Error("Impossible d'ajouter la réparation: colonne véhicule introuvable.");
+    const now = new Date().toISOString();
+    const fallbackRepair: Repair = {
+      id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `rep-${Date.now()}`,
+      ...repair,
+      created_at: now,
+      updated_at: now,
+    };
+
+    try {
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        const { data: authData } = await supabase.auth.getUser();
+        const candidateUserId = authData.user?.id || activeUserId;
+        const userId = isValidUuid(candidateUserId) ? candidateUserId : null;
+
+        const basePayload: Record<string, any> = {
+          ...buildRepairPayload(repair),
+        };
+        if (userId) basePayload.user_id = userId;
+
+        for (const col of VEHICLE_ID_COLUMNS) {
+          const payload = { ...basePayload, [col]: repair.vehicleId };
+          const { data, error } = await supabase.from("repairs").insert([payload]).select("*").single();
+          if (!error && data) {
+            const saved = mapRepairRow(data as RepairRow);
+            const local = getLocalRepairs().filter((r) => r.id !== saved.id);
+            saveLocalRepairs([saved, ...local]);
+            return saved;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Supabase repair create exception (storing locally):", err);
+    }
+
+    const currentLocal = getLocalRepairs().filter((r) => r.id !== fallbackRepair.id);
+    saveLocalRepairs([fallbackRepair, ...currentLocal]);
+    return fallbackRepair;
   },
 
   async update(id: string, updates: Partial<Repair>): Promise<Repair> {
-    const supabase = getSupabaseClient();
-    const basePayload = buildRepairPayload(updates);
-
-    if (updates.vehicleId === undefined) {
-      const { data, error } = await supabase.from("repairs").update(basePayload).eq("id", id).select("*").single();
-      if (error) throw error;
-      return mapRepairRow(data as RepairRow);
+    let updatedRepair: Repair | null = null;
+    try {
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        const basePayload = buildRepairPayload(updates);
+        if (updates.vehicleId === undefined) {
+          const { data, error } = await supabase.from("repairs").update(basePayload).eq("id", id).select("*").single();
+          if (!error && data) updatedRepair = mapRepairRow(data as RepairRow);
+        } else {
+          for (const col of VEHICLE_ID_COLUMNS) {
+            const payload = { ...basePayload, [col]: updates.vehicleId };
+            const { data, error } = await supabase.from("repairs").update(payload).eq("id", id).select("*").single();
+            if (!error && data) {
+              updatedRepair = mapRepairRow(data as RepairRow);
+              break;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Supabase repair update exception:", err);
     }
 
-    for (const col of VEHICLE_ID_COLUMNS) {
-      const payload = { ...basePayload, [col]: updates.vehicleId };
-      const { data, error } = await supabase.from("repairs").update(payload).eq("id", id).select("*").single();
-      if (!error) return mapRepairRow(data as RepairRow);
-      if (!isMissingColumnError(error)) throw error;
-    }
+    const local = getLocalRepairs();
+    const existing = local.find((r) => r.id === id);
+    const now = new Date().toISOString();
+    const merged: Repair = updatedRepair || {
+      ...(existing || { id, vehicleId: "", cout: 0, paye: 0, dette: 0, dateReparation: now, created_at: now, updated_at: now }),
+      ...updates,
+      updated_at: now,
+    };
 
-    throw new Error("Impossible de mettre à jour la réparation: colonne véhicule introuvable.");
+    const nextLocal = local.map((r) => (r.id === id ? merged : r));
+    if (!existing && !updatedRepair) nextLocal.push(merged);
+    saveLocalRepairs(nextLocal);
+    return merged;
   },
 
   async delete(id: string): Promise<boolean> {
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.from("repairs").delete().eq("id", id);
-    if (error) throw error;
+    try {
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        await supabase.from("repairs").delete().eq("id", id);
+      }
+    } catch (err) {
+      console.warn("Supabase repair delete exception:", err);
+    }
+    const local = getLocalRepairs().filter((r) => r.id !== id);
+    saveLocalRepairs(local);
     return true;
   }
 };
+
