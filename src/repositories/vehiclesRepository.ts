@@ -98,14 +98,21 @@ async function listVehicles(): Promise<Vehicle[]> {
 async function createVehicle(input: Omit<Vehicle, "id" | "created_at" | "updated_at">): Promise<Vehicle> {
   const supabase = requireSupabase();
   const { data: authData } = await supabase.auth.getUser();
-  if (!authData.user) {
-    throw new Error("Session utilisateur introuvable. Reconnectez-vous puis reessayez.");
+  const activeUserStr = typeof window !== "undefined" ? localStorage.getItem("iloca:active_user") : null;
+  let activeUserId: string | null = null;
+  if (activeUserStr) {
+    try {
+      activeUserId = JSON.parse(activeUserStr)?.id || null;
+    } catch {}
   }
-  const payload = {
+  const userId = authData.user?.id || activeUserId;
+  const insertPayload: Record<string, any> = {
     ...buildVehicleInsertPayload(input),
-    user_id: authData.user.id,
   };
-  const { data, error } = await supabase.from("vehicles").insert(payload).select("*").single();
+  if (userId) {
+    insertPayload.user_id = userId;
+  }
+  const { data, error } = await supabase.from("vehicles").insert(insertPayload).select("*").single();
   if (error) throw error;
   return mapVehicleRow(data);
 }
