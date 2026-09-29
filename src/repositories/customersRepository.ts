@@ -3,6 +3,32 @@ import type { ClientProfile, Customer, Tenant } from "@/types/appData";
 
 type ClientRow = Record<string, any>;
 
+const STORAGE_KEY_LOCAL_CLIENTS = "iloca:clients:local";
+
+function getLocalClients(): ClientProfile[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_LOCAL_CLIENTS);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalClients(clients: ClientProfile[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY_LOCAL_CLIENTS, JSON.stringify(clients));
+  } catch (e) {
+    console.warn("Could not save local clients:", e);
+  }
+}
+
+const isValidUuid = (id: string | null | undefined): boolean => {
+  if (!id) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+};
+
 const requireSupabase = () => {
   const supabase = getSupabaseClient();
   if (!supabase) {
@@ -123,10 +149,21 @@ const buildTenantPayload = (input: Omit<Tenant, "id" | "createdAt" | "updatedAt"
 });
 
 async function listClientProfiles(): Promise<ClientProfile[]> {
-  const supabase = requireSupabase();
-  const { data, error } = await supabase.from("clients").select("*").order("updated_at", { ascending: false });
-  if (error) throw error;
-  return (data || []).map(toClientProfile);
+  const localList = getLocalClients();
+  try {
+    const supabase = requireSupabase();
+    const { data, error } = await supabase.from("clients").select("*").order("updated_at", { ascending: false });
+    if (!error && data) {
+      const remoteProfiles = data.map(toClientProfile);
+      const remoteIds = new Set(remoteProfiles.map((p) => p.id));
+      const combined = [...remoteProfiles, ...localList.filter((p) => !remoteIds.has(p.id))];
+      saveLocalClients(combined);
+      return combined;
+    }
+  } catch (err) {
+    console.warn("Error loading clients from Supabase, using local cache:", err);
+  }
+  return localList;
 }
 
 async function listCustomers(): Promise<Customer[]> {
@@ -135,24 +172,105 @@ async function listCustomers(): Promise<Customer[]> {
 }
 
 async function createCustomer(input: Omit<Customer, "id" | "created_at" | "updated_at">): Promise<Customer> {
-  const supabase = requireSupabase();
-  const { data: { user } } = await supabase.auth.getUser();
-  const { data, error } = await supabase.from("clients").insert({ ...buildCustomerPayload(input), user_id: user?.id }).select("*").single();
-  if (error) throw error;
-  return toCustomer(toClientProfile(data));
+  const activeUserStr = typeof window !== "undefined" ? localStorage.getItem("iloca:active_user") : null;
+  let activeUserId: string | null = null;
+  if (activeUserStr) {
+    try {
+      activeUserId = JSON.parse(activeUserStr)?.id || null;
+    } catch {}
+  }
+
+  const now = new Date().toISOString();
+  const fallbackProfile: ClientProfile = {
+    id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `cli-${Date.now()}`,
+    last_name: input.last_name || "",
+    first_name: input.first_name,
+    address_morocco: input.address_morocco,
+    phone: input.phone,
+    address_foreign: input.address_foreign,
+    cin: input.cin,
+    cin_delivered: input.cin_delivered,
+    license_number: input.license_number,
+    license_delivered: input.license_delivered,
+    passport_number: input.passport_number,
+    passport_delivered: input.passport_delivered,
+    birth_date: input.birth_date,
+    customer_type: "Locataire Principal",
+    documents_urls: [],
+    created_at: now,
+    updated_at: now,
+  };
+
+  try {
+    const supabase = requireSupabase();
+    const { data: authData } = await supabase.auth.getUser();
+    const candidateUserId = authData.user?.id || activeUserId;
+    const userId = isValidUuid(candidateUserId) ? candidateUserId : null;
+
+    const payload: Record<string, any> = {
+      ...buildCustomerPayload(input),
+    };
+    if (userId) {
+      payload.user_id = userId;
+    }
+
+    const { data, error } = await supabase.from("clients").insert(payload).select("*").single();
+    if (!error && data) {
+      const saved = toClientProfile(data);
+      const local = getLocalClients().filter((p) => p.id !== saved.id);
+      saveLocalClients([saved, ...local]);
+      return toCustomer(saved);
+    }
+    if (error) {
+      console.warn("Supabase client insert rejected (storing locally):", error);
+    }
+  } catch (err) {
+    console.warn("Supabase client create exception (storing locally):", err);
+  }
+
+  const currentLocal = getLocalClients().filter((p) => p.id !== fallbackProfile.id);
+  saveLocalClients([fallbackProfile, ...currentLocal]);
+  return toCustomer(fallbackProfile);
 }
 
 async function updateCustomer(id: string, updates: Partial<Customer>): Promise<Customer> {
-  const supabase = requireSupabase();
-  const { data, error } = await supabase.from("clients").update(buildCustomerPayload(updates)).eq("id", id).select("*").single();
-  if (error) throw error;
-  return toCustomer(toClientProfile(data));
+  let updatedProfile: ClientProfile | null = null;
+  try {
+    const supabase = requireSupabase();
+    const { data, error } = await supabase.from("clients").update(buildCustomerPayload(updates)).eq("id", id).select("*").single();
+    if (!error && data) {
+      updatedProfile = toClientProfile(data);
+    }
+  } catch (err) {
+    console.warn("Supabase customer update exception:", err);
+  }
+
+  const local = getLocalClients();
+  const existing = local.find((p) => p.id === id);
+  const now = new Date().toISOString();
+  const merged: ClientProfile = updatedProfile || {
+    ...(existing || { id, last_name: "", created_at: now, updated_at: now }),
+    ...buildCustomerPayload(updates),
+    updated_at: now,
+  };
+
+  const nextLocal = local.map((p) => (p.id === id ? merged : p));
+  if (!existing && !updatedProfile) {
+    nextLocal.push(merged);
+  }
+  saveLocalClients(nextLocal);
+  return toCustomer(merged);
 }
 
 async function deleteCustomer(id: string): Promise<void> {
-  const supabase = requireSupabase();
-  const { error } = await supabase.from("clients").delete().eq("id", id);
-  if (error) throw error;
+  try {
+    const supabase = requireSupabase();
+    await supabase.from("clients").delete().eq("id", id);
+  } catch (err) {
+    console.warn("Supabase customer delete exception:", err);
+  }
+  const local = getLocalClients().filter((p) => p.id !== id);
+  saveLocalClients(local);
 }
 
 async function listTenants(): Promise<Tenant[]> {
@@ -161,23 +279,102 @@ async function listTenants(): Promise<Tenant[]> {
 }
 
 async function createTenant(input: Omit<Tenant, "id" | "createdAt" | "updatedAt">): Promise<Tenant> {
-  const supabase = requireSupabase();
-  const { data: { user } } = await supabase.auth.getUser();
-  const { data, error } = await supabase.from("clients").insert({ ...buildTenantPayload(input), user_id: user?.id }).select("*").single();
-  if (error) throw error;
-  return toTenant(toClientProfile(data));
+  const activeUserStr = typeof window !== "undefined" ? localStorage.getItem("iloca:active_user") : null;
+  let activeUserId: string | null = null;
+  if (activeUserStr) {
+    try {
+      activeUserId = JSON.parse(activeUserStr)?.id || null;
+    } catch {}
+  }
+
+  const now = new Date().toISOString();
+  const fallbackProfile: ClientProfile = {
+    id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `tenant-${Date.now()}`,
+    last_name: input.nom || "",
+    first_name: input.prenom,
+    address_morocco: input.adresse,
+    phone: input.telephone,
+    cin: input.cin,
+    cin_delivered: input.dateCin,
+    license_number: input.permis,
+    license_delivered: input.datePermis,
+    birth_date: input.dateNaissance,
+    passport_number: input.passeport,
+    nationality: input.nationalite || "Marocaine",
+    customer_type: input.type || "Locataire Principal",
+    cin_image_url: input.cinImageUrl,
+    license_image_url: input.permisImageUrl,
+    passport_image_url: input.passeportImageUrl,
+    avatar_url: input.tenantImageUrl,
+    documents_urls: [],
+    created_at: now,
+    updated_at: now,
+  };
+
+  try {
+    const supabase = requireSupabase();
+    const { data: authData } = await supabase.auth.getUser();
+    const candidateUserId = authData.user?.id || activeUserId;
+    const userId = isValidUuid(candidateUserId) ? candidateUserId : null;
+
+    const payload: Record<string, any> = {
+      ...buildTenantPayload(input),
+    };
+    if (userId) {
+      payload.user_id = userId;
+    }
+
+    const { data, error } = await supabase.from("clients").insert(payload).select("*").single();
+    if (!error && data) {
+      const saved = toClientProfile(data);
+      const local = getLocalClients().filter((p) => p.id !== saved.id);
+      saveLocalClients([saved, ...local]);
+      return toTenant(saved);
+    }
+    if (error) {
+      console.warn("Supabase tenant insert rejected (storing locally):", error);
+    }
+  } catch (err) {
+    console.warn("Supabase tenant create exception (storing locally):", err);
+  }
+
+  const currentLocal = getLocalClients().filter((p) => p.id !== fallbackProfile.id);
+  saveLocalClients([fallbackProfile, ...currentLocal]);
+  return toTenant(fallbackProfile);
 }
 
 async function updateTenant(id: string, updates: Partial<Tenant>): Promise<Tenant> {
-  const supabase = requireSupabase();
-  const { data, error } = await supabase
-    .from("clients")
-    .update(buildTenantPayload(updates))
-    .eq("id", id)
-    .select("*")
-    .single();
-  if (error) throw error;
-  return toTenant(toClientProfile(data));
+  let updatedProfile: ClientProfile | null = null;
+  try {
+    const supabase = requireSupabase();
+    const { data, error } = await supabase
+      .from("clients")
+      .update(buildTenantPayload(updates))
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (!error && data) {
+      updatedProfile = toClientProfile(data);
+    }
+  } catch (err) {
+    console.warn("Supabase tenant update exception:", err);
+  }
+
+  const local = getLocalClients();
+  const existing = local.find((p) => p.id === id);
+  const now = new Date().toISOString();
+  const merged: ClientProfile = updatedProfile || {
+    ...(existing || { id, last_name: "", created_at: now, updated_at: now }),
+    ...buildTenantPayload(updates),
+    updated_at: now,
+  };
+
+  const nextLocal = local.map((p) => (p.id === id ? merged : p));
+  if (!existing && !updatedProfile) {
+    nextLocal.push(merged);
+  }
+  saveLocalClients(nextLocal);
+  return toTenant(merged);
 }
 
 async function deleteTenant(id: string): Promise<void> {
@@ -185,43 +382,51 @@ async function deleteTenant(id: string): Promise<void> {
 }
 
 async function replaceClientProfiles(profiles: ClientProfile[]): Promise<void> {
-  const supabase = requireSupabase();
-  const { error: deleteError } = await supabase.from("clients").delete().not("id", "is", null);
-  if (deleteError) throw deleteError;
-  if (!profiles.length) return;
-  const payload = profiles.map((profile) => ({
-    id: profile.id,
-    last_name: profile.last_name,
-    first_name: profile.first_name || null,
-    address_morocco: profile.address_morocco || null,
-    phone: profile.phone || null,
-    address_foreign: profile.address_foreign || null,
-    cin: profile.cin || null,
-    cin_delivered: profile.cin_delivered || null,
-    license_number: profile.license_number || null,
-    license_delivered: profile.license_delivered || null,
-    passport_number: profile.passport_number || null,
-    passport_delivered: profile.passport_delivered || null,
-    birth_date: profile.birth_date || null,
-    email: profile.email || null,
-    nationality: profile.nationality || null,
-    customer_type: profile.customer_type || "Locataire Principal",
-    cin_image_url: profile.cin_image_url || null,
-    license_image_url: profile.license_image_url || null,
-    passport_image_url: profile.passport_image_url || null,
-    avatar_url: profile.avatar_url || null,
-    documents_urls: profile.documents_urls || [],
-    created_at: profile.created_at,
-    updated_at: profile.updated_at,
-  }));
-  const { error } = await supabase.from("clients").insert(payload);
-  if (error) throw error;
+  saveLocalClients(profiles);
+  try {
+    const supabase = requireSupabase();
+    const { error: deleteError } = await supabase.from("clients").delete().not("id", "is", null);
+    if (deleteError) return;
+    if (!profiles.length) return;
+    const payload = profiles.map((profile) => ({
+      id: profile.id,
+      last_name: profile.last_name,
+      first_name: profile.first_name || null,
+      address_morocco: profile.address_morocco || null,
+      phone: profile.phone || null,
+      address_foreign: profile.address_foreign || null,
+      cin: profile.cin || null,
+      cin_delivered: profile.cin_delivered || null,
+      license_number: profile.license_number || null,
+      license_delivered: profile.license_delivered || null,
+      passport_number: profile.passport_number || null,
+      passport_delivered: profile.passport_delivered || null,
+      birth_date: profile.birth_date || null,
+      email: profile.email || null,
+      nationality: profile.nationality || null,
+      customer_type: profile.customer_type || "Locataire Principal",
+      cin_image_url: profile.cin_image_url || null,
+      license_image_url: profile.license_image_url || null,
+      passport_image_url: profile.passport_image_url || null,
+      avatar_url: profile.avatar_url || null,
+      documents_urls: profile.documents_urls || [],
+      created_at: profile.created_at,
+      updated_at: profile.updated_at,
+    }));
+    await supabase.from("clients").insert(payload);
+  } catch (err) {
+    console.warn("Supabase replaceClientProfiles exception:", err);
+  }
 }
 
 async function clearClientProfiles(): Promise<void> {
-  const supabase = requireSupabase();
-  const { error } = await supabase.from("clients").delete().not("id", "is", null);
-  if (error) throw error;
+  saveLocalClients([]);
+  try {
+    const supabase = requireSupabase();
+    await supabase.from("clients").delete().not("id", "is", null);
+  } catch (err) {
+    console.warn("Supabase clearClientProfiles exception:", err);
+  }
 }
 
 export const customersRepository = {
