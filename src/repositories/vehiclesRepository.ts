@@ -3,6 +3,8 @@ import type { Vehicle } from "@/types/appData";
 
 type VehicleRow = Record<string, any>;
 
+const STORAGE_KEY_LOCAL_VEHICLES = "iloca:vehicles:local";
+
 const requireSupabase = () => {
   const supabase = getSupabaseClient();
   if (!supabase) {
@@ -23,23 +25,23 @@ const normalizeNumber = (value: unknown) => {
 
 const mapVehicleRow = (row: VehicleRow): Vehicle => ({
   id: String(row.id),
-  brand: String(row.brand || ""),
-  model: row.model || undefined,
-  registration: row.registration || undefined,
-  year: normalizeNumber(row.year),
-  marque: String(row.brand || ""),
-  modele: row.model || undefined,
-  immatriculation: row.registration || undefined,
-  annee: normalizeNumber(row.year),
-  type_carburant: row.fuel_type || undefined,
-  boite_vitesse: row.gearbox || undefined,
-  kilometrage: normalizeNumber(row.mileage),
-  couleur: row.color || undefined,
-  prix_par_jour: normalizeNumber(row.daily_rate),
-  etat_vehicule: row.status || "disponible",
-  km_depart: normalizeNumber(row.departure_mileage),
-  documents: normalizeArray(row.documents_urls),
-  photos: normalizeArray(row.photos_urls),
+  brand: String(row.brand || row.marque || ""),
+  model: row.model || row.modele || undefined,
+  registration: row.registration || row.immatriculation || undefined,
+  year: normalizeNumber(row.year ?? row.annee),
+  marque: String(row.brand || row.marque || ""),
+  modele: row.model || row.modele || undefined,
+  immatriculation: row.registration || row.immatriculation || undefined,
+  annee: normalizeNumber(row.year ?? row.annee),
+  type_carburant: row.fuel_type || row.type_carburant || undefined,
+  boite_vitesse: row.gearbox || row.boite_vitesse || undefined,
+  kilometrage: normalizeNumber(row.mileage ?? row.kilometrage),
+  couleur: row.color || row.couleur || undefined,
+  prix_par_jour: normalizeNumber(row.daily_rate ?? row.prix_par_jour),
+  etat_vehicule: row.status || row.etat_vehicule || "disponible",
+  km_depart: normalizeNumber(row.departure_mileage ?? row.km_depart),
+  documents: normalizeArray(row.documents_urls || row.documents),
+  photos: normalizeArray(row.photos_urls || row.photos),
   created_at: String(row.created_at || new Date().toISOString()),
   updated_at: String(row.updated_at || new Date().toISOString()),
 });
@@ -88,11 +90,23 @@ const buildVehicleUpdatePayload = (vehicle: Partial<Vehicle>) => {
   return payload;
 };
 
-async function listVehicles(): Promise<Vehicle[]> {
-  const supabase = requireSupabase();
-  const { data, error } = await supabase.from("vehicles").select("*").order("updated_at", { ascending: false });
-  if (error) throw error;
-  return (data || []).map(mapVehicleRow);
+function getLocalVehicles(): Vehicle[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_LOCAL_VEHICLES);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalVehicles(vehicles: Vehicle[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY_LOCAL_VEHICLES, JSON.stringify(vehicles));
+  } catch (e) {
+    console.warn("Could not save local vehicles:", e);
+  }
 }
 
 const isValidUuid = (id: string | null | undefined): boolean => {
@@ -100,9 +114,25 @@ const isValidUuid = (id: string | null | undefined): boolean => {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 };
 
+async function listVehicles(): Promise<Vehicle[]> {
+  const localList = getLocalVehicles();
+  try {
+    const supabase = requireSupabase();
+    const { data, error } = await supabase.from("vehicles").select("*").order("updated_at", { ascending: false });
+    if (!error && data) {
+      const remoteVehicles = data.map(mapVehicleRow);
+      const remoteIds = new Set(remoteVehicles.map((v) => v.id));
+      const combined = [...remoteVehicles, ...localList.filter((v) => !remoteIds.has(v.id))];
+      saveLocalVehicles(combined);
+      return combined;
+    }
+  } catch (err) {
+    console.warn("Error loading vehicles from Supabase, using local cache:", err);
+  }
+  return localList;
+}
+
 async function createVehicle(input: Omit<Vehicle, "id" | "created_at" | "updated_at">): Promise<Vehicle> {
-  const supabase = requireSupabase();
-  const { data: authData } = await supabase.auth.getUser();
   const activeUserStr = typeof window !== "undefined" ? localStorage.getItem("iloca:active_user") : null;
   let activeUserId: string | null = null;
   if (activeUserStr) {
@@ -110,58 +140,137 @@ async function createVehicle(input: Omit<Vehicle, "id" | "created_at" | "updated
       activeUserId = JSON.parse(activeUserStr)?.id || null;
     } catch {}
   }
-  const candidateUserId = authData.user?.id || activeUserId;
-  const userId = isValidUuid(candidateUserId) ? candidateUserId : null;
 
-  const insertPayload: Record<string, any> = {
-    ...buildVehicleInsertPayload(input),
+  const now = new Date().toISOString();
+  const fallbackVehicle: Vehicle = {
+    id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `veh-${Date.now()}`,
+    brand: (input.marque || input.brand || "").trim(),
+    model: input.modele?.trim() || input.model?.trim(),
+    registration: input.immatriculation?.trim() || input.registration?.trim(),
+    year: input.annee ?? input.year,
+    marque: (input.marque || input.brand || "").trim(),
+    modele: input.modele?.trim() || input.model?.trim(),
+    immatriculation: input.immatriculation?.trim() || input.registration?.trim(),
+    annee: input.annee ?? input.year,
+    type_carburant: input.type_carburant?.trim(),
+    boite_vitesse: input.boite_vitesse?.trim(),
+    kilometrage: input.kilometrage,
+    couleur: input.couleur?.trim(),
+    prix_par_jour: input.prix_par_jour,
+    etat_vehicule: input.etat_vehicule?.trim() || "disponible",
+    km_depart: input.km_depart,
+    documents: input.documents || [],
+    photos: input.photos || [],
+    created_at: now,
+    updated_at: now,
   };
-  if (userId) {
-    insertPayload.user_id = userId;
+
+  try {
+    const supabase = requireSupabase();
+    const { data: authData } = await supabase.auth.getUser();
+    const candidateUserId = authData.user?.id || activeUserId;
+    const userId = isValidUuid(candidateUserId) ? candidateUserId : null;
+
+    const insertPayload: Record<string, any> = {
+      ...buildVehicleInsertPayload(input),
+    };
+    if (userId) {
+      insertPayload.user_id = userId;
+    }
+
+    const { data, error } = await supabase.from("vehicles").insert(insertPayload).select("*").single();
+    if (!error && data) {
+      const saved = mapVehicleRow(data);
+      const local = getLocalVehicles().filter((v) => v.id !== saved.id);
+      saveLocalVehicles([saved, ...local]);
+      return saved;
+    }
+    if (error) {
+      console.warn("Supabase vehicle insert rejected (storing locally):", error);
+    }
+  } catch (err) {
+    console.warn("Supabase vehicle creation exception (storing locally):", err);
   }
-  const { data, error } = await supabase.from("vehicles").insert(insertPayload).select("*").single();
-  if (error) throw error;
-  return mapVehicleRow(data);
+
+  // Fallback storage
+  const currentLocal = getLocalVehicles().filter((v) => v.id !== fallbackVehicle.id);
+  saveLocalVehicles([fallbackVehicle, ...currentLocal]);
+  return fallbackVehicle;
 }
 
 async function updateVehicle(id: string, updates: Partial<Vehicle>): Promise<Vehicle> {
-  const supabase = requireSupabase();
-  const payload = buildVehicleUpdatePayload(updates);
-  const { data, error } = await supabase
-    .from("vehicles")
-    .update(payload)
-    .eq("id", id)
-    .select("*")
-    .single();
-  if (error) throw error;
-  return mapVehicleRow(data);
+  let updatedVehicle: Vehicle | null = null;
+  try {
+    const supabase = requireSupabase();
+    const payload = buildVehicleUpdatePayload(updates);
+    const { data, error } = await supabase
+      .from("vehicles")
+      .update(payload)
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (!error && data) {
+      updatedVehicle = mapVehicleRow(data);
+    }
+  } catch (err) {
+    console.warn("Supabase vehicle update exception:", err);
+  }
+
+  const local = getLocalVehicles();
+  const existing = local.find((v) => v.id === id);
+  const now = new Date().toISOString();
+  const merged: Vehicle = updatedVehicle || {
+    ...(existing || { id, brand: "", marque: "", created_at: now, updated_at: now }),
+    ...updates,
+    updated_at: now,
+  };
+
+  const nextLocal = local.map((v) => (v.id === id ? merged : v));
+  if (!existing && !updatedVehicle) {
+    nextLocal.push(merged);
+  }
+  saveLocalVehicles(nextLocal);
+  return merged;
 }
 
 async function deleteVehicle(id: string): Promise<void> {
-  const supabase = requireSupabase();
-  const { error } = await supabase.from("vehicles").delete().eq("id", id);
-  if (error) throw error;
+  try {
+    const supabase = requireSupabase();
+    await supabase.from("vehicles").delete().eq("id", id);
+  } catch (err) {
+    console.warn("Supabase vehicle delete exception:", err);
+  }
+  const local = getLocalVehicles().filter((v) => v.id !== id);
+  saveLocalVehicles(local);
 }
 
 async function replaceVehicles(vehicles: Vehicle[]): Promise<void> {
-  const supabase = requireSupabase();
-  const { error: deleteError } = await supabase.from("vehicles").delete().not("id", "is", null);
-  if (deleteError) throw deleteError;
-  if (!vehicles.length) return;
-  const payload = vehicles.map((vehicle) => ({
-    id: vehicle.id,
-    ...buildVehicleInsertPayload(vehicle),
-    created_at: vehicle.created_at,
-    updated_at: vehicle.updated_at,
-  }));
-  const { error } = await supabase.from("vehicles").insert(payload);
-  if (error) throw error;
+  saveLocalVehicles(vehicles);
+  try {
+    const supabase = requireSupabase();
+    const { error: deleteError } = await supabase.from("vehicles").delete().not("id", "is", null);
+    if (deleteError) return;
+    if (!vehicles.length) return;
+    const payload = vehicles.map((vehicle) => ({
+      id: vehicle.id,
+      ...buildVehicleInsertPayload(vehicle),
+      created_at: vehicle.created_at,
+      updated_at: vehicle.updated_at,
+    }));
+    await supabase.from("vehicles").insert(payload);
+  } catch (err) {
+    console.warn("Supabase replaceVehicles exception:", err);
+  }
 }
 
 async function clearVehicles(): Promise<void> {
-  const supabase = requireSupabase();
-  const { error } = await supabase.from("vehicles").delete().not("id", "is", null);
-  if (error) throw error;
+  saveLocalVehicles([]);
+  try {
+    const supabase = requireSupabase();
+    await supabase.from("vehicles").delete().not("id", "is", null);
+  } catch (err) {
+    console.warn("Supabase clearVehicles exception:", err);
+  }
 }
 
 export const vehiclesRepository = {
