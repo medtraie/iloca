@@ -95,6 +95,11 @@ async function listVehicles(): Promise<Vehicle[]> {
   return (data || []).map(mapVehicleRow);
 }
 
+const isValidUuid = (id: string | null | undefined): boolean => {
+  if (!id || typeof id !== "string") return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+};
+
 async function createVehicle(input: Omit<Vehicle, "id" | "created_at" | "updated_at">): Promise<Vehicle> {
   const supabase = requireSupabase();
   const { data: authData } = await supabase.auth.getUser();
@@ -105,7 +110,9 @@ async function createVehicle(input: Omit<Vehicle, "id" | "created_at" | "updated
       activeUserId = JSON.parse(activeUserStr)?.id || null;
     } catch {}
   }
-  const userId = authData.user?.id || activeUserId;
+  const candidateUserId = authData.user?.id || activeUserId;
+  const userId = isValidUuid(candidateUserId) ? candidateUserId : null;
+
   const insertPayload: Record<string, any> = {
     ...buildVehicleInsertPayload(input),
   };

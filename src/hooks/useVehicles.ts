@@ -94,15 +94,18 @@ export const useVehicles = () => {
     }
   };
 
+  const getErrorMessage = (error: unknown, fallback: string): string => {
+    if (error instanceof Error && error.message) return error.message;
+    if (typeof error === "object" && error !== null && "message" in error && typeof (error as any).message === "string") {
+      return (error as any).message;
+    }
+    if (typeof error === "string" && error.trim()) return error;
+    return fallback;
+  };
+
   const addVehicle = async (vehicleData: Omit<Vehicle, 'id' | 'created_at' | 'updated_at'>) => {
     try {
-      // #region debug-point C:usevehicles-before-create
-      fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"vehicle-save-supabase",runId:"pre-fix",hypothesisId:"C",location:"useVehicles.ts:addVehicle",msg:"[DEBUG] addVehicle before repository create",data:{brand:vehicleData.marque||vehicleData.brand||"",registration:vehicleData.immatriculation||vehicleData.registration||"",status:vehicleData.etat_vehicule||null},ts:Date.now()})}).catch(()=>{});
-      // #endregion
       const newVehicle = await vehiclesRepository.createVehicle(vehicleData);
-      // #region debug-point E:usevehicles-create-success
-      fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"vehicle-save-supabase",runId:"pre-fix",hypothesisId:"E",location:"useVehicles.ts:addVehicle",msg:"[DEBUG] addVehicle repository success",data:{id:newVehicle.id,brand:newVehicle.marque||newVehicle.brand||""},ts:Date.now()})}).catch(()=>{});
-      // #endregion
       setVehicles(prev => [...prev, newVehicle]);
       toast({
         title: "Succès",
@@ -110,12 +113,10 @@ export const useVehicles = () => {
       });
       return newVehicle;
     } catch (error) {
-      // #region debug-point D:usevehicles-create-error
-      fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"vehicle-save-supabase",runId:"pre-fix",hypothesisId:"D",location:"useVehicles.ts:addVehicle",msg:"[DEBUG] addVehicle repository error",data:{message:error instanceof Error ? error.message : String(error),code:(error as { code?: string } | null)?.code || null},ts:Date.now()})}).catch(()=>{});
-      // #endregion
+      console.error("Error adding vehicle:", error);
       toast({
         title: "Erreur",
-        description: error instanceof Error ? error.message : "Une erreur s'est produite lors de l'ajout du véhicule",
+        description: getErrorMessage(error, "Une erreur s'est produite lors de l'ajout du véhicule"),
         variant: "destructive"
       });
       return null;
