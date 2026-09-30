@@ -1,5 +1,5 @@
 -- ==============================================================================
--- SCRIPT CORRECTION SUPABASE : PERSISTANCE COMPLETE DES DONNEES (TOUS NAVIGATEURS)
+-- SCRIPT CORRECTION SUPABASE : PERSISTANCE COMPLETE DES DONNEES (VERSION ROBUSTE)
 -- ==============================================================================
 -- Instructions : 
 -- 1. Ouvrez l'editeur SQL Supabase (SQL Editor : https://supabase.com/dashboard/project/wypifrsooooeejfckomg/sql/new).
@@ -21,7 +21,7 @@ ALTER TABLE IF EXISTS public.audit_logs ALTER COLUMN user_id DROP NOT NULL;
 ALTER TABLE IF EXISTS public.app_settings ALTER COLUMN user_id DROP NOT NULL;
 ALTER TABLE IF EXISTS public.treasury_settings ALTER COLUMN user_id DROP NOT NULL;
 
--- 2. NETTOYAGE ET REMPLACEMENT DES POLITIQUES RLS POUR PERMETTRE L'ACCES PUBLIC / DEMO / MULTI-NAVIGATEURS
+-- 2. NETTOYAGE COMPLET DE TOUTES LES ANCIENNES POLITIQUES EXISTANTES
 DO $$ 
 BEGIN
     -- VEHICLES
@@ -126,15 +126,38 @@ ALTER TABLE IF EXISTS public.audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.app_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.treasury_settings ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Allow all access to vehicles" ON public.vehicles;
 CREATE POLICY "Allow all access to vehicles" ON public.vehicles FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all access to clients" ON public.clients;
 CREATE POLICY "Allow all access to clients" ON public.clients FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all access to contracts" ON public.contracts;
 CREATE POLICY "Allow all access to contracts" ON public.contracts FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all access to payments" ON public.payments;
 CREATE POLICY "Allow all access to payments" ON public.payments FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all access to expenses" ON public.expenses;
 CREATE POLICY "Allow all access to expenses" ON public.expenses FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all access to miscellaneous expenses" ON public.miscellaneous_expenses;
 CREATE POLICY "Allow all access to miscellaneous expenses" ON public.miscellaneous_expenses FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all access to repairs" ON public.repairs;
 CREATE POLICY "Allow all access to repairs" ON public.repairs FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all access to invoices" ON public.invoices;
 CREATE POLICY "Allow all access to invoices" ON public.invoices FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all access to bank transfers" ON public.bank_transfers;
 CREATE POLICY "Allow all access to bank transfers" ON public.bank_transfers FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all access to audit logs" ON public.audit_logs;
 CREATE POLICY "Allow all access to audit logs" ON public.audit_logs FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all access to app_settings" ON public.app_settings;
 CREATE POLICY "Allow all access to app_settings" ON public.app_settings FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all access to treasury settings" ON public.treasury_settings;
 CREATE POLICY "Allow all access to treasury settings" ON public.treasury_settings FOR ALL USING (true) WITH CHECK (true);
