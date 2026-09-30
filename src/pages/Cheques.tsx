@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { CalendarIcon, FileText, Search, Filter, Edit, Trash2, ArrowUpRight, ArrowDownLeft, Wallet, Clock3, BellRing, Columns3, LayoutGrid, Table2, ShieldAlert, TrendingUp, Send } from "lucide-react";
+import { CalendarIcon, FileText, Search, Filter, Edit, Trash2, ArrowUpRight, ArrowDownLeft, Wallet, Clock3, BellRing, Columns3, LayoutGrid, Table2, ShieldAlert, TrendingUp, Send, Sparkles } from "lucide-react";
 import { format, differenceInDays, isWithinInterval, addDays } from "date-fns";
 import { fr } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -648,42 +648,63 @@ const Cheques = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background px-4 py-6 safe-pt safe-pb">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background p-3 sm:p-6 pb-24 safe-pt safe-pb max-w-7xl mx-auto space-y-6">
+      <div className="space-y-6">
         <motion.div
-          className="flex flex-col md:flex-row md:items-center justify-between gap-4"
+          className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 sm:p-7 rounded-3xl bg-gradient-to-r from-card via-card/90 to-background border border-border/60 shadow-xs relative overflow-hidden"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35 }}
         >
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 mb-3">
-              <Wallet className="h-4 w-4 text-primary" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-primary">Finance & Chèques</span>
+          <div className="relative z-10">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 mb-2">
+              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              <span className="text-[11px] font-black uppercase tracking-wider text-primary">
+                Trésorerie & Portefeuille Chèques 2026
+              </span>
             </div>
-            <h1 className="text-3xl md:text-4xl font-black tracking-tight text-foreground mb-1">Gestion des Chèques</h1>
-            <p className="text-muted-foreground font-medium">
-              Pilotage centralisé des chèques avec priorisation, relances et suivi audit.
+            <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-foreground">
+              Gestion du <span className="text-primary">Portefeuille Chèques</span>
+            </h1>
+            <p className="text-muted-foreground text-xs sm:text-sm font-medium mt-1">
+              Pilotage centralisé, échéancier d'encaissement, scoring de risque et traçabilité bancaire.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Select value={selectedRole} onValueChange={(value: UserRole) => setSelectedRole(value)}>
-              <SelectTrigger className="w-[160px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Comptable">Comptable</SelectItem>
-                <SelectItem value="Manager">Manager</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant={viewMode === "table" ? "default" : "outline"} size="sm" onClick={() => setViewMode("table")}>
-              <Table2 className="h-4 w-4 mr-1" />
-              Tableau
-            </Button>
-            <Button variant={viewMode === "kanban" ? "default" : "outline"} size="sm" onClick={() => setViewMode("kanban")}>
-              <LayoutGrid className="h-4 w-4 mr-1" />
-              Kanban
-            </Button>
+          <div className="flex flex-wrap items-center gap-2.5 z-10">
+            <div className="flex items-center gap-2 bg-muted/30 p-1.5 rounded-2xl border border-border/50">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground pl-2">
+                Rôle :
+              </span>
+              <Select value={selectedRole} onValueChange={(value: UserRole) => setSelectedRole(value)}>
+                <SelectTrigger className="w-[130px] h-9 rounded-xl border-none bg-card font-bold text-xs shadow-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="rounded-2xl border-border/60 shadow-xl">
+                  <SelectItem value="Comptable" className="font-bold text-xs">Comptable</SelectItem>
+                  <SelectItem value="Manager" className="font-bold text-xs">Manager</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="bg-muted/40 p-1 rounded-2xl border border-border/50 flex items-center gap-1">
+              <Button
+                variant={viewMode === "table" ? "default" : "ghost"}
+                size="sm"
+                className="rounded-xl font-bold text-xs h-9"
+                onClick={() => setViewMode("table")}
+              >
+                <Table2 className="h-4 w-4 mr-1.5" />
+                Tableau
+              </Button>
+              <Button
+                variant={viewMode === "kanban" ? "default" : "ghost"}
+                size="sm"
+                className="rounded-xl font-bold text-xs h-9"
+                onClick={() => setViewMode("kanban")}
+              >
+                <LayoutGrid className="h-4 w-4 mr-1.5" />
+                Kanban
+              </Button>
+            </div>
             <UniversalPDFExport
               title="Liste des Chèques"
               columns={pdfColumns}

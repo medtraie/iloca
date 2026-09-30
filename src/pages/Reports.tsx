@@ -1,7 +1,17 @@
 import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Calendar, DollarSign, Filter, Trophy, AlertTriangle, RefreshCw, Download, FileSpreadsheet, FileText } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { 
+  Calendar, DollarSign, Filter, Trophy, AlertTriangle, RefreshCw, 
+  Download, FileSpreadsheet, FileText, TrendingUp, Car, Users, 
+  Layers, CheckCircle2, Clock, ArrowRight, ArrowUpRight, Search, X, ShieldCheck 
+} from "lucide-react";
 import { Link } from "react-router-dom";
 import MetricsSection from "@/features/reports/MetricsSection";
 import VehiclePlanningSection from "@/features/reports/VehiclePlanningSection";
@@ -16,14 +26,11 @@ import { useExpenses } from "@/hooks/useExpenses";
 import { computeContractSummary } from "@/utils/contractMath";
 import type { Contract as RevenueChartContract } from "@/components/RevenueChart";
 import { Contract as ServiceContract } from "@/types/appData";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, BarChart, Bar } from "recharts";
 import JSZip from "jszip";
+import { motion } from "framer-motion";
 
 interface Contract {
   id: string;
@@ -38,7 +45,6 @@ interface Contract {
   nombreDeJour?: number;
   prolongationAu?: string;
   nombreDeJourProlonge?: number;
-  // For compatibility
   customerName?: string;
   contract_number?: string;
   contract_data?: any;
@@ -62,30 +68,30 @@ interface FilterState {
   expenseType: string;
 }
 
-const Reports = () => {
+export const Reports = () => {
   const { contracts: allContracts, refetch: refetchContracts } = useContracts();
   const { vehicles: allVehicles, refetch: refetchVehicles } = useVehicles();
   const { expenses: allExpenses } = useExpenses();
+  
+  const [activeTab, setActiveTab] = useState<"finance" | "fleet" | "tenants" | "ledger">("finance");
+  const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
-  // Force refresh data when component mounts and every 30 seconds
+  // Sync data on mount and interval
   useEffect(() => {
     refetchContracts();
-    
-    // Set up periodic refresh for real-time data sync
     const interval = setInterval(() => {
       refetchContracts();
-    }, 30000); // Refresh every 30 seconds
-    
+    }, 30000);
     return () => clearInterval(interval);
   }, [refetchContracts]);
 
   const contracts: Contract[] = useMemo(() => {
-    return (allContracts || []).map(c => {
-      const contractWithAmount = {...c, total_amount: Number(c.total_amount)};
-      // Use centralized calculation logic
+    return (allContracts || []).map((c) => {
+      const contractWithAmount = { ...c, total_amount: Number(c.total_amount) };
       const summary = computeContractSummary(contractWithAmount as any, { advanceMode: 'field' });
       const updatedContract = { ...contractWithAmount, total_amount: summary.total };
-      
+
       return {
         ...updatedContract,
         contractNumber: updatedContract.contract_number,
@@ -96,9 +102,9 @@ const Reports = () => {
       };
     });
   }, [allContracts]);
-  
+
   const vehicles: Vehicle[] = useMemo(() =>
-    (allVehicles || []).map(v => {
+    (allVehicles || []).map((v) => {
       const marque = v.marque || v.brand || "—";
       const modele = v.modele || v.model || "—";
       const immatriculation = v.immatriculation || v.registration || v.id?.slice?.(0, 8) || "—";
@@ -108,8 +114,9 @@ const Reports = () => {
         modele,
         immatriculation,
       };
-    })
-  , [allVehicles]);
+    }),
+    [allVehicles]
+  );
 
   const [filters, setFilters] = useState<FilterState>({
     periode: { start: "", end: "" },
@@ -117,7 +124,7 @@ const Reports = () => {
     tenantName: "",
     contractStatus: "",
     vehicleStatus: "",
-    expenseType: ""
+    expenseType: "",
   });
 
   const filteredContracts = useMemo(() => {
@@ -137,6 +144,16 @@ const Reports = () => {
         }
       }
 
+      if (searchTerm.trim()) {
+        const search = searchTerm.toLowerCase();
+        const customer = (contract.customer_name || contract.customerName || "").toLowerCase();
+        const vehicle = (contract.vehicle || "").toLowerCase();
+        const contractNum = ((contract as any).contract_number || (contract as any).contractNumber || "").toLowerCase();
+        if (!customer.includes(search) && !vehicle.includes(search) && !contractNum.includes(search)) {
+          return false;
+        }
+      }
+
       const contractStart = contract.start_date ? new Date(contract.start_date) : null;
       if (filters.periode.start && contractStart && contractStart < new Date(filters.periode.start)) {
         return false;
@@ -148,32 +165,31 @@ const Reports = () => {
 
       return true;
     });
-  }, [contracts, filters]);
+  }, [contracts, filters, searchTerm]);
 
-  // Calculate statistics with financial status
+  // Statistics calculation
   const stats = useMemo(() => {
     const totalContracts = filteredContracts.length;
-    const activeContracts = filteredContracts.filter(c => c.status === "signed").length;
-    const completedContracts = filteredContracts.filter(c => c.status === "completed").length;
-    const upcomingContracts = filteredContracts.filter(c => c.status === "draft" || c.status === "sent").length;
+    const activeContracts = filteredContracts.filter((c) => c.status === "signed" || c.status === "ouvert").length;
+    const completedContracts = filteredContracts.filter((c) => c.status === "completed" || c.status === "ferme").length;
+    const upcomingContracts = filteredContracts.filter((c) => c.status === "draft" || c.status === "sent").length;
 
-    // Calculate contracts by financial status
-    const overdueContracts = filteredContracts.filter(c => {
+    const overdueContracts = filteredContracts.filter((c) => {
       const summary = computeContractSummary(c as ServiceContract, { advanceMode: 'field' });
       return c.status === 'ouvert' && summary.overdueDays > 0;
     }).length;
 
-    const extendedContracts = filteredContracts.filter(c => {
+    const extendedContracts = filteredContracts.filter((c) => {
       const summary = computeContractSummary(c as ServiceContract, { advanceMode: 'field' });
       return summary.extensionDays > 0;
     }).length;
 
-    const paidContracts = filteredContracts.filter(c => {
+    const paidContracts = filteredContracts.filter((c) => {
       const summary = computeContractSummary(c as ServiceContract, { advanceMode: 'field' });
       return summary.statut === 'payé';
     }).length;
 
-    const pendingContracts = filteredContracts.filter(c => {
+    const pendingContracts = filteredContracts.filter((c) => {
       const summary = computeContractSummary(c as ServiceContract, { advanceMode: 'field' });
       return summary.statut === 'en attente';
     }).length;
@@ -191,13 +207,10 @@ const Reports = () => {
       const diffInMs = end.getTime() - start.getTime();
       if (diffInMs < 0) return sum;
       const days = Math.ceil(diffInMs / (1000 * 60 * 60 * 24)) + 1;
-      
-      // Add overdue days for unpaid contracts
       const summary = computeContractSummary(contract as ServiceContract, { advanceMode: 'field' });
       return sum + days + summary.overdueDays;
     }, 0);
 
-    // Calculate overdue revenue
     const overdueRevenue = filteredContracts.reduce((sum, contract) => {
       const summary = computeContractSummary(contract as ServiceContract, { advanceMode: 'field' });
       const dailyRate = contract.daily_rate || 0;
@@ -218,7 +231,7 @@ const Reports = () => {
       totalExpenses,
       totalDaysRented,
       overdueRevenue,
-      netProfit: totalRevenue - totalExpenses
+      netProfit: totalRevenue - totalExpenses,
     };
   }, [filteredContracts, allExpenses]);
 
@@ -281,8 +294,7 @@ const Reports = () => {
 
   const topContractsTable = useMemo(() => {
     return [...filteredContracts]
-      .sort((a, b) => (Number(b.total_amount) || 0) - (Number(a.total_amount) || 0))
-      .slice(0, 8);
+      .sort((a, b) => (Number(b.total_amount) || 0) - (Number(a.total_amount) || 0));
   }, [filteredContracts]);
 
   const formatDate = (value?: string) => {
@@ -294,58 +306,27 @@ const Reports = () => {
 
   const statusLabel = (status?: string) => {
     switch (status) {
-      case "signed":
-        return "Signé";
-      case "completed":
-        return "Terminé";
-      case "draft":
-        return "Brouillon";
-      case "sent":
-        return "Envoyé";
-      case "ouvert":
-        return "Ouvert";
-      case "ferme":
-        return "Fermé";
-      case "cancelled":
-        return "Annulé";
-      default:
-        return "N/A";
+      case "signed": return "Signé";
+      case "completed": return "Terminé";
+      case "draft": return "Brouillon";
+      case "sent": return "Envoyé";
+      case "ouvert": return "Ouvert";
+      case "ferme": return "Fermé";
+      case "cancelled": return "Annulé";
+      default: return "N/A";
     }
   };
 
   const statusClass = (status?: string) => {
-    if (status === "signed" || status === "completed") return "bg-card-green-bg text-card-green";
-    if (status === "draft" || status === "sent") return "bg-card-blue-bg text-card-blue";
-    if (status === "ouvert") return "bg-card-orange-bg text-card-orange";
-    if (status === "cancelled") return "bg-card-red-bg text-card-red";
+    if (status === "signed" || status === "completed") return "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30";
+    if (status === "draft" || status === "sent") return "bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30";
+    if (status === "ouvert") return "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30";
+    if (status === "cancelled") return "bg-destructive/15 text-destructive border border-destructive/30";
     return "bg-muted text-muted-foreground";
   };
 
-  // Contracts prepared for child components requiring different prop shapes
-  const contractsForPlanning = useMemo(() => {
-    return contracts.map(c => {
-      let { nombreDeJour } = c;
-      // If nombreDeJour is not available on the contract, calculate it from dates
-      if (nombreDeJour === undefined && c.start_date && c.end_date) {
-        try {
-          const start = new Date(c.start_date);
-          const end = new Date(c.end_date);
-          const diffInMs = end.getTime() - start.getTime();
-          
-          if (diffInMs >= 0) {
-            // Calculate number of days. A rental from 15th to 19th is 4 days.
-            nombreDeJour = Math.round(diffInMs / (1000 * 60 * 60 * 24));
-          }
-        } catch (e) {
-          console.error(`Could not calculate duration for contract ${c.id}:`, e);
-        }
-      }
-      return { ...c, customerName: c.customer_name, nombreDeJour };
-    });
-  }, [contracts]);
-
   const contractsForRevenue = useMemo(() => {
-    return contracts.map(c => ({
+    return contracts.map((c) => ({
       ...c,
       customerName: c.customer_name || "",
       startDate: c.start_date || "",
@@ -373,17 +354,18 @@ const Reports = () => {
     }));
   }, [filteredContracts]);
 
+  // Export PDF with jsPDF & AutoTable
   const handleExportPDF = () => {
     const doc = new jsPDF({ orientation: "landscape" });
-    doc.setFontSize(14);
-    doc.text("Rapport filtré - SFTLOCATION", 14, 16);
+    doc.setFontSize(16);
+    doc.text("Rapport d'Activité & Analytique Flotte - SFTLOCATION 2026", 14, 16);
     doc.setFontSize(10);
-    doc.text(`Date export: ${new Date().toLocaleString("fr-FR")}`, 14, 24);
-    doc.text(`Contrats: ${filteredContracts.length} | Revenus: ${Math.round(stats.totalRevenue).toLocaleString()} DH`, 14, 30);
+    doc.text(`Généré le: ${new Date().toLocaleString("fr-FR")}`, 14, 23);
+    doc.text(`Contrats filtrés: ${filteredContracts.length} | CA Total: ${Math.round(stats.totalRevenue).toLocaleString()} MAD | Bénéfice Net: ${Math.round(stats.netProfit).toLocaleString()} MAD`, 14, 29);
 
     autoTable(doc, {
-      startY: 36,
-      head: [["Contrat", "Client", "Véhicule", "Début", "Fin", "Statut", "Montant (DH)"]],
+      startY: 35,
+      head: [["N° Contrat", "Client", "Véhicule", "Date Début", "Date Fin", "Statut", "Montant (MAD)"]],
       body: exportRows.map((row) => [
         row.contract,
         row.client,
@@ -393,15 +375,16 @@ const Reports = () => {
         row.status,
         row.amount.toLocaleString(),
       ]),
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [30, 30, 30] },
+      styles: { fontSize: 8.5 },
+      headStyles: { fillColor: [30, 41, 59] },
     });
 
-    doc.save(`rapport_filtre_${new Date().toISOString().slice(0, 10)}.pdf`);
+    doc.save(`rapport_flotte_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
+  // Export CSV
   const handleExportCSV = () => {
-    const headers = ["Contrat", "Client", "Véhicule", "Date début", "Date fin", "Statut", "Montant DH"];
+    const headers = ["Contrat", "Client", "Véhicule", "Date début", "Date fin", "Statut", "Montant MAD"];
     const rows = exportRows.map((row) => [
       row.contract,
       row.client,
@@ -419,13 +402,14 @@ const Reports = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `rapport_filtre_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `rapport_flotte_${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
 
+  // Export XLSX Multi-feuilles Stylisé
   const handleExportExcel = async () => {
     type XlsxCell = string | number | { value: string | number; type?: "string" | "number"; style?: number };
 
@@ -450,11 +434,11 @@ const Reports = () => {
 
     const toCell = (cell: XlsxCell) => {
       if (typeof cell === "string" || typeof cell === "number") {
-        return { value: cell, type: typeof cell === "number" ? "number" as const : "string" as const };
+        return { value: cell, type: typeof cell === "number" ? ("number" as const) : ("string" as const) };
       }
       return {
         value: cell.value,
-        type: cell.type ?? (typeof cell.value === "number" ? "number" as const : "string" as const),
+        type: cell.type ?? (typeof cell.value === "number" ? ("number" as const) : ("string" as const)),
         style: cell.style,
       };
     };
@@ -491,35 +475,19 @@ const Reports = () => {
 
     const headerStyle = 1;
     const currencyStyle = 2;
-    const metricCurrencyLabels = new Set(["Revenus filtrés", "Dépenses", "Résultat net", "Valeur moyenne contrat"]);
-
-    const vehicleExportRows = topVehicles.map((vehicle) => [
-      vehicle.label,
-      vehicle.contracts,
-      Math.round(vehicle.revenue),
-    ]);
 
     const metricsRows: Array<Array<XlsxCell>> = [
       [
-        { value: "Indicateur", style: headerStyle },
+        { value: "Indicateur Analytique 2026", style: headerStyle },
         { value: "Valeur", style: headerStyle },
       ],
-      ...[
-        ["Nombre de contrats", filteredContracts.length],
-        ["Revenus filtrés", Math.round(stats.totalRevenue)],
-        ["Dépenses", Math.round(stats.totalExpenses)],
-        ["Résultat net", Math.round(stats.netProfit)],
-        ["Taux de paiement (%)", stats.paidRate],
-        ["Valeur moyenne contrat", avgContractValue],
-        ["Échéances proches", expiringSoonContracts.length],
-      ].map(([label, value]) => [
-        String(label),
-        metricCurrencyLabels.has(String(label)) && typeof value === "number"
-          ? { value, style: currencyStyle }
-          : typeof value === "number"
-            ? { value, type: "number" as const }
-            : String(value),
-      ]),
+      ["Nombre de contrats filtrés", filteredContracts.length],
+      ["Chiffre d'affaires global (MAD)", Math.round(stats.totalRevenue)],
+      ["Charges & Dépenses (MAD)", Math.round(stats.totalExpenses)],
+      ["Bénéfice Net Opérationnel (MAD)", Math.round(stats.netProfit)],
+      ["Taux de Recouvrement (%)", stats.paidRate],
+      ["Valeur moyenne par contrat (MAD)", avgContractValue],
+      ["Total jours loués", stats.totalDaysRented],
     ];
 
     const contractRows: Array<Array<XlsxCell>> = [
@@ -530,7 +498,7 @@ const Reports = () => {
         { value: "Date début", style: headerStyle },
         { value: "Date fin", style: headerStyle },
         { value: "Statut", style: headerStyle },
-        { value: "Montant DH", style: headerStyle },
+        { value: "Montant MAD", style: headerStyle },
       ],
       ...exportRows.map((row) => [
         row.contract,
@@ -547,17 +515,17 @@ const Reports = () => {
       [
         { value: "Véhicule", style: headerStyle },
         { value: "Nombre contrats", style: headerStyle },
-        { value: "Revenu DH", style: headerStyle },
+        { value: "Revenu Total MAD", style: headerStyle },
       ],
-      ...vehicleExportRows.map((row) => [row[0], row[1], { value: row[2], style: currencyStyle }]),
+      ...topVehicles.map((v) => [v.label, v.contracts, { value: Math.round(v.revenue), style: currencyStyle }]),
     ];
 
     const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheets>
-    <sheet name="Contrats" sheetId="1" r:id="rId1"/>
-    <sheet name="Vehicules" sheetId="2" r:id="rId2"/>
-    <sheet name="Indicateurs" sheetId="3" r:id="rId3"/>
+    <sheet name="Grand Livre Contrats" sheetId="1" r:id="rId1"/>
+    <sheet name="Performance Flotte" sheetId="2" r:id="rId2"/>
+    <sheet name="KPIs & Indicateurs" sheetId="3" r:id="rId3"/>
   </sheets>
 </workbook>`;
 
@@ -572,7 +540,7 @@ const Reports = () => {
     const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <numFmts count="1">
-    <numFmt numFmtId="164" formatCode="#,##0 &quot;DH&quot;"/>
+    <numFmt numFmtId="164" formatCode="#,##0 &quot;MAD&quot;"/>
   </numFmts>
   <fonts count="2">
     <font><sz val="11"/><name val="Calibri"/></font>
@@ -581,7 +549,7 @@ const Reports = () => {
   <fills count="3">
     <fill><patternFill patternType="none"/></fill>
     <fill><patternFill patternType="gray125"/></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FF1E1E1E"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF1E293B"/><bgColor indexed="64"/></patternFill></fill>
   </fills>
   <borders count="1">
     <border><left/><right/><top/><bottom/><diagonal/></border>
@@ -623,461 +591,679 @@ const Reports = () => {
     zip.folder("xl")?.folder("_rels")?.file("workbook.xml.rels", workbookRelsXml);
     zip.folder("xl")?.folder("worksheets")?.file("sheet1.xml", buildSheetXml(contractRows, [18, 26, 22, 14, 14, 14, 16]));
     zip.folder("xl")?.folder("worksheets")?.file("sheet2.xml", buildSheetXml(vehicleRows, [30, 18, 16]));
-    zip.folder("xl")?.folder("worksheets")?.file("sheet3.xml", buildSheetXml(metricsRows, [30, 18]));
+    zip.folder("xl")?.folder("worksheets")?.file("sheet3.xml", buildSheetXml(metricsRows, [34, 18]));
 
     const blob = await zip.generateAsync({ type: "blob" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `rapport_filtre_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    link.download = `rapport_analytique_${new Date().toISOString().slice(0, 10)}.xlsx`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
 
+  const setPeriodPreset = (preset: "month" | "30d" | "quarter" | "year" | "all") => {
+    const now = new Date();
+    if (preset === "month") {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+      setFilters((prev) => ({ ...prev, periode: { start, end } }));
+    } else if (preset === "30d") {
+      const end = new Date();
+      const start = new Date();
+      start.setDate(end.getDate() - 29);
+      setFilters((prev) => ({
+        ...prev,
+        periode: {
+          start: start.toISOString().slice(0, 10),
+          end: end.toISOString().slice(0, 10),
+        },
+      }));
+    } else if (preset === "quarter") {
+      const q = Math.floor(now.getMonth() / 3);
+      const start = new Date(now.getFullYear(), q * 3, 1).toISOString().slice(0, 10);
+      const end = new Date(now.getFullYear(), (q + 1) * 3, 0).toISOString().slice(0, 10);
+      setFilters((prev) => ({ ...prev, periode: { start, end } }));
+    } else if (preset === "year") {
+      const start = `${now.getFullYear()}-01-01`;
+      const end = `${now.getFullYear()}-12-31`;
+      setFilters((prev) => ({ ...prev, periode: { start, end } }));
+    } else {
+      setFilters((prev) => ({ ...prev, periode: { start: "", end: "" } }));
+    }
+  };
+
+  const hasActiveFilters = Boolean(
+    filters.periode.start ||
+    filters.periode.end ||
+    (filters.vehicleId && filters.vehicleId !== "all") ||
+    filters.tenantName ||
+    (filters.contractStatus && filters.contractStatus !== "all") ||
+    searchTerm.trim()
+  );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="bg-card rounded-xl border shadow-sm p-4 sm:p-6 mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-black text-foreground mb-1">Rapports et Analyses</h1>
-              <p className="text-muted-foreground text-sm">Rapports financiers et analyses de performance opérationnelle</p>
+    <div className="space-y-7 pb-24 safe-pt safe-pb relative">
+      
+      {/* 2026 ANALYTICS COMMAND CENTER HERO HEADER */}
+      <motion.div 
+        className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35 }}
+      >
+        <div className="space-y-1">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-accent/15 text-accent border border-accent/30 flex items-center justify-center font-black shadow-xs">
+              <TrendingUp className="w-5 h-5" />
             </div>
-            <Link to="/">
-              <Button variant="outline" className="w-full sm:w-auto">Retour à l'Accueil</Button>
-            </Link>
+            <div>
+              <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-foreground">
+                Rapports & <span className="text-accent">Analyses</span>
+              </h1>
+            </div>
+          </div>
+          <p className="text-xs sm:text-sm text-muted-foreground font-medium pl-1">
+            Intelligence financière, rentabilité du parc et audits d'exploitation 2026
+          </p>
+        </div>
+
+        {/* Quick Action & Export Toolbar */}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <Link to="/">
+            <Button variant="outline" className="rounded-2xl h-11 px-4 font-bold border-border/60 hover:bg-accent/10">
+              Accueil
+            </Button>
+          </Link>
+
+          <Button 
+            variant="outline" 
+            onClick={handleExportPDF}
+            className="rounded-2xl h-11 px-3.5 font-bold border-border/60 hover:bg-accent/10 text-xs gap-1.5"
+          >
+            <FileText className="w-4 h-4 text-accent" />
+            <span>PDF</span>
+          </Button>
+
+          <Button 
+            variant="outline" 
+            onClick={handleExportExcel}
+            className="rounded-2xl h-11 px-3.5 font-bold border-border/60 hover:bg-accent/10 text-xs gap-1.5"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+            <span>Excel XLSX</span>
+          </Button>
+
+          <Button 
+            variant="outline" 
+            onClick={handleExportCSV}
+            className="rounded-2xl h-11 px-3.5 font-bold border-border/60 hover:bg-accent/10 text-xs gap-1.5 hidden sm:flex"
+          >
+            <Download className="w-4 h-4" />
+            <span>CSV</span>
+          </Button>
+
+          <Button 
+            onClick={() => setIsFilterDialogOpen(true)}
+            className="rounded-2xl h-11 px-4 font-black bg-accent text-accent-foreground hover:bg-accent/90 shadow-lg shadow-accent/20 hover:scale-105 active:scale-95 transition-all text-xs"
+          >
+            <Filter className="w-4 h-4 mr-1.5" />
+            Filtres Avancés
+          </Button>
+        </div>
+      </motion.div>
+
+      {/* QUICK PRESETS & SEARCH BAR */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay: 0.05 }}
+        className="p-4 rounded-3xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-xs space-y-3"
+      >
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          
+          {/* Preset Buttons */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+            <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground shrink-0 mr-1 flex items-center gap-1">
+              <Calendar className="w-3.5 h-3.5 text-accent" /> Périodes:
+            </span>
+
+            <button
+              onClick={() => setPeriodPreset("month")}
+              className="px-3 py-1.5 rounded-xl font-bold bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 transition-all"
+            >
+              Ce Mois
+            </button>
+            <button
+              onClick={() => setPeriodPreset("30d")}
+              className="px-3 py-1.5 rounded-xl font-bold bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 transition-all"
+            >
+              30 Derniers Jours
+            </button>
+            <button
+              onClick={() => setPeriodPreset("quarter")}
+              className="px-3 py-1.5 rounded-xl font-bold bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 transition-all"
+            >
+              Trimestre
+            </button>
+            <button
+              onClick={() => setPeriodPreset("year")}
+              className="px-3 py-1.5 rounded-xl font-bold bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 transition-all"
+            >
+              Année 2026
+            </button>
+            <button
+              onClick={() => setPeriodPreset("all")}
+              className="px-3 py-1.5 rounded-xl font-bold bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 transition-all"
+            >
+              Tout Afficher
+            </button>
+          </div>
+
+          {/* Quick Universal Search */}
+          <div className="relative w-full md:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Filtrer client, véhicule, contrat..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full h-9 pl-9 pr-8 rounded-xl bg-muted/40 border border-border/50 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-accent/40"
+            />
+            {searchTerm && (
+              <button onClick={() => setSearchTerm("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
 
-        <Card className="mb-8 border-none shadow-card rounded-2xl sm:rounded-[2rem] overflow-hidden bg-card">
-          <CardHeader className="p-4 sm:p-6 pb-2">
-            <CardTitle className="text-lg font-bold flex items-center gap-2">
-              <Filter className="h-5 w-5 text-accent" />
-              Filtres intelligents
-            </CardTitle>
-            <CardDescription>
-              Affichez les rapports par période, statut, véhicule et client sans perdre les données existantes
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 sm:p-6 pt-2 space-y-4">
-            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none md:flex-wrap w-full">
+        {/* Active Filters Summary Chips */}
+        <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-border/30 text-xs">
+          <Badge variant="secondary" className="font-mono font-bold">
+            {filteredContracts.length} contrat(s) filtré(s)
+          </Badge>
+          <Badge variant="secondary" className="font-mono font-bold">
+            {stats.paidRate}% taux de recouvrement
+          </Badge>
+          {filters.periode.start && (
+            <Badge variant="outline" className="gap-1">
+              Du: {filters.periode.start}
+            </Badge>
+          )}
+          {filters.periode.end && (
+            <Badge variant="outline" className="gap-1">
+              Au: {filters.periode.end}
+            </Badge>
+          )}
+          {hasActiveFilters && (
+            <button
+              onClick={() => {
+                setFilters({
+                  periode: { start: "", end: "" },
+                  vehicleId: "all",
+                  tenantName: "",
+                  contractStatus: "",
+                  vehicleStatus: "",
+                  expenseType: "",
+                });
+                setSearchTerm("");
+              }}
+              className="text-xs text-destructive hover:underline font-bold ml-auto"
+            >
+              Effacer tous les filtres
+            </button>
+          )}
+        </div>
+      </motion.div>
+
+      {/* METRICS & KPIS 2026 */}
+      <MetricsSection stats={stats} />
+
+      {/* 4 WORKSPACES TABS SYSTEM */}
+      <div className="space-y-6">
+        <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="space-y-6">
+          <TabsList className="grid grid-cols-2 sm:grid-cols-4 p-1.5 rounded-2xl bg-muted/50 border border-border/40 h-auto">
+            <TabsTrigger value="finance" className="rounded-xl py-2.5 font-bold text-xs gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+              <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
+              Performance Financière
+            </TabsTrigger>
+            <TabsTrigger value="fleet" className="rounded-xl py-2.5 font-bold text-xs gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+              <Car className="w-3.5 h-3.5 text-blue-500" />
+              Exploitation & Planning Flotte
+            </TabsTrigger>
+            <TabsTrigger value="tenants" className="rounded-xl py-2.5 font-bold text-xs gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+              <Users className="w-3.5 h-3.5 text-purple-500" />
+              Intelligence Clients
+            </TabsTrigger>
+            <TabsTrigger value="ledger" className="rounded-xl py-2.5 font-bold text-xs gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+              <Layers className="w-3.5 h-3.5 text-amber-500" />
+              Grand Livre des Contrats
+            </TabsTrigger>
+          </TabsList>
+
+          {/* TAB 1: PERFORMANCE FINANCIÈRE */}
+          <TabsContent value="finance" className="space-y-6 animate-in fade-in-50 duration-300">
+            <MonthlyRevenueSection contracts={filteredContracts} />
+
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+              {/* Trend Area Chart */}
+              <Card className="xl:col-span-2 rounded-[2rem] border border-border/60 bg-gradient-to-br from-card via-card to-card/95 backdrop-blur-xl shadow-card overflow-hidden">
+                <CardHeader className="p-5 sm:p-6 pb-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-base sm:text-lg font-black tracking-tight">
+                        Tendance Filtrée des Revenus & Contrats
+                      </CardTitle>
+                      <CardDescription className="text-xs font-medium">
+                        Trajectoire sur la période sélectionnée (MAD)
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-5 sm:p-6 pt-2 h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={monthlyTrendData}>
+                      <defs>
+                        <linearGradient id="trendFill2" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="hsl(var(--accent))" stopOpacity={0.4} />
+                          <stop offset="100%" stopColor="hsl(var(--accent))" stopOpacity={0.05} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.06)" />
+                      <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11, fontWeight: "bold" }} />
+                      <YAxis tickLine={false} axisLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "hsl(var(--card))",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: "1rem",
+                          boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
+                          fontSize: "12px",
+                          fontWeight: "bold",
+                        }}
+                        formatter={(value: number, name: string) => [
+                          name === "revenue" ? `${Math.round(Number(value)).toLocaleString()} MAD` : Number(value),
+                          name === "revenue" ? "Revenu" : "Contrats",
+                        ]}
+                      />
+                      <Area type="monotone" dataKey="revenue" stroke="hsl(var(--accent))" strokeWidth={3} fill="url(#trendFill2)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              {/* Financial Balance Breakdown */}
+              <Card className="rounded-[2rem] border border-border/60 bg-gradient-to-br from-card via-card to-card/95 backdrop-blur-xl shadow-card overflow-hidden flex flex-col justify-between">
+                <CardHeader className="p-5 sm:p-6 pb-2">
+                  <CardTitle className="text-base sm:text-lg font-black tracking-tight">
+                    Bilan & Marge Nette
+                  </CardTitle>
+                  <CardDescription className="text-xs font-medium">Synthèse globale de rentabilité</CardDescription>
+                </CardHeader>
+                <CardContent className="p-5 sm:p-6 pt-2 space-y-4">
+                  <div className={`p-4 rounded-2xl border ${
+                    stats.netProfit >= 0 ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300" : "bg-destructive/10 border-destructive/30 text-destructive"
+                  }`}>
+                    <span className="text-[10px] font-black uppercase tracking-wider block">Bénéfice Net Opérationnel</span>
+                    <span className="text-2xl font-black font-mono block mt-0.5">
+                      {stats.netProfit > 0 ? "+" : ""}{Math.round(stats.netProfit).toLocaleString()} MAD
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-muted/30">
+                      <span className="text-muted-foreground font-semibold">Chiffre d'Affaires</span>
+                      <span className="font-black text-foreground font-mono">{Math.round(stats.totalRevenue).toLocaleString()} MAD</span>
+                    </div>
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-muted/30">
+                      <span className="text-muted-foreground font-semibold">Charges d'Exploitation</span>
+                      <span className="font-black text-destructive font-mono">{Math.round(stats.totalExpenses).toLocaleString()} MAD</span>
+                    </div>
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-muted/30">
+                      <span className="text-muted-foreground font-semibold">Valeur Moyenne / Contrat</span>
+                      <span className="font-black text-accent font-mono">{avgContractValue.toLocaleString()} MAD</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Top Vehicles Ranking */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <RevenueSection
+                vehicles={vehicles}
+                contracts={filteredContractsForRevenue as RevenueChartContract[]}
+                filters={filters}
+              />
+
+              <Card className="rounded-[2rem] border border-border/60 bg-gradient-to-br from-card via-card to-card/95 backdrop-blur-xl shadow-card overflow-hidden">
+                <CardHeader className="p-5 sm:p-6 pb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center font-black">
+                      <Trophy className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base sm:text-lg font-black tracking-tight">Top Véhicules Rentables</CardTitle>
+                      <CardDescription className="text-xs font-medium">Classement par chiffre d'affaires généré</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-5 sm:p-6 pt-2">
+                  <div className="space-y-3">
+                    {topVehicles.length > 0 ? (
+                      topVehicles.map((v, i) => (
+                        <div key={`${v.label}-${i}`} className="p-3.5 rounded-2xl bg-muted/20 border border-border/40 flex items-center justify-between">
+                          <div className="min-w-0">
+                            <p className="text-sm font-black text-foreground truncate">{v.label}</p>
+                            <p className="text-xs text-muted-foreground font-medium">{v.contracts} contrat(s)</p>
+                          </div>
+                          <span className="text-sm font-black font-mono text-blue-600 dark:text-blue-400">
+                            {Math.round(v.revenue).toLocaleString()} MAD
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-8 text-xs text-muted-foreground">Aucune donnée disponible</div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* TAB 2: EXPLOITATION & PLANNING FLOTTE */}
+          <TabsContent value="fleet" className="space-y-6 animate-in fade-in-50 duration-300">
+            <VehiclePlanningSection
+              vehicles={vehicles}
+              contracts={filteredContracts as Contract[]}
+              filters={filters}
+            />
+
+            <AllVehiclesSection
+              vehicles={vehicles}
+              onRefresh={refetchVehicles}
+            />
+
+            <VehicleComparisonSection
+              vehicles={vehicles}
+              contracts={filteredContracts}
+              expenses={allExpenses || []}
+            />
+          </TabsContent>
+
+          {/* TAB 3: INTELLIGENCE CLIENTS & RECOUVREMENT */}
+          <TabsContent value="tenants" className="space-y-6 animate-in fade-in-50 duration-300">
+            <TenantSection
+              contracts={filteredContracts as any}
+              filters={filters}
+            />
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Expiring / Critical Contracts */}
+              <Card className="rounded-[2rem] border border-border/60 bg-gradient-to-br from-card via-card to-card/95 backdrop-blur-xl shadow-card overflow-hidden">
+                <CardHeader className="p-5 sm:p-6 pb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center font-black">
+                      <AlertTriangle className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base sm:text-lg font-black tracking-tight">Échéances Proches (7 jours)</CardTitle>
+                      <CardDescription className="text-xs font-medium">Contrats nécessitant un suivi ou renouvellement</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-5 sm:p-6 pt-2">
+                  <div className="space-y-2.5">
+                    {expiringSoonContracts.length > 0 ? (
+                      expiringSoonContracts.map((c) => (
+                        <div key={c.id} className="p-3 rounded-2xl bg-muted/20 border border-border/40 flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-foreground truncate">{c.customer}</p>
+                            <p className="text-[11px] text-muted-foreground font-mono">#{c.contractNumber}</p>
+                          </div>
+                          <Badge className={c.daysLeft <= 2 ? "bg-destructive/15 text-destructive border-destructive/30" : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"}>
+                            {c.daysLeft === 0 ? "Aujourd'hui" : `${c.daysLeft} jour(s)`}
+                          </Badge>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-8 text-xs text-muted-foreground">Aucun contrat arrivant à terme cette semaine</div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Export Summary Box */}
+              <Card className="rounded-[2rem] border border-border/60 bg-gradient-to-br from-card via-card to-card/95 backdrop-blur-xl shadow-card overflow-hidden flex flex-col justify-between">
+                <CardHeader className="p-5 sm:p-6 pb-2">
+                  <CardTitle className="text-base sm:text-lg font-black tracking-tight">Audit & Télémétrie Export</CardTitle>
+                  <CardDescription className="text-xs font-medium">Données prêtes pour certification comptable</CardDescription>
+                </CardHeader>
+                <CardContent className="p-5 sm:p-6 pt-2 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 rounded-2xl bg-muted/30 border border-border/40 text-center">
+                      <span className="text-[10px] uppercase font-black text-muted-foreground block">Lignes Auditées</span>
+                      <span className="text-2xl font-black font-mono text-foreground mt-0.5 block">{exportRows.length}</span>
+                    </div>
+                    <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-center">
+                      <span className="text-[10px] uppercase font-black text-emerald-600 dark:text-emerald-400 block">Total Encaissable</span>
+                      <span className="text-2xl font-black font-mono text-emerald-700 dark:text-emerald-300 mt-0.5 block">
+                        {Math.round(stats.totalRevenue).toLocaleString()} MAD
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* TAB 4: GRAND LIVRE DES CONTRATS */}
+          <TabsContent value="ledger" className="space-y-6 animate-in fade-in-50 duration-300">
+            <Card className="rounded-[2rem] border border-border/60 bg-gradient-to-br from-card via-card to-card/95 backdrop-blur-xl shadow-card overflow-hidden">
+              <CardHeader className="p-5 sm:p-6 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="text-lg sm:text-xl font-black tracking-tight">
+                    Grand Livre des Contrats
+                  </CardTitle>
+                  <CardDescription className="text-xs font-medium">
+                    {topContractsTable.length} enregistrement(s) trouvé(s)
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={handleExportPDF} className="rounded-xl text-xs font-bold gap-1">
+                    <FileText className="w-3.5 h-3.5" /> PDF
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={handleExportExcel} className="rounded-xl text-xs font-bold gap-1">
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" /> Excel
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-5 sm:p-6 pt-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs hidden md:table">
+                    <thead>
+                      <tr className="border-b border-border/60 uppercase tracking-wider text-muted-foreground font-black">
+                        <th className="py-3 px-3">Contrat</th>
+                        <th className="py-3 px-3">Client</th>
+                        <th className="py-3 px-3">Véhicule</th>
+                        <th className="py-3 px-3">Période</th>
+                        <th className="py-3 px-3">Statut</th>
+                        <th className="py-3 px-3 text-right">Montant</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/40 font-medium">
+                      {topContractsTable.length > 0 ? (
+                        topContractsTable.map((contract) => (
+                          <tr key={contract.id} className="hover:bg-muted/30 transition-colors">
+                            <td className="py-3.5 px-3 font-mono font-bold">
+                              {(contract as any).contract_number || (contract as any).contractNumber || "N/A"}
+                            </td>
+                            <td className="py-3.5 px-3 font-semibold text-foreground">
+                              {contract.customer_name || contract.customerName || "Client"}
+                            </td>
+                            <td className="py-3.5 px-3">{contract.vehicle || "Véhicule"}</td>
+                            <td className="py-3.5 px-3 text-muted-foreground">
+                              {formatDate(contract.start_date)} → {formatDate(contract.end_date)}
+                            </td>
+                            <td className="py-3.5 px-3">
+                              <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold ${statusClass(contract.status)}`}>
+                                {statusLabel(contract.status)}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-3 text-right font-black font-mono text-sm text-foreground">
+                              {Math.round(Number(contract.total_amount) || 0).toLocaleString()} MAD
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td className="py-12 text-center text-muted-foreground" colSpan={6}>
+                            Aucun contrat ne correspond aux critères de filtre.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+
+                  {/* Mobile Cards for Contracts */}
+                  <div className="md:hidden space-y-3">
+                    {topContractsTable.map((contract) => (
+                      <div key={contract.id} className="p-4 rounded-2xl border border-border/50 bg-muted/10 space-y-2 text-xs">
+                        <div className="flex justify-between items-center">
+                          <span className="font-mono font-bold">{(contract as any).contract_number || "N/A"}</span>
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold ${statusClass(contract.status)}`}>
+                            {statusLabel(contract.status)}
+                          </span>
+                        </div>
+                        <p className="font-bold text-foreground">{contract.customer_name || "Client"}</p>
+                        <p className="text-muted-foreground text-[11px]">{contract.vehicle}</p>
+                        <div className="border-t border-border/30 pt-2 flex justify-between items-center">
+                          <span className="text-muted-foreground text-[10px]">
+                            {formatDate(contract.start_date)} → {formatDate(contract.end_date)}
+                          </span>
+                          <span className="font-black font-mono text-accent">
+                            {Math.round(Number(contract.total_amount) || 0).toLocaleString()} MAD
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {/* FILTER MODAL DIALOG */}
+      <Dialog open={isFilterDialogOpen} onOpenChange={setIsFilterDialogOpen}>
+        <DialogContent className="max-w-lg rounded-3xl border border-border/60 bg-card/95 backdrop-blur-2xl shadow-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-black">Filtres Analytiques Avancés</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Ajustez les paramètres de dates, véhicules et statuts
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold">Date de début</Label>
+                <Input
+                  type="date"
+                  value={filters.periode.start}
+                  onChange={(e) => setFilters((prev) => ({ ...prev, periode: { ...prev.periode, start: e.target.value } }))}
+                  className="rounded-xl text-xs"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold">Date de fin</Label>
+                <Input
+                  type="date"
+                  value={filters.periode.end}
+                  onChange={(e) => setFilters((prev) => ({ ...prev, periode: { ...prev.periode, end: e.target.value } }))}
+                  className="rounded-xl text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">Filtrer par Véhicule</Label>
+              <Select value={filters.vehicleId} onValueChange={(v) => setFilters((prev) => ({ ...prev, vehicleId: v }))}>
+                <SelectTrigger className="rounded-xl text-xs">
+                  <SelectValue placeholder="Tous les véhicules" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les véhicules ({vehicles.length})</SelectItem>
+                  {vehicles.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.marque} {v.modele} ({v.immatriculation})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">Statut du contrat</Label>
+              <Select value={filters.contractStatus || "all"} onValueChange={(v) => setFilters((prev) => ({ ...prev, contractStatus: v }))}>
+                <SelectTrigger className="rounded-xl text-xs">
+                  <SelectValue placeholder="Tous les statuts" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les statuts</SelectItem>
+                  <SelectItem value="signed">Signé</SelectItem>
+                  <SelectItem value="completed">Terminé</SelectItem>
+                  <SelectItem value="ouvert">Ouvert</SelectItem>
+                  <SelectItem value="draft">Brouillon</SelectItem>
+                  <SelectItem value="sent">Envoyé</SelectItem>
+                  <SelectItem value="ferme">Fermé</SelectItem>
+                  <SelectItem value="cancelled">Annulé</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-4 border-t border-border/40">
               <Button
                 variant="outline"
-                size="sm"
-                className="shrink-0"
                 onClick={() => {
-                  const now = new Date();
-                  const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-                  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
-                  setFilters((prev) => ({ ...prev, periode: { start, end } }));
-                }}
-              >
-                Ce mois
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0"
-                onClick={() => {
-                  const end = new Date();
-                  const start = new Date();
-                  start.setDate(end.getDate() - 29);
-                  setFilters((prev) => ({
-                    ...prev,
-                    periode: {
-                      start: start.toISOString().slice(0, 10),
-                      end: end.toISOString().slice(0, 10),
-                    },
-                  }));
-                }}
-              >
-                30 derniers jours
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0"
-                onClick={() =>
-                  setFilters((prev) => ({
-                    ...prev,
+                  setFilters({
                     periode: { start: "", end: "" },
                     vehicleId: "all",
                     tenantName: "",
                     contractStatus: "all",
-                  }))
-                }
+                    vehicleStatus: "",
+                    expenseType: "",
+                  });
+                  setIsFilterDialogOpen(false);
+                }}
+                className="rounded-xl font-bold text-xs"
               >
                 Réinitialiser
               </Button>
-              <Button variant="outline" size="sm" className="shrink-0" onClick={() => refetchContracts()}>
-                <RefreshCw className="h-4 w-4 mr-1.5" />
-                Actualiser
-              </Button>
-              <Button size="sm" className="shrink-0" onClick={handleExportPDF}>
-                <FileText className="h-4 w-4 mr-1.5" />
-                Export PDF
-              </Button>
-              <Button size="sm" variant="secondary" className="shrink-0" onClick={handleExportExcel}>
-                <FileSpreadsheet className="h-4 w-4 mr-1.5" />
-                Export XLSX
-              </Button>
-              <Button size="sm" variant="outline" className="shrink-0" onClick={handleExportCSV}>
-                <Download className="h-4 w-4 mr-1.5" />
-                Export CSV
+              <Button
+                onClick={() => setIsFilterDialogOpen(false)}
+                className="rounded-xl font-black text-xs bg-accent text-accent-foreground"
+              >
+                Appliquer
               </Button>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
-              <div className="space-y-1">
-                <Label>Date début</Label>
-                <Input
-                  type="date"
-                  value={filters.periode.start}
-                  onChange={(e) =>
-                    setFilters((prev) => ({
-                      ...prev,
-                      periode: { ...prev.periode, start: e.target.value },
-                    }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Date fin</Label>
-                <Input
-                  type="date"
-                  value={filters.periode.end}
-                  onChange={(e) =>
-                    setFilters((prev) => ({
-                      ...prev,
-                      periode: { ...prev.periode, end: e.target.value },
-                    }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Client</Label>
-                <Input
-                  value={filters.tenantName}
-                  onChange={(e) => setFilters((prev) => ({ ...prev, tenantName: e.target.value }))}
-                  placeholder="Nom client"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Statut contrat</Label>
-                <Select
-                  value={filters.contractStatus || "all"}
-                  onValueChange={(value) => setFilters((prev) => ({ ...prev, contractStatus: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Tous" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tous</SelectItem>
-                    <SelectItem value="draft">Brouillon</SelectItem>
-                    <SelectItem value="sent">Envoyé</SelectItem>
-                    <SelectItem value="signed">Signé</SelectItem>
-                    <SelectItem value="completed">Terminé</SelectItem>
-                    <SelectItem value="ouvert">Ouvert</SelectItem>
-                    <SelectItem value="ferme">Fermé</SelectItem>
-                    <SelectItem value="cancelled">Annulé</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>Véhicule</Label>
-                <Select
-                  value={filters.vehicleId}
-                  onValueChange={(value) => setFilters((prev) => ({ ...prev, vehicleId: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Tous les véhicules" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tous les véhicules</SelectItem>
-                    {vehicles.map((vehicle) => (
-                      <SelectItem key={vehicle.id} value={vehicle.id}>
-                        {vehicle.marque} {vehicle.modele}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <Badge variant="secondary">{filteredContracts.length} contrats affichés</Badge>
-              <Badge variant="secondary">{stats.paidRate}% payés</Badge>
-              <Badge variant="secondary">{expiringSoonContracts.length} échéances proches</Badge>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+        </DialogContent>
+      </Dialog>
 
-        <MetricsSection stats={stats} />
+      {/* ANDROID FLOATING ACTION BUTTON (FAB) */}
+      <button
+        onClick={() => setIsFilterDialogOpen(true)}
+        className="fixed bottom-6 right-6 z-40 lg:hidden w-14 h-14 rounded-full bg-accent text-accent-foreground shadow-2xl flex items-center justify-center font-black active:scale-95 transition-transform"
+        aria-label="Filtres Analytiques"
+      >
+        <Filter className="w-6 h-6" />
+      </button>
 
-        <MonthlyRevenueSection contracts={filteredContracts} />
-
-        <VehiclePlanningSection
-          vehicles={vehicles}
-          contracts={filteredContracts as Contract[]}
-          filters={filters}
-        />
-
-        <AllVehiclesSection
-          vehicles={vehicles}
-          onRefresh={refetchVehicles}
-        />
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          <RevenueSection
-            vehicles={vehicles}
-            contracts={filteredContractsForRevenue as RevenueChartContract[]}
-            filters={filters}
-          />
-        </div>
-
-        {/* Vehicle Comparison Section */}
-        <VehicleComparisonSection
-          vehicles={vehicles}
-          contracts={filteredContracts}
-          expenses={allExpenses || []}
-        />
-
-        {/* Tenant Section - moved after Vehicle Comparison */}
-        <div className="mb-8">
-          <TenantSection
-            contracts={filteredContracts as any}
-            filters={filters}
-          />
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          <Card className="border-none shadow-card rounded-[2rem] overflow-hidden bg-card">
-            <CardHeader>
-              <CardTitle className="text-lg font-bold flex items-center gap-2">
-                <DollarSign className="h-5 w-5 text-accent" />
-                Indicateurs avancés
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-between py-2 border-b border-border/50">
-                <span className="text-muted-foreground">Valeur moyenne contrat</span>
-                <span className="font-black text-accent">{avgContractValue.toLocaleString()} DH</span>
-              </div>
-              <div className="flex items-center justify-between py-2 border-b border-border/50">
-                <span className="text-muted-foreground">Rentabilité nette</span>
-                <span className={`font-black ${stats.netProfit >= 0 ? "text-card-green" : "text-card-red"}`}>
-                  {stats.netProfit.toLocaleString()} DH
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-2">
-                <span className="text-muted-foreground">Taux de paiement</span>
-                <span className="font-black text-card-blue">{stats.paidRate}%</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-none shadow-card rounded-[2rem] overflow-hidden bg-card">
-            <CardHeader>
-              <CardTitle className="text-lg font-bold flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-card-orange" />
-                Contrats à surveiller
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {expiringSoonContracts.length > 0 ? (
-                expiringSoonContracts.map((contract) => (
-                  <div key={contract.id} className="p-3 rounded-xl border border-border/50 bg-background/40 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-bold truncate">{contract.customer}</p>
-                      <p className="text-xs text-muted-foreground truncate">#{contract.contractNumber}</p>
-                    </div>
-                    <Badge variant="secondary" className={contract.daysLeft <= 2 ? "text-card-red" : "text-card-orange"}>
-                      {contract.daysLeft === 0 ? "Aujourd'hui" : `${contract.daysLeft} j`}
-                    </Badge>
-                  </div>
-                ))
-              ) : (
-                <div className="text-sm text-muted-foreground p-5 rounded-xl border border-dashed border-border">
-                  Aucun contrat arrivant à échéance cette semaine
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="border-none shadow-card rounded-[2rem] overflow-hidden bg-card">
-            <CardHeader>
-              <CardTitle className="text-lg font-bold flex items-center gap-2">
-                <Trophy className="h-5 w-5 text-card-blue" />
-                Top véhicules
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {topVehicles.length > 0 ? (
-                topVehicles.map((vehicle, index) => (
-                  <div key={`${vehicle.label}-${index}`} className="p-3 rounded-xl border border-border/50 bg-background/40">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-bold truncate">{vehicle.label}</p>
-                      <span className="text-sm font-black text-card-blue">{Math.round(vehicle.revenue).toLocaleString()} DH</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">{vehicle.contracts} contrats</p>
-                  </div>
-                ))
-              ) : (
-                <div className="text-sm text-muted-foreground p-5 rounded-xl border border-dashed border-border">
-                  Pas de données de véhicules pour ces filtres
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-8">
-          <Card className="xl:col-span-2 border-none shadow-card rounded-[2rem] overflow-hidden bg-card">
-            <CardHeader>
-              <CardTitle className="text-lg font-bold flex items-center gap-2">
-                <Download className="h-5 w-5 text-accent" />
-                Tendance filtrée des revenus
-              </CardTitle>
-              <CardDescription>
-                Evolution des revenus selon les filtres actifs
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="h-[320px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={monthlyTrendData}>
-                  <defs>
-                    <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(var(--accent))" stopOpacity={0.45} />
-                      <stop offset="100%" stopColor="hsl(var(--accent))" stopOpacity={0.05} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--card))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "1rem",
-                    }}
-                    formatter={(value: number, name: string) => [
-                      name === "revenue" ? `${Math.round(Number(value)).toLocaleString()} DH` : Number(value),
-                      name === "revenue" ? "Revenu" : "Contrats",
-                    ]}
-                  />
-                  <Area type="monotone" dataKey="revenue" stroke="hsl(var(--accent))" strokeWidth={3} fill="url(#trendFill)" />
-                  <Area type="monotone" dataKey="contracts" stroke="hsl(var(--card-blue))" strokeWidth={2} fillOpacity={0} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          <Card className="border-none shadow-card rounded-[2rem] overflow-hidden bg-card">
-            <CardHeader>
-              <CardTitle className="text-lg font-bold">Résumé exportable</CardTitle>
-              <CardDescription>Prévisualisation des données exportées</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="rounded-xl border border-border/50 p-3 bg-background/40">
-                <p className="text-xs text-muted-foreground">Lignes export</p>
-                <p className="text-2xl font-black">{exportRows.length}</p>
-              </div>
-              <div className="rounded-xl border border-border/50 p-3 bg-background/40">
-                <p className="text-xs text-muted-foreground">Revenu exporté</p>
-                <p className="text-2xl font-black text-accent">{Math.round(stats.totalRevenue).toLocaleString()} DH</p>
-              </div>
-              <div className="rounded-xl border border-border/50 p-3 bg-background/40">
-                <p className="text-xs text-muted-foreground">Dernier export</p>
-                <p className="text-sm font-bold">{new Date().toLocaleDateString("fr-FR")}</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card className="mb-8 border-none shadow-card rounded-2xl sm:rounded-[2rem] overflow-hidden bg-card">
-          <CardHeader className="p-4 sm:p-6 pb-2">
-            <CardTitle className="text-lg font-bold">Tableau des meilleurs contrats</CardTitle>
-            <CardDescription>Classement par montant selon les filtres appliqués</CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 sm:p-6 pt-2">
-            <div className="overflow-x-auto">
-              <table className="w-full table-striped hidden md:table">
-                <thead>
-                  <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
-                    <th className="py-3 px-3">Contrat</th>
-                    <th className="py-3 px-3">Client</th>
-                    <th className="py-3 px-3">Véhicule</th>
-                    <th className="py-3 px-3">Période</th>
-                    <th className="py-3 px-3">Statut</th>
-                    <th className="py-3 px-3 text-right">Montant</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {topContractsTable.length > 0 ? (
-                    topContractsTable.map((contract) => (
-                      <tr key={contract.id} className="border-b border-border/40">
-                        <td className="py-3 px-3 font-bold">{(contract as any).contract_number || (contract as any).contractNumber || "N/A"}</td>
-                        <td className="py-3 px-3">{contract.customer_name || contract.customerName || "Client"}</td>
-                        <td className="py-3 px-3">{contract.vehicle || "Véhicule"}</td>
-                        <td className="py-3 px-3 text-sm text-muted-foreground">
-                          {formatDate(contract.start_date)} → {formatDate(contract.end_date)}
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className={`inline-flex px-2 py-1 rounded-md text-xs font-bold ${statusClass(contract.status)}`}>
-                            {statusLabel(contract.status)}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 text-right font-black">
-                          {Math.round(Number(contract.total_amount) || 0).toLocaleString()} DH
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td className="py-8 text-center text-muted-foreground" colSpan={6}>
-                        لا توجد بيانات حسب الفلاتر الحالية
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-              <div className="md:hidden space-y-3">
-                {topContractsTable.length > 0 ? (
-                  topContractsTable.map((contract) => (
-                    <div key={contract.id} className="p-4 rounded-xl border border-border/50 bg-background/40 space-y-2 text-xs">
-                      <div className="flex justify-between items-center">
-                        <span className="font-bold">{(contract as any).contract_number || (contract as any).contractNumber || "N/A"}</span>
-                        <span className={`inline-flex px-2 py-1 rounded-md text-[10px] font-bold ${statusClass(contract.status)}`}>
-                          {statusLabel(contract.status)}
-                        </span>
-                      </div>
-                      <div className="space-y-1">
-                        <p><strong>Client:</strong> {contract.customer_name || contract.customerName || "Client"}</p>
-                        <p><strong>Véhicule:</strong> {contract.vehicle || "Véhicule"}</p>
-                        <p className="text-muted-foreground text-[10px] mt-1">
-                          {formatDate(contract.start_date)} → {formatDate(contract.end_date)}
-                        </p>
-                      </div>
-                      <div className="border-t border-border/20 pt-2 flex justify-between items-center">
-                        <span className="text-muted-foreground">Montant</span>
-                        <span className="font-black text-accent">{Math.round(Number(contract.total_amount) || 0).toLocaleString()} DH</span>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center py-6 text-muted-foreground text-sm">لا توجد بيانات حسب الفلاتر الحالية</div>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Section de rapport des dépenses supprimée */}
-
-        {/* Section de rapports personnalisés supprimée */}
-      </div>
     </div>
   );
 };

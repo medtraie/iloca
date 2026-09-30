@@ -490,43 +490,60 @@ const Expenses = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/70 to-indigo-100/70 p-4 md:p-6 safe-pt safe-pb">
-      <div className="mx-auto max-w-7xl">
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background p-3 sm:p-6 pb-24 safe-pt safe-pb max-w-7xl mx-auto space-y-6">
+      <div>
         <motion.div
           initial={shouldReduceMotion ? false : { opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35 }}
-          className="mb-6 rounded-[var(--radius)] border bg-card/90 p-6 shadow-lg backdrop-blur-sm"
+          className="mb-6 p-5 sm:p-7 rounded-3xl bg-gradient-to-r from-card via-card/90 to-background border border-border/60 shadow-xs relative overflow-hidden"
         >
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h1 className="mb-2 text-3xl font-bold text-foreground">Gestion des Dépenses</h1>
-              <p className="text-muted-foreground">Suivi et gestion des dépenses des véhicules et coûts mensuels</p>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 mb-2">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                <span className="text-[11px] font-black uppercase tracking-wider text-primary">
+                  Contrôle des Coûts Flotte & Charges 2026
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-foreground">
+                Gestion des <span className="text-primary">Dépenses Flotte</span>
+              </h1>
+              <p className="text-muted-foreground text-xs sm:text-sm font-medium mt-1">
+                Suivi et maîtrise des coûts d'exploitation des véhicules, carburant, assurances et amortissements.
+              </p>
               {selectedVehicle && (
-                <p className="mt-2 text-sm font-medium text-primary">
-                  Vue active: {selectedVehicle.brand} {selectedVehicle.model} {selectedVehicle.year}
-                </p>
+                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-primary/15 text-primary text-xs font-bold border border-primary/25">
+                  <Car className="h-3.5 w-3.5" />
+                  Véhicule sélectionné: {selectedVehicle.brand} {selectedVehicle.model} ({selectedVehicle.registration || selectedVehicle.immatriculation || selectedVehicle.year})
+                </div>
               )}
             </div>
-            <div className="flex flex-wrap gap-3">
-              <Button onClick={handleAddExpense} disabled={vehicles.length === 0}>
-                <Plus className="h-4 w-4 mr-2" />
+            <div className="flex flex-wrap items-center gap-2.5">
+              <Button
+                onClick={handleAddExpense}
+                disabled={vehicles.length === 0}
+                className="rounded-2xl h-11 px-5 font-black bg-primary text-primary-foreground hover:bg-primary/90 shadow-md shadow-primary/20 hover:scale-[1.02] transition-transform"
+              >
+                <Plus className="h-4 w-4 mr-1.5" />
                 Ajouter une dépense
               </Button>
-              <Button variant="outline" onClick={() => setShowCommandDialog(true)}>
+              <Button
+                variant="outline"
+                onClick={() => setShowCommandDialog(true)}
+                className="rounded-2xl h-11 px-4 font-bold border-border/60 hover:bg-muted"
+              >
                 <CommandIcon className="h-4 w-4 mr-2" />
-                Commandes rapides
+                Commandes
               </Button>
-              <Button variant="outline" onClick={() => setShowExportDialog(true)}>
+              <Button
+                variant="outline"
+                onClick={() => setShowExportDialog(true)}
+                className="rounded-2xl h-11 px-4 font-bold border-border/60 hover:bg-muted"
+              >
                 <Download className="h-4 w-4 mr-2" />
-                Export avancé
+                Export
               </Button>
-              <Link to="/">
-                <Button variant="outline">
-                  Retour à l'accueil
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </Link>
             </div>
           </div>
 
@@ -975,6 +992,18 @@ const Expenses = () => {
           vehicles={vehicles}
           expense={editingExpense}
         />
+
+        {/* Floating Action Button (FAB) for Mobile / Android */}
+        <div className="fixed bottom-20 right-5 z-40 lg:hidden">
+          <Button
+            onClick={handleAddExpense}
+            disabled={vehicles.length === 0}
+            className="h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-2xl shadow-primary/40 flex items-center justify-center p-0 hover:scale-105 active:scale-95 transition-transform"
+            title="Ajouter une dépense"
+          >
+            <Plus className="h-7 w-7" />
+          </Button>
+        </div>
       </div>
     </div>
   );

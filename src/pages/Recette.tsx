@@ -1,11 +1,17 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowLeft, CreditCard, Coins, Banknote, CheckCircle, Clock, Send, Building2, History, Search, LayoutGrid, Table2, ChevronUp, ChevronDown, BellRing, TriangleAlert } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { 
+  ArrowLeft, CreditCard, Coins, Banknote, CheckCircle, Clock, 
+  Send, Building2, History, Search, LayoutGrid, Table2, ChevronUp, 
+  ChevronDown, BellRing, TriangleAlert, Plus, Sparkles, TrendingUp, 
+  DollarSign, ArrowUpRight, CheckCircle2, Lock, Unlock, X, ShieldCheck, Wallet, Car 
+} from "lucide-react";
 import { Link } from "react-router-dom";
 import { useContracts } from "@/hooks/useContracts";
 import { useMiscellaneousExpenses } from "@/hooks/useMiscellaneousExpenses";
@@ -71,12 +77,6 @@ interface BarChartItem {
   montant: number;
 }
 
-interface RepairPaymentMovement {
-  id: string;
-  amount: number;
-  paymentMethod: "Espèces" | "Virement" | "Chèque";
-}
-
 interface VehicleEntity {
   id: string;
   marque?: string;
@@ -119,13 +119,13 @@ interface SortableHeaderProps {
 }
 
 const SortableHeader = ({ label, isActive, direction, onClick }: SortableHeaderProps) => (
-  <Button variant="ghost" size="sm" className="px-0 font-semibold" onClick={onClick}>
+  <Button variant="ghost" size="sm" className="px-0 font-bold text-xs" onClick={onClick}>
     {label}
-    {isActive ? (direction === "asc" ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />) : null}
+    {isActive ? (direction === "asc" ? <ChevronUp className="w-3.5 h-3.5 ml-1 text-accent" /> : <ChevronDown className="w-3.5 h-3.5 ml-1 text-accent" />) : null}
   </Button>
 );
 
-const Recette = () => {
+export const Recette = () => {
   const { contracts: allContracts, updateContract, refetch } = useContracts();
   const {
     expenses: miscellaneousExpenses,
@@ -135,11 +135,9 @@ const Recette = () => {
   } = useMiscellaneousExpenses();
   const { toast } = useToast();
 
-  // Vehicle expenses
   const { monthlyExpenses } = useExpenses();
   const { vehicles } = useVehicles();
   
-  // State for filters and charts visibility
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('month');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [showPieChart, setShowPieChart] = useState(true);
@@ -151,6 +149,7 @@ const Recette = () => {
   const [contractsSortKey, setContractsSortKey] = useLocalStorage<ContractsSortKey>("recette:contracts-sort-key", "remaining_amount");
   const [contractsSortDirection, setContractsSortDirection] = useLocalStorage<SortDirection>("recette:contracts-sort-direction", "desc");
   const [contractsPage, setContractsPage] = useState(1);
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   
   // Financial analysis filters
   const [tenantFilter, setTenantFilter] = useState('');
@@ -215,10 +214,10 @@ const Recette = () => {
 
   const handleRefresh = () => {
     refetch();
+    fetchData();
     toast({
-      title: "Actualisé",
-      description: "Les données ont été actualisées",
-      variant: "default"
+      title: "Données actualisées",
+      description: "Les flux financiers et créances sont synchronisés.",
     });
   };
 
@@ -297,45 +296,22 @@ const Recette = () => {
     });
   }, [contracts, tenantFilter, contractNumberFilter, dateFilter]);
 
-  // Handle bank transfers
   const handleBankTransfer = async (transfer: any) => {
     try {
       await bankTransfersRepository.create(transfer);
       fetchData();
       appendAuditLog({
         action: "bank_transfer_created",
-        details: `Transfert ${transfer.type}`,
+        details: `Transfert ${transfer.type} vers banque`,
         amount: transfer.amount,
         reference: transfer.reference
+      });
+      toast({
+        title: "Virement bancaire enregistré",
+        description: `${transfer.amount.toLocaleString()} MAD transférés avec succès.`,
       });
     } catch (error) {
       toast({ title: "Erreur", description: "Échec du transfert", variant: "destructive" });
-    }
-  };
-
-  // Handle bank transfer deletion
-  const handleDeleteBankTransfer = async (transferId: string) => {
-    try {
-      const transfer = bankTransfers.find(t => t.id === transferId);
-      if (!transfer) return;
-
-      await bankTransfersRepository.delete(transferId);
-      fetchData();
-
-      toast({
-        title: "Transfert supprimé",
-        description: `Le transfert de ${transfer.amount.toLocaleString()} MAD a été supprimé`,
-        variant: "default"
-      });
-
-      appendAuditLog({
-        action: "bank_transfer_deleted",
-        details: `Suppression transfert ${transfer.type}`,
-        amount: transfer.amount,
-        reference: transfer.reference
-      });
-    } catch (error) {
-      toast({ title: "Erreur", description: "Échec de la suppression", variant: "destructive" });
     }
   };
 
@@ -406,7 +382,6 @@ const Recette = () => {
     totalVirements = totalVirements - diversVirements;
     totalCheques = totalCheques - diversCheques;
 
-    // Filter payments for repairs from the unified payments array
     let repairsEspeces = 0;
     let repairsVirements = 0;
     let repairsCheques = 0;
@@ -455,7 +430,6 @@ const Recette = () => {
     };
   }, [contracts, payments, cashBalance, bankAccount, bankTransfers, bankBalance, miscellaneousExpenses, monthlyExpenses, selectedDate]);
 
-  // Calculate analytics statistics using filtered contracts for financial analysis
   const analyticsStats = useMemo(() => {
     let totalEncaisse = 0;
     let totalDettes = 0;
@@ -490,13 +464,13 @@ const Recette = () => {
       }
 
       additionalPayments.forEach(payment => {
-      if (payment.paymentMethod === 'Espèces') {
-        totalEspeces += payment.amount;
-      } else if (payment.paymentMethod === 'Virement') {
-        totalVirements += payment.amount;
-      } else if (payment.paymentMethod === 'Chèque') {
-        totalCheques += payment.amount;
-      }
+        if (payment.paymentMethod === 'Espèces') {
+          totalEspeces += payment.amount;
+        } else if (payment.paymentMethod === 'Virement') {
+          totalVirements += payment.amount;
+        } else if (payment.paymentMethod === 'Chèque') {
+          totalCheques += payment.amount;
+        }
       });
     });
 
@@ -510,7 +484,6 @@ const Recette = () => {
     };
   }, [analyticsFilteredContracts, payments]);
 
-  // Data for pie chart (répartition des paiements)
   const pieChartData = useMemo(() => {
     const currentData = [
       { name: "Espèces", value: analyticsStats.totalEspeces, color: "#10b981" },
@@ -518,7 +491,6 @@ const Recette = () => {
       { name: "Virements", value: analyticsStats.totalVirements, color: "#f59e0b" }
     ].filter(item => item.value > 0);
     
-    // Store frozen data when chart gets frozen
     if (freezePieChart && frozenPieData.length === 0) {
       setFrozenPieData(currentData);
       return currentData;
@@ -527,7 +499,6 @@ const Recette = () => {
     return freezePieChart ? frozenPieData : currentData;
   }, [analyticsStats, freezePieChart, frozenPieData]);
 
-  // Data for bar chart (montants par mode de paiement)
   const barChartData = useMemo(() => {
     const currentData = [
       { mode: "Espèces", montant: analyticsStats.totalEspeces },
@@ -535,7 +506,6 @@ const Recette = () => {
       { mode: "Virements", montant: analyticsStats.totalVirements }
     ];
     
-    // Store frozen data when chart gets frozen
     if (freezeBarChart && frozenBarData.length === 0) {
       setFrozenBarData(currentData);
       return currentData;
@@ -544,13 +514,8 @@ const Recette = () => {
     return freezeBarChart ? frozenBarData : currentData;
   }, [analyticsStats, freezeBarChart, frozenBarData]);
 
-  // Data for line chart (historique mensuel)
   const lineChartData = useMemo(() => {
-    const months = [
-      "Jan", "Fév", "Mar", "Avr", "Mai", "Juin",
-      "Juil", "Août", "Sep", "Oct", "Nov", "Déc"
-    ];
-
+    const months = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"];
     const data = months.map((month, index) => ({
       month,
       recettes: 0,
@@ -568,7 +533,6 @@ const Recette = () => {
           
           if (year === currentYear) {
             const paymentSummary = getContractPaymentSummary(contract.id);
-            
             data[monthIndex].recettes += paymentSummary.totalPaid;
             if (paymentSummary.remainingAmount > 0) {
               data[monthIndex].dettes += paymentSummary.remainingAmount;
@@ -583,7 +547,6 @@ const Recette = () => {
     return data;
   }, [analyticsFilteredContracts, payments]);
 
-  // Filter contracts in waiting and in progress (both open and closed with remaining amounts)  
   const contractsWithDebts = useMemo(() => {
     return contracts.filter(contract => {
       const paymentSummary = getContractPaymentSummary(contract.id);
@@ -606,14 +569,13 @@ const Recette = () => {
         remaining_amount: paymentSummary.remainingAmount,
         total_paid: paymentSummary.totalPaid,
         financial_status: paymentSummary.isFullyPaid ? 
-          { status: "paye", label: "Payé", color: "bg-green-100 text-green-800", description: "Contrat entièrement soldé" } :
+          { status: "paye", label: "Payé", color: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30", description: "Contrat entièrement soldé" } :
           financialStatus,
         payment_summary: paymentSummary
       };
     }).sort((a, b) => b.remaining_amount - a.remaining_amount);
   }, [contracts, payments]);
 
-  // Filter settled contracts (contracts with no remaining amount)
   const settledContracts = useMemo(() => {
     return contracts.filter(contract => {
       const paymentSummary = getContractPaymentSummary(contract.id);
@@ -720,8 +682,8 @@ const Recette = () => {
     if (overdueContracts.length > 0) {
       alerts.push({
         id: "overdue_contracts",
-        title: "Contrats en retard",
-        description: `${overdueContracts.length} contrat(s) avec échéance dépassée`,
+        title: "Contrats avec créances échues",
+        description: `${overdueContracts.length} contrat(s) ont dépassé la date sans règlement complet.`,
         level: "critical"
       });
     }
@@ -729,24 +691,24 @@ const Recette = () => {
       const totalChecks = nonDepositedChecks.reduce((sum, item) => sum + item.amount, 0);
       alerts.push({
         id: "checks_not_deposited",
-        title: "Chèques non encaissés",
-        description: `${nonDepositedChecks.length} chèque(s) pour ${totalChecks.toLocaleString()} MAD`,
+        title: "Chèques en attente d'encaissement",
+        description: `${nonDepositedChecks.length} chèque(s) en portefeuille pour ${totalChecks.toLocaleString()} MAD`,
         level: "warning"
       });
     }
     if (stats.totalEspeces < cashAlertThreshold) {
       alerts.push({
         id: "low_cash",
-        title: "Caisse faible",
-        description: `Caisse ${stats.totalEspeces.toLocaleString()} MAD sous seuil ${cashAlertThreshold.toLocaleString()} MAD`,
+        title: "Niveau de caisse faible",
+        description: `Caisse actuelle: ${stats.totalEspeces.toLocaleString()} MAD (Seuil: ${cashAlertThreshold.toLocaleString()} MAD)`,
         level: "warning"
       });
     }
     if (stats.bankBalance < bankAlertThreshold) {
       alerts.push({
         id: "low_bank_balance",
-        title: "Solde banque faible",
-        description: `Banque ${stats.bankBalance.toLocaleString()} MAD sous seuil ${bankAlertThreshold.toLocaleString()} MAD`,
+        title: "Solde bancaire sous le seuil",
+        description: `Banque: ${stats.bankBalance.toLocaleString()} MAD (Seuil: ${bankAlertThreshold.toLocaleString()} MAD)`,
         level: "warning"
       });
     }
@@ -788,21 +750,6 @@ const Recette = () => {
     };
   }, [selectedDate, payments, miscellaneousExpenses, monthlyExpenses]);
 
-  // Reset frozen data when unfreezing
-  const handleFreezePieChart = (freeze: boolean) => {
-    setFreezePieChart(freeze);
-    if (!freeze) {
-      setFrozenPieData([]);
-    }
-  };
-  
-  const handleFreezeBarChart = (freeze: boolean) => {
-    setFreezeBarChart(freeze);
-    if (!freeze) {
-      setFrozenBarData([]);
-    }
-  };
-
   const handleFreezeCash = (freeze: boolean) => {
     if (freeze && !freezeCash) {
       setFrozenCashAmount(stats.totalEspeces);
@@ -817,54 +764,10 @@ const Recette = () => {
     setFreezeChecks(freeze);
   };
 
-  // Handle delete functions
-  // Handle delete functions
-  const handleDeleteTotalEncaisse = async () => {
-    // This is a radical action, we'll just clear the state locally and log it.
-    // In a real app, we might want a bulk delete repository method.
-    toast({
-      title: "Action restreinte",
-      description: "La suppression en masse doit être effectuée via Supabase.",
-    });
-  };
-
-  const handleDeleteTotalEspeces = () => {
-    toast({
-      title: "Action restreinte",
-      description: "La suppression par mode de paiement doit être effectuée via Supabase.",
-    });
-  };
-
-  const handleDeleteBankAccount = () => {
-    toast({
-      title: "Action restreinte",
-      description: "La réinitialisation du compte doit être effectuée via Supabase.",
-    });
-  };
-
-  const handleDeleteTotalChecks = () => {
-    toast({
-      title: "Action restreinte",
-      description: "La suppression des chèques doit être effectuée via Supabase.",
-    });
-  };
-
-  const handleDeleteMiscExpenses = async () => {
-    if (miscellaneousExpenses.length === 0) {
-      toast({ title: "Aucune dépense", description: "Il n'y a aucune dépense diverse à supprimer" });
-      return;
-    }
-    // Logic for deleting all misc expenses
-    toast({
-      title: "Action restreinte",
-      description: "La suppression en masse doit être effectuée via Supabase.",
-    });
-  };
-
   const handleDeleteRemainingDebts = async () => {
     const debtsToSettle = contractsWithDebts.filter((contract) => contract.remaining_amount > 0);
     if (debtsToSettle.length === 0) {
-      toast({ title: "Aucune dette", description: "Il n'y a aucune dette restante à solder" });
+      toast({ title: "Aucune dette", description: "Il n'y a aucune créance restante à solder" });
       return;
     }
 
@@ -891,11 +794,11 @@ const Recette = () => {
 
     appendAuditLog({
       action: "debts_settled",
-      details: "Solder les dettes restantes automatiquement",
+      details: "Solder toutes les dettes restantes",
       amount: debtsToSettle.reduce((sum, c) => sum + c.remaining_amount, 0)
     });
 
-    toast({ title: "Dettes soldées", description: `${debtsToSettle.length} contrat(s) soldé(s) automatiquement` });
+    toast({ title: "Créances soldées", description: `${debtsToSettle.length} contrat(s) soldé(s) automatiquement` });
   };
 
   const handlePayment = async (contractId: string, paymentData: PaymentData) => {
@@ -923,14 +826,7 @@ const Recette = () => {
         auditTrail: []
       };
 
-      // #region debug-point C:recette-handle-payment-start
-      fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"recette-payment-refresh",runId:"pre-fix",hypothesisId:"C",location:"Recette.tsx:handlePayment",msg:"[DEBUG] recette handlePayment start",data:{contractId,contractNumber:contract.contract_number,advancePayment:contract.advance_payment||0,totalAmount:contract.total_amount||0,paymentAmount:paymentData.amount,paymentMethod:paymentData.paymentMethod,currentPaymentsCount:payments.filter(x=>x.contractId===contractId).length},ts:Date.now()})}).catch(()=>{});
-      // #endregion
-
       const createdPayment = await paymentsRepository.create(p);
-      // #region debug-point D:recette-after-payment-create
-      fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"recette-payment-refresh",runId:"pre-fix",hypothesisId:"D",location:"Recette.tsx:handlePayment",msg:"[DEBUG] recette payment create success",data:{contractId,paymentAmount:paymentData.amount,paymentId:createdPayment.id},ts:Date.now()})}).catch(()=>{});
-      // #endregion
       setPayments(prev => [createdPayment, ...prev]);
       await fetchData();
       
@@ -941,65 +837,65 @@ const Recette = () => {
         reference: paymentData.checkReference
       });
 
-      // Recalculate and update contract status if needed
       const allPayments = await paymentsRepository.getAll();
       const additionalPayments = getAdditionalContractPayments(contract, allPayments).reduce((sum, payment) => sum + payment.amount, 0);
       const contractSummary = computeContractSummary(contract, { advanceMode: 'field' });
       const totalPaid = (contract.advance_payment || 0) + additionalPayments;
       const newRemainingAmount = Math.max(0, contractSummary.total - totalPaid);
-
-      // #region debug-point E:recette-after-recompute
-      fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"recette-payment-refresh",runId:"pre-fix",hypothesisId:"E",location:"Recette.tsx:handlePayment",msg:"[DEBUG] recette recompute after payment",data:{contractId,additionalPayments,totalPaid,contractTotal:contractSummary.total,newRemainingAmount},ts:Date.now()})}).catch(()=>{});
-      // #endregion
       
       if (newRemainingAmount <= 0) {
         await updateContract(contractId, { status: 'completed' });
         await refetch();
-        toast({ title: "✅ Contrat soldé", description: `Le contrat ${contract.contract_number} est maintenant entièrement payé` });
+        toast({ title: "Contrat soldé", description: `Le contrat ${contract.contract_number} est désormais entièrement payé.` });
       } else {
         await refetch();
-        toast({ title: "✅ Paiement enregistré", description: `Le paiement de ${paymentData.amount.toLocaleString()} MAD a été ajouté au contrat ${contract.contract_number}` });
+        toast({ title: "Paiement enregistré", description: `Versement de ${paymentData.amount.toLocaleString()} MAD ajouté au contrat ${contract.contract_number}.` });
       }
     } catch (error) {
-      // #region debug-point D:recette-payment-error
-      fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"recette-payment-refresh",runId:"pre-fix",hypothesisId:"D",location:"Recette.tsx:handlePayment",msg:"[DEBUG] recette payment error",data:{message:error instanceof Error ? error.message : String(error),code:(error as {code?:string}|null)?.code||null},ts:Date.now()})}).catch(()=>{});
-      // #endregion
-      toast({ title: "Erreur", description: "Échec du paiement", variant: "destructive" });
+      toast({ title: "Erreur", description: "Échec de l'enregistrement du paiement", variant: "destructive" });
     }
   };
 
+  const cashAmount = freezeCash ? frozenCashAmount : stats.totalEspeces;
+  const checksAmount = freezeChecks ? frozenChecksAmount : stats.totalCheques;
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background px-4 py-6">
-      <div className="max-w-7xl mx-auto space-y-8">
-        <motion.div
-          className="flex flex-col md:flex-row md:items-center justify-between gap-4"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35 }}
-        >
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 mb-3">
-              <CreditCard className="h-4 w-4 text-primary" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-primary">
-                Tableau des Recettes
+    <div className="space-y-7 pb-24 safe-pt safe-pb relative">
+      
+      {/* 2026 FUTURISTIC TREASURY COMMAND CENTER HERO BANNER */}
+      <motion.div 
+        className="p-6 sm:p-8 rounded-[2.5rem] bg-gradient-to-r from-card via-card/95 to-background border border-border/70 shadow-xl relative overflow-hidden backdrop-blur-2xl"
+        initial={{ opacity: 0, y: -12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+      >
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative z-10">
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/15 border border-accent/30 text-accent">
+              <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+              <span className="text-[11px] font-black uppercase tracking-wider">
+                ◆ FLEET TREASURY OS 2026 • REAL-TIME CASHFLOW MONITOR
               </span>
             </div>
-            <h1 className="text-3xl md:text-4xl font-black tracking-tight text-foreground mb-1">
-              Gestion des <span className="text-primary">Recettes</span>
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-foreground">
+              Gestion des <span className="text-accent">Recettes & Trésorerie</span>
             </h1>
-            <p className="text-muted-foreground font-medium">
-              Vue d'ensemble financière, suivi des encaissements et équilibre caisse / banque.
+            <p className="text-xs sm:text-sm text-muted-foreground font-medium max-w-2xl">
+              Supervision en temps réel des encaissements, solde en caisse, virements bancaires et recouvrement des créances.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
+
+          {/* Action Toolbar */}
+          <div className="flex items-center gap-2.5 flex-wrap">
             <Button 
               onClick={handleRefresh}
               variant="outline"
-              className="flex items-center gap-2 rounded-[var(--radius)]"
+              className="rounded-2xl h-11 px-4 font-bold border-border/60 hover:bg-accent/10 text-xs gap-1.5 shadow-xs"
             >
-              <History className="w-4 h-4" />
-              Actualiser
+              <History className="w-4 h-4 text-accent" />
+              <span>Actualiser</span>
             </Button>
+
             <PDFExportButton
               type="revenue"
               data={{
@@ -1016,27 +912,29 @@ const Recette = () => {
               }}
               filename={`recettes-${timeFilter}-${selectedDate}.pdf`}
             />
+
             <BankTransferDialog
               totalCash={stats.totalEspeces}
               totalChecks={stats.totalCheques}
               bankBalance={stats.bankBalance}
               onTransfer={handleBankTransfer}
             >
-              <Button className="flex items-center gap-2 rounded-[var(--radius)]">
+              <Button className="rounded-2xl h-11 px-5 font-black bg-accent text-accent-foreground hover:bg-accent/90 shadow-lg shadow-accent/20 hover:scale-105 active:scale-95 transition-all text-xs gap-1.5">
                 <Send className="w-4 h-4" />
-                Transfert Banque
+                <span>Virement Banque</span>
               </Button>
             </BankTransferDialog>
-            <Link to="/">
-              <Button variant="outline" className="flex items-center gap-2 rounded-[var(--radius)]">
-                <ArrowLeft className="w-4 h-4" />
-                Retour à l'Accueil
-              </Button>
-            </Link>
           </div>
-        </motion.div>
+        </div>
+      </motion.div>
 
-        {/* Report Filters */}
+      {/* FILTER CONTROLS BAR */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay: 0.05 }}
+        className="p-4 rounded-3xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-xs"
+      >
         <ReportFilters
           timeFilter={timeFilter}
           onTimeFilterChange={setTimeFilter}
@@ -1047,529 +945,488 @@ const Recette = () => {
           showLineChart={showLineChart}
           onShowLineChartChange={setShowLineChart}
           freezePieChart={freezePieChart}
-          onFreezePieChartChange={handleFreezePieChart}
+          onFreezePieChartChange={setFreezePieChart}
           freezeBarChart={freezeBarChart}
-          onFreezeBarChartChange={handleFreezeBarChart}
+          onFreezeBarChartChange={setFreezeBarChart}
           selectedDate={selectedDate}
           onDateChange={setSelectedDate}
         />
+      </motion.div>
 
-        {/* Tableau récapitulatif avec dépenses diverses */}
+      {/* 2026 FUTURISTIC ANIMATED TELEMETRY CARDS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        {/* Card 1: Total Encaissé */}
         <motion.div
-          className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8"
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.05 }}
+          whileHover={{ y: -6, scale: 1.02 }}
+          transition={{ type: "spring", stiffness: 300, damping: 20 }}
+          className="rounded-[2.2rem] border border-emerald-500/30 bg-gradient-to-br from-card via-card to-emerald-500/5 shadow-lg shadow-emerald-500/5 p-5 flex flex-col justify-between space-y-3 relative overflow-hidden group"
         >
-          <Card className="transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/10">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Encaissé</CardTitle>
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-600" />
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleDeleteTotalEncaisse}
-                  className="text-red-500 hover:text-red-700 p-1 h-auto"
-                >
-                  ✕
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-xl font-bold text-green-600">
-                {stats.totalEncaisse.toLocaleString()} MAD
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/10">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Espèces</CardTitle>
-              <div className="flex items-center gap-2">
-                <Coins className="h-4 w-4 text-green-600" />
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleDeleteTotalEspeces}
-                  className="text-red-500 hover:text-red-700 p-1 h-auto"
-                >
-                  ✕
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-xl font-bold text-green-600">
-                {(freezeCash ? frozenCashAmount : stats.totalEspeces).toLocaleString()} MAD
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => handleFreezeCash(!freezeCash)}
-                className="mt-1"
-              >
-                {freezeCash ? '🔒 Figé' : '🔓 Actuel'}
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card className="transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/10">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Compte Banque</CardTitle>
-              <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-blue-600" />
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleDeleteBankAccount}
-                  className="text-red-500 hover:text-red-700 p-1 h-auto"
-                >
-                  ✕
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-xl font-bold text-blue-600">
-                {stats.bankBalance.toLocaleString()} MAD
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/10">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Chèques</CardTitle>
-              <div className="flex items-center gap-2">
-                <Banknote className="h-4 w-4 text-yellow-600" />
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleDeleteTotalChecks}
-                  className="text-red-500 hover:text-red-700 p-1 h-auto"
-                >
-                  ✕
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-xl font-bold text-yellow-600">
-                {(freezeChecks ? frozenChecksAmount : stats.totalCheques).toLocaleString()} MAD
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => handleFreezeChecks(!freezeChecks)}
-                className="mt-1"
-              >
-                {freezeChecks ? '🔒 Figé' : '🔓 Actuel'}
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Dépenses Diverses</CardTitle>
-              <div className="flex items-center gap-2">
-                <CreditCard className="h-4 w-4 text-red-600" />
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleDeleteMiscExpenses}
-                  className="text-red-500 hover:text-red-700 p-1 h-auto"
-                >
-                  ✕
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-xl font-bold text-red-600">
-                -{stats.totalDivers.toLocaleString()} MAD
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* NEW: Vehicle Expenses card */}
-          <Card className="transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-red-500/10">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Dépenses Véhicules</CardTitle>
-              <div className="flex items-center gap-2">
-                <CreditCard className="h-4 w-4 text-red-600" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-xl font-bold text-red-600">
-                -{(stats.totalVehiculeExpenses || 0).toLocaleString()} MAD
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-red-500/10">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Dettes Restantes</CardTitle>
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-red-600" />
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleDeleteRemainingDebts}
-                  className="text-red-500 hover:text-red-700 p-1 h-auto"
-                >
-                  ✕
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-xl font-bold text-red-600">
-                {stats.totalDettes.toLocaleString()} MAD
-              </div>
-            </CardContent>
-          </Card>
+          <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400">
+            <span className="text-[10px] font-black uppercase tracking-wider">Total Encaissé</span>
+            <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform">
+              <CheckCircle className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <p className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono tracking-tight">
+              {stats.totalEncaisse.toLocaleString()} <span className="text-xs font-semibold">MAD</span>
+            </p>
+            <div className="mt-2 w-full bg-muted/40 h-1.5 rounded-full overflow-hidden">
+              <div
+                className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.min(100, Math.round((stats.totalEncaisse / (stats.totalEncaisse + stats.totalDettes || 1)) * 100))}%`
+                }}
+              />
+            </div>
+            <p className="text-[10px] text-muted-foreground font-semibold mt-1">
+              Recettes perçues ({Math.round((stats.totalEncaisse / (stats.totalEncaisse + stats.totalDettes || 1)) * 100)}% recouvré)
+            </p>
+          </div>
         </motion.div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <Card className="lg:col-span-2 border border-border/50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <BellRing className="h-4 w-4 text-amber-600" />
-                Alertes intelligentes
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {smartAlerts.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Aucune alerte active.</p>
-              ) : (
-                smartAlerts.map((alert) => (
-                  <div
-                    key={alert.id}
-                    className={`rounded-lg border p-3 ${alert.level === "critical" ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"}`}
-                  >
-                    <p className={`text-sm font-semibold ${alert.level === "critical" ? "text-red-700" : "text-amber-700"}`}>
-                      {alert.title}
-                    </p>
-                    <p className={`text-sm ${alert.level === "critical" ? "text-red-600" : "text-amber-600"}`}>
-                      {alert.description}
-                    </p>
+        {/* Card 2: Caisse Espèces */}
+        <motion.div
+          whileHover={{ y: -6, scale: 1.02 }}
+          transition={{ type: "spring", stiffness: 300, damping: 20 }}
+          className="rounded-[2.2rem] border border-emerald-500/30 bg-gradient-to-br from-card via-card to-emerald-500/5 shadow-lg shadow-emerald-500/5 p-5 flex flex-col justify-between space-y-3 relative overflow-hidden group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Caisse Espèces</span>
+            <button
+              onClick={() => handleFreezeCash(!freezeCash)}
+              className="p-1.5 rounded-lg bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              title={freezeCash ? "Dégeler la caisse" : "Figer la caisse"}
+            >
+              {freezeCash ? <Lock className="w-3.5 h-3.5 text-accent" /> : <Unlock className="w-3.5 h-3.5 opacity-70" />}
+            </button>
+          </div>
+          <div>
+            <div className="flex items-baseline gap-1">
+              <p className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono tracking-tight">
+                {cashAmount.toLocaleString()}
+              </p>
+              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">MAD</span>
+            </div>
+            {cashAmount < cashAlertThreshold && (
+              <Badge className="bg-red-500/15 text-red-600 dark:text-red-400 text-[9px] font-bold mt-1 border-red-500/20">
+                Seuil bas ({cashAlertThreshold} MAD)
+              </Badge>
+            )}
+            <BankTransferDialog
+              totalCash={stats.totalEspeces}
+              totalChecks={stats.totalCheques}
+              bankBalance={stats.bankBalance}
+              onTransfer={handleBankTransfer}
+            >
+              <Button variant="ghost" size="sm" className="w-full mt-2 h-7 rounded-xl text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 justify-between">
+                <span>Dépôt en banque</span>
+                <ArrowUpRight className="w-3 h-3" />
+              </Button>
+            </BankTransferDialog>
+          </div>
+        </motion.div>
+
+        {/* Card 3: Compte Banque */}
+        <motion.div
+          whileHover={{ y: -6, scale: 1.02 }}
+          transition={{ type: "spring", stiffness: 300, damping: 20 }}
+          className="rounded-[2.2rem] border border-blue-500/30 bg-gradient-to-br from-card via-card to-blue-500/5 shadow-lg shadow-blue-500/5 p-5 flex flex-col justify-between space-y-3 relative overflow-hidden group"
+        >
+          <div className="flex items-center justify-between text-blue-600 dark:text-blue-400">
+            <span className="text-[10px] font-black uppercase tracking-wider">Compte Banque</span>
+            <div className="p-2 rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform">
+              <Building2 className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <p className="text-2xl sm:text-3xl font-black text-blue-600 dark:text-blue-400 font-mono tracking-tight">
+              {stats.bankBalance.toLocaleString()} <span className="text-xs font-semibold">MAD</span>
+            </p>
+            <BankTransferDialog
+              totalCash={stats.totalEspeces}
+              totalChecks={stats.totalCheques}
+              bankBalance={stats.bankBalance}
+              onTransfer={handleBankTransfer}
+            >
+              <Button variant="ghost" size="sm" className="w-full mt-2 h-7 rounded-xl text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 justify-between">
+                <span>Virement / Dépôt</span>
+                <Send className="w-3 h-3" />
+              </Button>
+            </BankTransferDialog>
+          </div>
+        </motion.div>
+
+        {/* Card 4: Total Chèques */}
+        <motion.div
+          whileHover={{ y: -6, scale: 1.02 }}
+          transition={{ type: "spring", stiffness: 300, damping: 20 }}
+          className="rounded-[2.2rem] border border-amber-500/30 bg-gradient-to-br from-card via-card to-amber-500/5 shadow-lg shadow-amber-500/5 p-5 flex flex-col justify-between space-y-3 relative overflow-hidden group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black uppercase tracking-wider text-amber-500">Total Chèques</span>
+            <button
+              onClick={() => handleFreezeChecks(!freezeChecks)}
+              className="p-1.5 rounded-lg bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {freezeChecks ? <Lock className="w-3.5 h-3.5 text-accent" /> : <Unlock className="w-3.5 h-3.5 opacity-70" />}
+            </button>
+          </div>
+          <div>
+            <p className="text-2xl sm:text-3xl font-black text-amber-500 font-mono tracking-tight">
+              {checksAmount.toLocaleString()} <span className="text-xs font-semibold">MAD</span>
+            </p>
+            <Link to="/cheques">
+              <Button variant="ghost" size="sm" className="w-full mt-2 h-7 rounded-xl text-[10px] font-bold text-amber-500 hover:bg-amber-500/10 justify-between">
+                <span>Voir Portefeuille</span>
+                <CreditCard className="w-3 h-3" />
+              </Button>
+            </Link>
+          </div>
+        </motion.div>
+
+        {/* Card 5: Créances Restantes */}
+        <motion.div
+          whileHover={{ y: -6, scale: 1.02 }}
+          transition={{ type: "spring", stiffness: 300, damping: 20 }}
+          className="rounded-[2.2rem] border border-red-500/40 bg-gradient-to-br from-card via-card to-red-500/5 shadow-lg shadow-red-500/10 p-5 flex flex-col justify-between space-y-3 relative overflow-hidden group"
+        >
+          <div className="flex items-center justify-between text-destructive">
+            <span className="text-[10px] font-black uppercase tracking-wider">Créances Restantes</span>
+            <div className="p-2 rounded-xl bg-destructive/15 text-destructive group-hover:scale-110 transition-transform">
+              <Clock className="w-4 h-4 animate-pulse" />
+            </div>
+          </div>
+          <div>
+            <p className="text-2xl sm:text-3xl font-black text-destructive font-mono tracking-tight">
+              {stats.totalDettes.toLocaleString()} <span className="text-xs font-semibold">MAD</span>
+            </p>
+            <Button
+              onClick={handleDeleteRemainingDebts}
+              variant="ghost"
+              size="sm"
+              className="w-full mt-2 h-7 rounded-xl text-[10px] font-bold text-destructive hover:bg-destructive/10 justify-between"
+            >
+              <span>Solder Dettes</span>
+              <CheckCircle2 className="w-3 h-3" />
+            </Button>
+          </div>
+        </motion.div>
+
+        {/* Card 6: Charges Déduites */}
+        <motion.div
+          whileHover={{ y: -6, scale: 1.02 }}
+          transition={{ type: "spring", stiffness: 300, damping: 20 }}
+          className="rounded-[2.2rem] border border-purple-500/30 bg-gradient-to-br from-card via-card to-purple-500/5 shadow-lg shadow-purple-500/5 p-5 flex flex-col justify-between space-y-3 relative overflow-hidden group"
+        >
+          <div className="flex items-center justify-between text-purple-600 dark:text-purple-400">
+            <span className="text-[10px] font-black uppercase tracking-wider">Charges Déduites</span>
+            <div className="p-2 rounded-xl bg-purple-500/15 text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform">
+              <CreditCard className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <p className="text-2xl sm:text-3xl font-black text-purple-600 dark:text-purple-400 font-mono tracking-tight">
+              -{(stats.totalDivers + (stats.totalVehiculeExpenses || 0)).toLocaleString()} <span className="text-xs font-semibold">MAD</span>
+            </p>
+          </div>
+        </motion.div>
+      </div>
+
+      {/* 4 WORKSPACES TABS SYSTEM */}
+      <div className="space-y-6">
+        <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="space-y-6">
+          <TabsList className="grid grid-cols-2 sm:grid-cols-4 p-1.5 rounded-2xl bg-muted/50 border border-border/40 h-auto">
+            <TabsTrigger value="analytics" className="rounded-xl py-2.5 font-bold text-xs gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
+              Flux & Graphiques Trésorerie
+            </TabsTrigger>
+            <TabsTrigger value="contracts" className="rounded-xl py-2.5 font-bold text-xs gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+              <Coins className="w-3.5 h-3.5 text-amber-500" />
+              Créances & Règlements ({contractsWithDebts.length})
+            </TabsTrigger>
+            <TabsTrigger value="expenses" className="rounded-xl py-2.5 font-bold text-xs gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+              <CreditCard className="w-3.5 h-3.5 text-blue-500" />
+              Dépenses Diverses
+            </TabsTrigger>
+            <TabsTrigger value="vehicle_expenses" className="rounded-xl py-2.5 font-bold text-xs gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+              <Car className="w-3.5 h-3.5 text-purple-500" />
+              Dépenses Flotte Véhicules
+            </TabsTrigger>
+          </TabsList>
+
+          {/* TAB 1: FLUX & GRAPHIQUES TRÉSORERIE */}
+          <TabsContent value="analytics" className="space-y-6 animate-in fade-in-50 duration-300">
+            
+            {/* Charts Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              
+              {/* Pie Chart: Répartition par mode de paiement */}
+              <Card className="rounded-[2rem] border border-border/60 bg-gradient-to-br from-card via-card to-card/95 backdrop-blur-xl shadow-card overflow-hidden">
+                <CardHeader className="p-5 sm:p-6 pb-2 flex flex-row items-center justify-between">
+                  <CardTitle className="text-base font-black">Répartition des Encaissements</CardTitle>
+                  <Button variant="ghost" size="sm" onClick={() => handleFreezePieChart(!freezePieChart)} className="text-xs font-bold">
+                    {freezePieChart ? '🔒 Figé' : '🔓 Dynamique'}
+                  </Button>
+                </CardHeader>
+                <CardContent className="p-5 sm:p-6 pt-0 h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={pieChartData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={90}
+                        paddingAngle={6}
+                        dataKey="value"
+                        label={({ name, value }) => `${name}: ${value.toLocaleString()} MAD`}
+                      >
+                        {pieChartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value: number) => `${value.toLocaleString()} MAD`} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              {/* Bar Chart: Montants par mode */}
+              <Card className="rounded-[2rem] border border-border/60 bg-gradient-to-br from-card via-card to-card/95 backdrop-blur-xl shadow-card overflow-hidden">
+                <CardHeader className="p-5 sm:p-6 pb-2 flex flex-row items-center justify-between">
+                  <CardTitle className="text-base font-black">Montants par Mode de Règlement</CardTitle>
+                  <Button variant="ghost" size="sm" onClick={() => handleFreezeBarChart(!freezeBarChart)} className="text-xs font-bold">
+                    {freezeBarChart ? '🔒 Figé' : '🔓 Dynamique'}
+                  </Button>
+                </CardHeader>
+                <CardContent className="p-5 sm:p-6 pt-0 h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={barChartData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.06)" />
+                      <XAxis dataKey="mode" tickLine={false} axisLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12, fontWeight: "bold" }} />
+                      <YAxis tickLine={false} axisLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
+                      <Tooltip formatter={(value: number) => `${value.toLocaleString()} MAD`} />
+                      <Bar dataKey="montant" fill="hsl(var(--accent))" radius={[8, 8, 0, 0]} barSize={40} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Line Chart: Historique Mensuel Recettes vs Dettes */}
+            <Card className="rounded-[2rem] border border-border/60 bg-gradient-to-br from-card via-card to-card/95 backdrop-blur-xl shadow-card overflow-hidden">
+              <CardHeader className="p-5 sm:p-6 pb-2">
+                <CardTitle className="text-base font-black">Historique Annuel — Recettes Encaissées vs Créances</CardTitle>
+                <CardDescription className="text-xs font-medium">Comparatif des 12 mois de l'année en cours</CardDescription>
+              </CardHeader>
+              <CardContent className="p-5 sm:p-6 pt-2 h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={lineChartData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.06)" />
+                    <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12, fontWeight: "bold" }} />
+                    <YAxis tickLine={false} axisLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
+                    <Tooltip formatter={(value: number) => `${value.toLocaleString()} MAD`} />
+                    <Legend />
+                    <Line type="monotone" dataKey="recettes" stroke="#10b981" strokeWidth={3} name="Recettes Encaissées (MAD)" />
+                    <Line type="monotone" dataKey="dettes" stroke="#ef4444" strokeWidth={3} name="Créances en Attente (MAD)" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Smart Alerts & Alert Thresholds */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <Card className="lg:col-span-2 rounded-[2rem] border border-border/60 bg-gradient-to-br from-card via-card to-card/95 p-5 space-y-3">
+                <div className="flex items-center gap-2 text-amber-500">
+                  <BellRing className="w-5 h-5" />
+                  <h3 className="font-black text-base text-foreground">Alertes Financières & Risques</h3>
+                </div>
+                {smartAlerts.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-4">Toutes les métriques de trésorerie sont stables.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {smartAlerts.map((alert) => (
+                      <div
+                        key={alert.id}
+                        className={`p-3 rounded-2xl border flex items-center justify-between gap-3 ${
+                          alert.level === "critical"
+                            ? "bg-destructive/10 border-destructive/30 text-destructive"
+                            : "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400"
+                        }`}
+                      >
+                        <div>
+                          <p className="text-xs font-black">{alert.title}</p>
+                          <p className="text-[11px] opacity-80">{alert.description}</p>
+                        </div>
+                        <Badge variant="outline" className="text-[10px] font-bold shrink-0">
+                          {alert.level === "critical" ? "Critique" : "Attention"}
+                        </Badge>
+                      </div>
+                    ))}
                   </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
+                )}
+              </Card>
 
-          <Card className="border border-border/50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <TriangleAlert className="h-4 w-4 text-primary" />
-                Seuils d'alerte
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <label className="text-xs text-muted-foreground">Seuil caisse (MAD)</label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={cashAlertThreshold}
-                  onChange={(e) => setCashAlertThreshold(Math.max(0, Number(e.target.value || 0)))}
-                />
+              {/* Threshold Controls */}
+              <Card className="rounded-[2rem] border border-border/60 bg-gradient-to-br from-card via-card to-card/95 p-5 space-y-3">
+                <div className="flex items-center gap-2 text-accent">
+                  <TriangleAlert className="w-5 h-5" />
+                  <h3 className="font-black text-base text-foreground">Seuils d'Alerte</h3>
+                </div>
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-1">Seuil Caisse Espèces (MAD)</label>
+                    <Input
+                      type="number"
+                      value={cashAlertThreshold}
+                      onChange={(e) => setCashAlertThreshold(Number(e.target.value))}
+                      className="rounded-xl h-9"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-1">Seuil Compte Bancaire (MAD)</label>
+                    <Input
+                      type="number"
+                      value={bankAlertThreshold}
+                      onChange={(e) => setBankAlertThreshold(Number(e.target.value))}
+                      className="rounded-xl h-9"
+                    />
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            {/* Audit Trail Log */}
+            <Card className="rounded-[2rem] border border-border/60 bg-gradient-to-br from-card via-card to-card/95 p-5 space-y-3">
+              <div className="flex items-center gap-2 text-blue-500">
+                <ShieldCheck className="w-5 h-5" />
+                <h3 className="font-black text-base text-foreground">Journal d'Audit Financier Certifié</h3>
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Seuil banque (MAD)</label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={bankAlertThreshold}
-                  onChange={(e) => setBankAlertThreshold(Math.max(0, Number(e.target.value || 0)))}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card className="border border-border/50">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">KPI Mensuel Comparatif</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="rounded-lg bg-muted/40 p-3">
-              <p className="text-xs text-muted-foreground">Mois courant</p>
-              <p className="font-semibold">{monthlyKpis.currentMonthKey}</p>
-              <p className="text-sm text-green-600">{monthlyKpis.current.paymentsTotal.toLocaleString()} MAD encaissés</p>
-            </div>
-            <div className="rounded-lg bg-muted/40 p-3">
-              <p className="text-xs text-muted-foreground">Mois précédent</p>
-              <p className="font-semibold">{monthlyKpis.previousMonthKey}</p>
-              <p className="text-sm text-green-600">{monthlyKpis.previous.paymentsTotal.toLocaleString()} MAD encaissés</p>
-            </div>
-            <div className="rounded-lg bg-muted/40 p-3">
-              <p className="text-xs text-muted-foreground">Net courant</p>
-              <p className={`font-semibold ${monthlyKpis.current.netTotal >= 0 ? "text-green-600" : "text-red-600"}`}>
-                {monthlyKpis.current.netTotal.toLocaleString()} MAD
-              </p>
-            </div>
-            <div className="rounded-lg bg-muted/40 p-3">
-              <p className="text-xs text-muted-foreground">Variation vs précédent</p>
-              <p className={`font-semibold ${monthlyKpis.delta >= 0 ? "text-green-600" : "text-red-600"}`}>
-                {monthlyKpis.delta.toLocaleString()} MAD ({monthlyKpis.deltaPercent.toFixed(1)}%)
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border border-border/50">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Audit Trail Financier</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {auditLogs.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucune opération enregistrée.</p>
-            ) : (
               <ScrollArea className="h-48">
-                <div className="space-y-2">
+                <div className="space-y-2 pr-2">
                   {auditLogs.slice(0, 20).map((entry) => (
-                    <div key={entry.id} className="rounded-lg border border-border/50 p-3">
-                      <p className="text-sm font-semibold">{entry.action}</p>
-                      <p className="text-xs text-muted-foreground">{entry.details}</p>
-                      <div className="text-xs text-muted-foreground flex items-center justify-between mt-1">
-                        <span>{format(parseISO(entry.createdAt), "dd/MM/yyyy HH:mm", { locale: fr })}</span>
-                        <span>{entry.amount ? `${entry.amount.toLocaleString()} MAD` : "-"}</span>
+                    <div key={entry.id} className="p-3 rounded-xl bg-muted/20 border border-border/40 flex items-center justify-between text-xs">
+                      <div>
+                        <p className="font-bold text-foreground">{entry.action}</p>
+                        <p className="text-[11px] text-muted-foreground">{entry.details}</p>
+                      </div>
+                      <div className="text-right font-mono">
+                        <span className="font-bold text-accent">{entry.amount ? `${entry.amount.toLocaleString()} MAD` : "—"}</span>
+                        <p className="text-[10px] text-muted-foreground">{format(parseISO(entry.createdAt), "dd/MM/yyyy HH:mm", { locale: fr })}</p>
                       </div>
                     </div>
                   ))}
                 </div>
               </ScrollArea>
-            )}
-          </CardContent>
-        </Card>
+            </Card>
 
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'analytics' | 'contracts' | 'expenses' | 'vehicle_expenses')} className="w-full">
-          <TabsList className="flex w-full overflow-x-auto scrollbar-none justify-start gap-1 p-1 h-auto md:grid md:grid-cols-4">
-            <TabsTrigger value="analytics" className="shrink-0 whitespace-nowrap text-xs md:text-sm">📊 Analyses & Graphiques</TabsTrigger>
-            <TabsTrigger value="contracts" className="shrink-0 whitespace-nowrap text-xs md:text-sm">💰 Contrats & Paiements</TabsTrigger>
-            <TabsTrigger value="expenses" className="shrink-0 whitespace-nowrap text-xs md:text-sm">📋 Dépenses Diverses</TabsTrigger>
-            <TabsTrigger value="vehicle_expenses" className="shrink-0 whitespace-nowrap text-xs md:text-sm">🚗 Dépenses Véhicules</TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="contracts" className="space-y-6">
-            <motion.div
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              {/* Liste des contrats avec dettes */}
-              <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <CardTitle>Contrats en Attente et en cours de Paiement</CardTitle>
-                <Badge variant="secondary">{sortedContractsWithDebts.length} contrat{sortedContractsWithDebts.length > 1 ? "s" : ""}</Badge>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between mb-4">
-                  <div className="relative w-full md:max-w-sm">
-                    <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+          </TabsContent>
+
+          {/* TAB 2: CRÉANCES & RÈGLEMENTS */}
+          <TabsContent value="contracts" className="space-y-6 animate-in fade-in-50 duration-300">
+            <Card className="rounded-[2rem] border border-border/60 bg-gradient-to-br from-card via-card to-card/95 backdrop-blur-xl shadow-card overflow-hidden">
+              <CardHeader className="p-5 sm:p-6 pb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-lg font-black">Grand Livre des Créances & Règlements</CardTitle>
+                    <CardDescription className="text-xs font-medium">
+                      {sortedContractsWithDebts.length} contrat(s) avec solde à recouvrer
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleDeleteRemainingDebts}
+                      className="rounded-xl text-xs font-bold text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                      Solder Dettes Restantes
+                    </Button>
+
+                    <SettledContractsDialog
+                      settledContracts={settledContracts}
+                      payments={payments}
+                    >
+                      <Button variant="outline" size="sm" className="rounded-xl text-xs font-bold gap-1">
+                        <History className="w-3.5 h-3.5" />
+                        Historique Soldé ({settledContracts.length})
+                      </Button>
+                    </SettledContractsDialog>
+                  </div>
+                </div>
+
+                {/* Search & View Switcher */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-border/30">
+                  <div className="relative w-full sm:w-80">
+                    <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
                     <Input
                       value={contractsSearch}
                       onChange={(e) => setContractsSearch(e.target.value)}
-                      placeholder="Rechercher contrat, locataire ou statut..."
-                      className="pl-9"
+                      placeholder="Rechercher contrat, locataire..."
+                      className="pl-9 h-9 rounded-xl text-xs"
                     />
                   </div>
+
                   {!isMobile && (
-                    <div className="flex items-center gap-2">
-                      <Button size="sm" variant={effectiveContractsViewMode === "table" ? "default" : "outline"} onClick={() => setContractsViewMode("table")}>
-                        <Table2 className="w-4 h-4 mr-1.5" />
-                        Table
+                    <div className="flex items-center gap-1 p-1 bg-muted/40 border border-border/40 rounded-xl">
+                      <Button size="sm" variant={effectiveContractsViewMode === "table" ? "default" : "ghost"} onClick={() => setContractsViewMode("table")} className="h-7 text-xs font-bold">
+                        <Table2 className="w-3.5 h-3.5 mr-1" /> Table
                       </Button>
-                      <Button size="sm" variant={effectiveContractsViewMode === "cards" ? "default" : "outline"} onClick={() => setContractsViewMode("cards")}>
-                        <LayoutGrid className="w-4 h-4 mr-1.5" />
-                        Cards
+                      <Button size="sm" variant={effectiveContractsViewMode === "cards" ? "default" : "ghost"} onClick={() => setContractsViewMode("cards")} className="h-7 text-xs font-bold">
+                        <LayoutGrid className="w-3.5 h-3.5 mr-1" /> Cartes
                       </Button>
                     </div>
                   )}
                 </div>
+              </CardHeader>
+
+              <CardContent className="p-5 sm:p-6 pt-0">
                 {effectiveContractsViewMode === "table" ? (
-                <ScrollArea className="h-[600px]">
                   <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="sticky top-0 z-10 bg-background">
-                        <tr className="border-b">
-                          <th className="text-left p-2">
-                            <SortableHeader
-                              label="Contrat"
-                              isActive={contractsSortKey === "contract_number"}
-                              direction={contractsSortDirection}
-                              onClick={() => toggleContractsSort("contract_number")}
-                            />
+                    <table className="w-full text-xs text-left">
+                      <thead>
+                        <tr className="border-b border-border/60 uppercase text-muted-foreground font-black">
+                          <th className="py-3 px-3">
+                            <SortableHeader label="Contrat" isActive={contractsSortKey === "contract_number"} direction={contractsSortDirection} onClick={() => toggleContractsSort("contract_number")} />
                           </th>
-                          <th className="text-left p-2">
-                            <SortableHeader
-                              label="Locataire"
-                              isActive={contractsSortKey === "customer_name"}
-                              direction={contractsSortDirection}
-                              onClick={() => toggleContractsSort("customer_name")}
-                            />
+                          <th className="py-3 px-3">
+                            <SortableHeader label="Locataire" isActive={contractsSortKey === "customer_name"} direction={contractsSortDirection} onClick={() => toggleContractsSort("customer_name")} />
                           </th>
-                          <th className="text-left p-2">
-                            <SortableHeader
-                              label="Prix/Jour"
-                              isActive={contractsSortKey === "daily_rate"}
-                              direction={contractsSortDirection}
-                              onClick={() => toggleContractsSort("daily_rate")}
-                            />
+                          <th className="py-3 px-3">Prix/Jour</th>
+                          <th className="py-3 px-3">Durée</th>
+                          <th className="py-3 px-3">Total Contrat</th>
+                          <th className="py-3 px-3">Encaissé</th>
+                          <th className="py-3 px-3">
+                            <SortableHeader label="Reste à Payer" isActive={contractsSortKey === "remaining_amount"} direction={contractsSortDirection} onClick={() => toggleContractsSort("remaining_amount")} />
                           </th>
-                          <th className="text-left p-2">
-                            <SortableHeader
-                              label="Durée"
-                              isActive={contractsSortKey === "duration"}
-                              direction={contractsSortDirection}
-                              onClick={() => toggleContractsSort("duration")}
-                            />
-                          </th>
-                          <th className="text-left p-2">Total</th>
-                          <th className="text-left p-2">Avance</th>
-                          <th className="text-left p-2">
-                            <SortableHeader
-                              label="Reste à Payer"
-                              isActive={contractsSortKey === "remaining_amount"}
-                              direction={contractsSortDirection}
-                              onClick={() => toggleContractsSort("remaining_amount")}
-                            />
-                          </th>
-                          <th className="text-left p-2">Statut</th>
-                          <th className="text-left p-2">Actions</th>
+                          <th className="py-3 px-3">Statut</th>
+                          <th className="py-3 px-3 text-right">Actions</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className="divide-y divide-border/40 font-medium">
                         {paginatedContractsWithDebts.map((contract) => {
-                          const startDate = contract.start_date ? parseISO(contract.start_date) : null;
-                          const endDate = contract.end_date ? parseISO(contract.end_date) : null;
                           const paymentSummary = getContractPaymentSummary(contract.id);
                           const summary = getContractSummaryWithPayments(contract.id, contracts);
                           const duration = summary?.duration || 0;
 
                           return (
-                            <tr key={contract.id} className="border-b hover:bg-accent/50">
-                              <td className="p-2 font-medium">
-                                <div className="flex flex-col">
-                                  <span>{contract.contract_number}</span>
-                                  <span className="text-sm text-muted-foreground">
-                                    {startDate ? format(startDate, 'dd/MM/yyyy', { locale: fr }) : 'N/A'} - {endDate ? format(endDate, 'dd/MM/yyyy', { locale: fr }) : 'N/A'}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="p-2">{contract.customer_name}</td>
-                              <td className="p-2">{(contract.daily_rate || 0).toLocaleString()} MAD</td>
-                              <td className="p-2">{duration} jours</td>
-                              <td className="p-2 font-semibold">{(summary?.total || 0).toLocaleString()} MAD</td>
-                              <td className="p-2 text-green-600">{paymentSummary.totalPaid.toLocaleString()} MAD</td>
-                              <td className="p-2 text-red-600 font-semibold">
-                                {paymentSummary.remainingAmount.toLocaleString()} MAD
-                              </td>
-                              <td className="p-2">
-                                <Badge className={contract.financial_status.color}>
+                            <tr key={contract.id} className="hover:bg-muted/20 transition-colors">
+                              <td className="py-3.5 px-3 font-mono font-bold">{contract.contract_number}</td>
+                              <td className="py-3.5 px-3 font-semibold text-foreground">{contract.customer_name}</td>
+                              <td className="py-3.5 px-3 font-mono">{(contract.daily_rate || 0).toLocaleString()} MAD</td>
+                              <td className="py-3.5 px-3">{duration} jours</td>
+                              <td className="py-3.5 px-3 font-bold font-mono">{(summary?.total || 0).toLocaleString()} MAD</td>
+                              <td className="py-3.5 px-3 font-mono text-emerald-600 dark:text-emerald-400 font-bold">{paymentSummary.totalPaid.toLocaleString()} MAD</td>
+                              <td className="py-3.5 px-3 font-mono text-destructive font-black text-sm">{paymentSummary.remainingAmount.toLocaleString()} MAD</td>
+                              <td className="py-3.5 px-3">
+                                <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold ${contract.financial_status.color}`}>
                                   {contract.financial_status.label}
-                                </Badge>
-                                <div className="text-xs text-gray-500 mt-1">
-                                  {contract.financial_status.description}
-                                </div>
+                                </span>
                               </td>
-                               <td className="p-2">
-                                 <div className="flex items-center gap-2">
-                                   {!paymentSummary.isFullyPaid ? (
-                                     <PaymentDialog
-                                       contractId={contract.id}
-                                       contractNumber={contract.contract_number}
-                                       customerName={contract.customer_name}
-                                       remainingAmount={paymentSummary.remainingAmount}
-                                       onPayment={handlePayment}
-                                     >
-                                       <Button
-                                         size="sm"
-                                         className="bg-green-600 hover:bg-green-700 text-white"
-                                       >
-                                         <CheckCircle className="w-4 h-4 mr-1" />
-                                         Régler
-                                       </Button>
-                                     </PaymentDialog>
-                                   ) : (
-                                     <Badge className="bg-green-100 text-green-800">
-                                       Soldé
-                                     </Badge>
-                                   )}
-                                     
-                                      <PaymentHistoryDialog
-                                        contractId={contract.id}
-                                        contractNumber={contract.contract_number}
-                                        customerName={contract.customer_name}
-                                        payments={payments}
-                                        totalAmount={summary?.total || contract.total_amount}
-                                        totalPaid={paymentSummary.totalPaid}
-                                        remainingAmount={paymentSummary.remainingAmount}
-                                      >
-                                        <Button variant="outline" size="sm">
-                                          👁️ Détails
-                                        </Button>
-                                      </PaymentHistoryDialog>
-                                 </div>
-                               </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                    
-                    {sortedContractsWithDebts.length === 0 && (
-                      <div className="text-center py-8 text-gray-500">
-                        Aucun contrat en attente ou en cours de paiement
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
-                ) : (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {sortedContractsWithDebts.length === 0 ? (
-                      <div className="col-span-full text-center py-8 text-gray-500">
-                        Aucun contrat en attente ou en cours de paiement
-                      </div>
-                    ) : (
-                      paginatedContractsWithDebts.map((contract, index) => {
-                        const startDate = contract.start_date ? parseISO(contract.start_date) : null;
-                        const endDate = contract.end_date ? parseISO(contract.end_date) : null;
-                        const paymentSummary = getContractPaymentSummary(contract.id);
-                        const summary = getContractSummaryWithPayments(contract.id, contracts);
-                        return (
-                          <motion.div
-                            key={contract.id}
-                            initial={{ opacity: 0, y: 8 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: index * 0.03 }}
-                          >
-                            <Card className="h-full border border-border/50">
-                              <CardHeader className="pb-3">
-                                <div className="flex items-start justify-between gap-3">
-                                  <div>
-                                    <CardTitle className="text-base">{contract.contract_number}</CardTitle>
-                                    <p className="text-sm text-muted-foreground">{contract.customer_name}</p>
-                                  </div>
-                                  <Badge className={contract.financial_status.color}>{contract.financial_status.label}</Badge>
-                                </div>
-                              </CardHeader>
-                              <CardContent className="space-y-3">
-                                <p className="text-xs text-muted-foreground">
-                                  {startDate ? format(startDate, 'dd/MM/yyyy', { locale: fr }) : 'N/A'} - {endDate ? format(endDate, 'dd/MM/yyyy', { locale: fr }) : 'N/A'}
-                                </p>
-                                <div className="grid grid-cols-2 gap-2 text-sm">
-                                  <div className="rounded-lg bg-muted/40 p-2">
-                                    <p className="text-xs text-muted-foreground">Total</p>
-                                    <p className="font-semibold">{(summary?.total || 0).toLocaleString()} MAD</p>
-                                  </div>
-                                  <div className="rounded-lg bg-muted/40 p-2">
-                                    <p className="text-xs text-muted-foreground">Total Payé</p>
-                                    <p className="font-semibold text-green-600">{paymentSummary.totalPaid.toLocaleString()} MAD</p>
-                                  </div>
-                                  <div className="rounded-lg bg-muted/40 p-2 col-span-2">
-                                    <p className="text-xs text-muted-foreground">Reste à payer</p>
-                                    <p className="font-semibold text-red-600">{paymentSummary.remainingAmount.toLocaleString()} MAD</p>
-                                  </div>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-2">
+                              <td className="py-3.5 px-3 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
                                   {!paymentSummary.isFullyPaid ? (
                                     <PaymentDialog
                                       contractId={contract.id}
@@ -1578,14 +1435,14 @@ const Recette = () => {
                                       remainingAmount={paymentSummary.remainingAmount}
                                       onPayment={handlePayment}
                                     >
-                                      <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white">
-                                        <CheckCircle className="w-4 h-4 mr-1" />
-                                        Régler
+                                      <Button size="sm" className="h-8 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs">
+                                        <CheckCircle className="w-3.5 h-3.5 mr-1" /> Régler
                                       </Button>
                                     </PaymentDialog>
                                   ) : (
-                                    <Badge className="bg-green-100 text-green-800">Soldé</Badge>
+                                    <Badge className="bg-emerald-500/20 text-emerald-600">Soldé</Badge>
                                   )}
+
                                   <PaymentHistoryDialog
                                     contractId={contract.id}
                                     contractNumber={contract.contract_number}
@@ -1595,451 +1452,277 @@ const Recette = () => {
                                     totalPaid={paymentSummary.totalPaid}
                                     remainingAmount={paymentSummary.remainingAmount}
                                   >
-                                    <Button variant="outline" size="sm">👁️ Détails</Button>
+                                    <Button variant="outline" size="sm" className="h-8 px-2.5 rounded-xl text-xs font-bold">
+                                      Détails
+                                    </Button>
                                   </PaymentHistoryDialog>
                                 </div>
-                              </CardContent>
-                            </Card>
-                          </motion.div>
-                        );
-                      })
-                    )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {paginatedContractsWithDebts.map((contract) => {
+                      const paymentSummary = getContractPaymentSummary(contract.id);
+                      const summary = getContractSummaryWithPayments(contract.id, contracts);
+                      return (
+                        <div key={contract.id} className="p-4 rounded-2xl border border-border/50 bg-muted/10 space-y-3">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <p className="font-mono font-bold text-sm">{contract.contract_number}</p>
+                              <p className="font-bold text-foreground text-sm">{contract.customer_name}</p>
+                            </div>
+                            <Badge className={contract.financial_status.color}>{contract.financial_status.label}</Badge>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="p-2 rounded-xl bg-muted/40">
+                              <span className="text-muted-foreground block text-[10px]">Total Contrat</span>
+                              <span className="font-bold font-mono">{(summary?.total || 0).toLocaleString()} MAD</span>
+                            </div>
+                            <div className="p-2 rounded-xl bg-emerald-500/10">
+                              <span className="text-emerald-600 dark:text-emerald-400 block text-[10px]">Encaissé</span>
+                              <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400">{paymentSummary.totalPaid.toLocaleString()} MAD</span>
+                            </div>
+                            <div className="p-2 rounded-xl bg-destructive/10 col-span-2">
+                              <span className="text-destructive block text-[10px]">Reste à Payer</span>
+                              <span className="font-black font-mono text-destructive text-sm">{paymentSummary.remainingAmount.toLocaleString()} MAD</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 pt-1 border-t border-border/30">
+                            {!paymentSummary.isFullyPaid && (
+                              <PaymentDialog
+                                contractId={contract.id}
+                                contractNumber={contract.contract_number}
+                                customerName={contract.customer_name}
+                                remainingAmount={paymentSummary.remainingAmount}
+                                onPayment={handlePayment}
+                              >
+                                <Button size="sm" className="flex-1 rounded-xl bg-emerald-600 text-white font-bold text-xs h-9">
+                                  <CheckCircle className="w-3.5 h-3.5 mr-1" /> Régler
+                                </Button>
+                              </PaymentDialog>
+                            )}
+                            <PaymentHistoryDialog
+                              contractId={contract.id}
+                              contractNumber={contract.contract_number}
+                              customerName={contract.customer_name}
+                              payments={payments}
+                              totalAmount={summary?.total || contract.total_amount}
+                              totalPaid={paymentSummary.totalPaid}
+                              remainingAmount={paymentSummary.remainingAmount}
+                            >
+                              <Button variant="outline" size="sm" className="rounded-xl text-xs font-bold h-9">
+                                Historique
+                              </Button>
+                            </PaymentHistoryDialog>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
+                {/* Pagination */}
                 {totalContractsPages > 1 && (
-                  <div className="mt-4 border-t pt-4 flex items-center justify-between">
-                    <p className="text-sm text-muted-foreground">
-                      Page {contractsPage} / {totalContractsPages}
+                  <div className="mt-4 border-t border-border/30 pt-4 flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      Page {contractsPage} sur {totalContractsPages}
                     </p>
                     <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setContractsPage((prev) => Math.max(1, prev - 1))}
-                        disabled={contractsPage <= 1}
-                      >
+                      <Button size="sm" variant="outline" onClick={() => setContractsPage((p) => Math.max(1, p - 1))} disabled={contractsPage <= 1} className="rounded-xl text-xs">
                         Précédent
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setContractsPage((prev) => Math.min(totalContractsPages, prev + 1))}
-                        disabled={contractsPage >= totalContractsPages}
-                      >
+                      <Button size="sm" variant="outline" onClick={() => setContractsPage((p) => Math.min(totalContractsPages, p + 1))} disabled={contractsPage >= totalContractsPages} className="rounded-xl text-xs">
                         Suivant
                       </Button>
                     </div>
                   </div>
                 )}
-                
-                {/* Bank Transfer Action */}
-                <div className="mt-4 pt-4 border-t flex justify-center">
-                  <BankTransferDialog
-                    totalCash={stats.totalEspeces}
-                    totalChecks={stats.totalCheques}
-                    bankBalance={stats.bankBalance}
-                    onTransfer={handleBankTransfer}
-                  >
-                    <Button className="flex items-center gap-2" size="lg">
-                      <Send className="w-4 h-4" />
-                      Transfert Banque
-                    </Button>
-                  </BankTransferDialog>
-                </div>
-                
-                {/* Settled Contracts History Button */}
-                <div className="mt-4 pt-4 border-t flex justify-center">
-                  <SettledContractsDialog
-                    settledContracts={settledContracts}
-                    payments={payments}
-                  >
-                    <Button variant="outline" className="flex items-center gap-2" size="lg">
-                      <History className="w-4 h-4" />
-                      Historique Soldé ({settledContracts.length})
-                    </Button>
-                  </SettledContractsDialog>
-                </div>
               </CardContent>
-              </Card>
-            </motion.div>
+            </Card>
           </TabsContent>
 
-          <TabsContent value="expenses" className="space-y-6">
-            <motion.div
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <div className="flex justify-between items-center">
+          {/* TAB 3: DÉPENSES DIVERSES */}
+          <TabsContent value="expenses" className="space-y-6 animate-in fade-in-50 duration-300">
+            <Card className="rounded-[2rem] border border-border/60 bg-gradient-to-br from-card via-card to-card/95 backdrop-blur-xl shadow-card p-6 space-y-4">
+              <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold">Gestion des Dépenses Diverses</h3>
-                  <p className="text-sm text-gray-600">Gérez vos charges et dépenses opérationnelles</p>
+                  <h3 className="text-lg font-black text-foreground">Gestion des Dépenses Diverses</h3>
+                  <p className="text-xs text-muted-foreground">Charges administratives, loyers, carburant et fournitures</p>
                 </div>
                 <MiscellaneousExpenseDialog />
               </div>
-              
+
               {expensesLoading ? (
-                <div className="text-center py-8">Chargement des dépenses...</div>
+                <div className="text-center py-10 text-xs text-muted-foreground">Chargement des dépenses...</div>
               ) : (
                 <MiscellaneousExpenseTable expenses={miscellaneousExpenses} />
               )}
-            </motion.div>
+            </Card>
           </TabsContent>
 
-          <TabsContent value="analytics" className="space-y-6">
-            <motion.div
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-              className="bg-card p-6 rounded-lg"
-            >
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-semibold">Analyses Financières & Graphiques</h2>
-                <div className="flex items-center gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => setShowPieChart(!showPieChart)}
-                  >
-                    {showPieChart ? '🥧 Masquer Pie Chart' : '🥧 Pie Chart'}
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => setShowBarChart(!showBarChart)}
-                  >
-                    {showBarChart ? '📊 Masquer Bar Chart' : '📊 Bar Chart'}
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => setShowLineChart(!showLineChart)}
-                  >
-                    {showLineChart ? '📈 Masquer Line Chart' : '📈 Line Chart'}
-                  </Button>
-                </div>
-              </div>
-
-              {/* Filters */}
-              <div className="bg-muted p-4 rounded-lg mb-6">
-                <h3 className="text-lg font-medium mb-4">Filtres</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="text-sm font-medium text-foreground mb-2 block">Locataire</label>
-                    <Input
-                      type="text"
-                      placeholder="Nom du locataire..."
-                      value={tenantFilter}
-                      onChange={(e) => setTenantFilter(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-foreground mb-2 block">N° Contrat</label>
-                    <Input
-                      type="text"
-                      placeholder="Numéro de contrat..."
-                      value={contractNumberFilter}
-                      onChange={(e) => setContractNumberFilter(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-foreground mb-2 block">Date</label>
-                    <Input
-                      type="date"
-                      value={dateFilter}
-                      onChange={(e) => setDateFilter(e.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
-              
-              <div className="grid gap-6">
-                {/* Charts - Graphiques de répartition */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  {/* Pie Chart - Répartition par mode de paiement */}
-                  {showPieChart && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center justify-between">
-                        Répartition par Mode de Paiement
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setShowPieChart(false)}
-                            className="text-red-500 hover:text-red-700"
-                          >
-                            👁️‍🗨️ Masquer
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleFreezePieChart(!freezePieChart)}
-                          >
-                            {freezePieChart ? '🔒 Figé' : '🔓 Actuel'}
-                          </Button>
-                        </div>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="h-80">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={pieChartData}
-                              cx="50%"
-                              cy="50%"
-                              outerRadius={80}
-                              dataKey="value"
-                              label={({ name, value }) => `${name}: ${value.toLocaleString()} MAD`}
-                            >
-                              {pieChartData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.color} />
-                              ))}
-                            </Pie>
-                            <Tooltip formatter={(value: number) => `${value.toLocaleString()} MAD`} />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {!showPieChart && (
-                  <Card className="border-dashed">
-                    <CardContent className="flex items-center justify-center py-12">
-                      <Button
-                        variant="outline"
-                        onClick={() => setShowPieChart(true)}
-                        className="flex items-center gap-2"
-                      >
-                        👁️ Afficher Pie Chart
-                      </Button>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Bar Chart - Montants par mode de paiement */}
-                {showBarChart && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center justify-between">
-                        Montants par Mode de Paiement
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setShowBarChart(false)}
-                            className="text-red-500 hover:text-red-700"
-                          >
-                            👁️‍🗨️ Masquer
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleFreezeBarChart(!freezeBarChart)}
-                          >
-                            {freezeBarChart ? '🔒 Figé' : '🔓 Actuel'}
-                          </Button>
-                        </div>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="h-80">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={barChartData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="mode" />
-                            <YAxis tickFormatter={(value) => `${value} MAD`} />
-                            <Tooltip formatter={(value: number) => `${value.toLocaleString()} MAD`} />
-                            <Bar dataKey="montant" fill="#10b981" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {!showBarChart && (
-                  <Card className="border-dashed">
-                    <CardContent className="flex items-center justify-center py-12">
-                      <Button
-                        variant="outline"
-                        onClick={() => setShowBarChart(true)}
-                        className="flex items-center gap-2"
-                      >
-                        👁️ Afficher Bar Chart
-                      </Button>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-
-              {/* Line Chart - Historique mensuel */}
-              {showLineChart && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center justify-between">
-                      Historique Mensuel - Recettes vs Dettes
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setShowLineChart(false)}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        👁️‍🗨️ Masquer
-                      </Button>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-80">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={lineChartData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="month" />
-                          <YAxis tickFormatter={(value) => `${value} MAD`} />
-                          <Tooltip formatter={(value: number) => `${value.toLocaleString()} MAD`} />
-                          <Legend />
-                          <Line 
-                            type="monotone" 
-                            dataKey="recettes" 
-                            stroke="#10b981" 
-                            strokeWidth={2}
-                            name="Recettes Encaissées"
-                          />
-                          <Line 
-                            type="monotone" 
-                            dataKey="dettes" 
-                            stroke="#ef4444" 
-                            strokeWidth={2}
-                            name="Dettes en Cours"
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Dépenses diverses analytics */}
-              {!expensesLoading && miscellaneousExpenses.length > 0 && (
-                <MiscellaneousExpenseChart expenses={miscellaneousExpenses} />
-              )}
-              
-              {miscellaneousExpenses.length === 0 && !expensesLoading && (
-                <Card>
-                  <CardContent className="text-center py-8">
-                    <p className="text-gray-500 mb-4">Aucune dépense diverse pour afficher les analyses</p>
-                    <MiscellaneousExpenseDialog trigger={
-                      <Button>Ajouter votre première dépense</Button>
-                    } />
-                  </CardContent>
-                </Card>
-              )}
-              </div>
-            </motion.div>
-          </TabsContent>
-
-          {/* NEW: Vehicle expenses tab */}
-          <TabsContent value="vehicle_expenses" className="space-y-6">
-            <motion.div
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <div className="flex justify-between items-center">
+          {/* TAB 4: DÉPENSES VÉHICULES */}
+          <TabsContent value="vehicle_expenses" className="space-y-6 animate-in fade-in-50 duration-300">
+            <Card className="rounded-[2rem] border border-border/60 bg-gradient-to-br from-card via-card to-card/95 backdrop-blur-xl shadow-card p-6 space-y-4">
+              <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold">Dépenses Véhicules (mensuelles)</h3>
-                  <p className="text-sm text-gray-600">Répartition mensuelle par véhicule pour {monthlyVehicleExpensesData.monthKey}</p>
+                  <h3 className="text-lg font-black text-foreground">Dépenses Véhicules par Immatriculation</h3>
+                  <p className="text-xs text-muted-foreground">Ventilation mensuelle des charges affectées à la flotte</p>
                 </div>
-                <Link to="/depenses">
-                  <Button variant="outline" size="sm">Ouvrir Gestion des Dépenses</Button>
+                <Link to="/expenses">
+                  <Button variant="outline" size="sm" className="rounded-xl text-xs font-bold">
+                    Module Dépenses
+                  </Button>
                 </Link>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="border border-border/50">
-                  <CardContent className="p-4">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Total dépenses</p>
-                    <p className="text-2xl font-black text-red-600">-{monthlyVehicleExpensesData.total.toLocaleString()} MAD</p>
-                  </CardContent>
-                </Card>
-                <Card className="border border-border/50">
-                  <CardContent className="p-4">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Lignes</p>
-                    <p className="text-2xl font-black">{monthlyVehicleExpensesData.rows.length}</p>
-                  </CardContent>
-                </Card>
-                <Card className="border border-border/50">
-                  <CardContent className="p-4">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Mois sélectionné</p>
-                    <p className="text-2xl font-black">{monthlyVehicleExpensesData.monthKey}</p>
-                  </CardContent>
-                </Card>
+                <div className="p-4 rounded-2xl bg-destructive/10 border border-destructive/20 text-center">
+                  <span className="text-[10px] uppercase font-black text-destructive block">Total Dépenses Véhicules</span>
+                  <span className="text-2xl font-black font-mono text-destructive mt-0.5 block">
+                    -{monthlyVehicleExpensesData.total.toLocaleString()} MAD
+                  </span>
+                </div>
+                <div className="p-4 rounded-2xl bg-muted/30 border border-border/40 text-center">
+                  <span className="text-[10px] uppercase font-black text-muted-foreground block">Lignes d'Écritures</span>
+                  <span className="text-2xl font-black font-mono text-foreground mt-0.5 block">
+                    {monthlyVehicleExpensesData.rows.length}
+                  </span>
+                </div>
+                <div className="p-4 rounded-2xl bg-muted/30 border border-border/40 text-center">
+                  <span className="text-[10px] uppercase font-black text-muted-foreground block">Mois Analysé</span>
+                  <span className="text-2xl font-black font-mono text-foreground mt-0.5 block">
+                    {monthlyVehicleExpensesData.monthKey}
+                  </span>
+                </div>
               </div>
 
-              <ScrollArea className="h-[500px]">
-                {monthlyVehicleExpensesData.rows.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">Aucune dépense véhicule pour ce mois</div>
-                ) : isMobile ? (
-                  <div className="space-y-3">
-                    {monthlyVehicleExpensesData.rows.map((row, index) => (
-                      <motion.div
-                        key={row.id}
-                        initial={{ opacity: 0, y: 4 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.02 }}
-                        className="p-4 rounded-xl border border-border bg-card space-y-2 text-sm"
-                      >
-                        <div className="flex justify-between items-center">
-                          <span className="font-semibold text-foreground">{row.vehicleName}</span>
-                          <span className="text-red-600 font-bold">-{row.amount.toLocaleString()} MAD</span>
-                        </div>
-                        <div className="flex justify-between items-center text-xs text-muted-foreground">
-                          <Badge variant="secondary">{row.expenseType}</Badge>
-                          <span>{row.monthYear}</span>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto rounded-xl border border-border/50 bg-card">
-                    <table className="w-full">
-                      <thead className="bg-muted/30">
-                        <tr className="border-b">
-                          <th className="text-left p-3">Véhicule</th>
-                          <th className="text-left p-3">Type</th>
-                          <th className="text-left p-3">Montant</th>
-                          <th className="text-left p-3">Mois</th>
+              <ScrollArea className="h-96">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead>
+                      <tr className="border-b border-border/60 uppercase font-black text-muted-foreground">
+                        <th className="py-3 px-3">Véhicule</th>
+                        <th className="py-3 px-3">Type de Dépense</th>
+                        <th className="py-3 px-3">Montant</th>
+                        <th className="py-3 px-3">Période</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/40 font-medium">
+                      {monthlyVehicleExpensesData.rows.map((row) => (
+                        <tr key={row.id} className="hover:bg-muted/20">
+                          <td className="py-3 px-3 font-bold">{row.vehicleName}</td>
+                          <td className="py-3 px-3"><Badge variant="secondary">{row.expenseType}</Badge></td>
+                          <td className="py-3 px-3 font-mono font-bold text-destructive">-{row.amount.toLocaleString()} MAD</td>
+                          <td className="py-3 px-3 text-muted-foreground">{row.monthYear}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {monthlyVehicleExpensesData.rows.map((row, index) => (
-                          <motion.tr
-                            key={row.id}
-                            initial={{ opacity: 0, y: 4 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: index * 0.02 }}
-                            className="border-b hover:bg-accent/30"
-                          >
-                            <td className="p-3 font-medium">{row.vehicleName}</td>
-                            <td className="p-3">
-                              <Badge variant="secondary">{row.expenseType}</Badge>
-                            </td>
-                            <td className="p-3 text-red-600 font-semibold">-{row.amount.toLocaleString()} MAD</td>
-                            <td className="p-3">{row.monthYear}</td>
-                          </motion.tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </ScrollArea>
-            </motion.div>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* ANDROID FLOATING ACTION BUTTON (FAB) */}
+      <button
+        onClick={() => setIsMobileDrawerOpen(true)}
+        className="fixed bottom-6 right-6 z-40 lg:hidden w-14 h-14 rounded-full bg-accent text-accent-foreground shadow-2xl flex items-center justify-center font-black active:scale-95 transition-transform"
+        aria-label="Opération Trésorerie"
+      >
+        <Plus className="w-7 h-7" />
+      </button>
+
+      {/* MOBILE OPERATIONS BOTTOM SHEET */}
+      <Dialog open={isMobileDrawerOpen} onOpenChange={setIsMobileDrawerOpen}>
+        <DialogContent className="w-full max-w-lg p-0 rounded-t-[2.5rem] rounded-b-none sm:rounded-[2rem] border border-border/60 bg-card/95 backdrop-blur-2xl shadow-2xl fixed bottom-0 sm:bottom-auto left-0 right-0 sm:left-auto sm:right-auto max-h-[85vh] overflow-y-auto">
+          <div className="w-12 h-1.5 bg-muted-foreground/30 rounded-full mx-auto mt-3 mb-1 sm:hidden" />
+          <div className="p-6 pb-4 border-b border-border/40 flex items-center justify-between">
+            <div>
+              <DialogTitle className="text-lg font-black tracking-tight">Actions de Trésorerie</DialogTitle>
+              <DialogDescription className="text-xs font-medium">Opérations rapides d'encaissement et de banque</DialogDescription>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setIsMobileDrawerOpen(false)} className="rounded-full w-8 h-8 p-0">
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+
+          <div className="p-4 sm:p-6 grid grid-cols-2 gap-3">
+            <button
+              onClick={() => {
+                setIsMobileDrawerOpen(false);
+                setActiveTab("contracts");
+              }}
+              className="p-4 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-left transition-all active:scale-95 space-y-2"
+            >
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-black">
+                <CheckCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-black text-xs sm:text-sm text-foreground">Encaisser Créance</p>
+                <p className="text-[10px] text-muted-foreground">Régler un contrat</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => {
+                setIsMobileDrawerOpen(false);
+                handleDeleteRemainingDebts();
+              }}
+              className="p-4 rounded-2xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-left transition-all active:scale-95 space-y-2"
+            >
+              <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center font-black">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-black text-xs sm:text-sm text-foreground">Solder Dettes</p>
+                <p className="text-[10px] text-muted-foreground">Clôture automatique</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => {
+                setIsMobileDrawerOpen(false);
+                setActiveTab("expenses");
+              }}
+              className="p-4 rounded-2xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-left transition-all active:scale-95 space-y-2"
+            >
+              <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center font-black">
+                <CreditCard className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-black text-xs sm:text-sm text-foreground">Dépense Diverse</p>
+                <p className="text-[10px] text-muted-foreground">Frais d'exploitation</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => {
+                setIsMobileDrawerOpen(false);
+                handleRefresh();
+              }}
+              className="p-4 rounded-2xl bg-muted/40 hover:bg-muted border border-border/50 text-left transition-all active:scale-95 space-y-2"
+            >
+              <div className="w-10 h-10 rounded-xl bg-muted text-foreground flex items-center justify-center font-black">
+                <History className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-black text-xs sm:text-sm text-foreground">Actualiser Flux</p>
+                <p className="text-[10px] text-muted-foreground">Synchroniser caisse</p>
+              </div>
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 };

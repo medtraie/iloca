@@ -6,7 +6,7 @@ import { HashRouter, Routes, Route, useLocation, Outlet, Navigate, useNavigate }
 import { SidebarProvider, SidebarInset, useSidebar } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { TopHeader } from "@/components/TopHeader";
-import { Home, FileText, Car, Receipt, Menu, ShieldCheck, Settings as SettingsIcon } from "lucide-react";
+import { Home, FileText, Car, Receipt, Menu, ShieldCheck, Settings as SettingsIcon, Users } from "lucide-react";
 import Index from "./pages/Index";
 import Contracts from "./pages/Contracts";
 import Customers from "./pages/Customers";
@@ -57,32 +57,35 @@ function MobileBottomNav() {
         { label: "Bord", icon: Home, path: "/" },
         { label: "Contrats", icon: FileText, path: "/contracts" },
         { label: "Véhicules", icon: Car, path: "/vehicles" },
+        { label: "Clients", icon: Users, path: "/customers" },
         { label: "Revenus", icon: Receipt, path: "/recette" },
       ];
 
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur border-t px-2 py-2 pb-[calc(env(safe-area-inset-bottom,0px)+6px)] shadow-lg flex items-center justify-between">
+    <div className="md:hidden fixed bottom-2.5 left-2.5 right-2.5 z-40 bg-card/90 backdrop-blur-xl border border-border/70 rounded-3xl px-1.5 py-1.5 pb-[calc(env(safe-area-inset-bottom,0px)+6px)] shadow-2xl flex items-center justify-around">
       {navItems.map((item) => {
         const isActive = location.pathname === item.path;
         return (
           <button
             key={item.path}
             onClick={() => navigate(item.path)}
-            className={`flex flex-col items-center gap-1 flex-1 py-1 transition-colors ${
-              isActive ? "text-primary font-bold" : "text-muted-foreground hover:text-foreground"
+            className={`flex flex-col items-center justify-center gap-0.5 flex-1 py-1.5 px-1 rounded-2xl transition-all duration-200 active:scale-90 ${
+              isActive
+                ? "bg-primary/15 text-primary font-black shadow-xs scale-105"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
             }`}
           >
-            <item.icon className="h-5 w-5" />
-            <span className="text-[10px]">{item.label}</span>
+            <item.icon className={`h-4.5 w-4.5 ${isActive ? "stroke-[2.5]" : "stroke-[1.8]"}`} />
+            <span className="text-[10px] font-bold tracking-tight">{item.label}</span>
           </button>
         );
       })}
       <button
         onClick={toggleSidebar}
-        className="flex flex-col items-center gap-1 flex-1 py-1 text-muted-foreground hover:text-foreground transition-colors"
+        className="flex flex-col items-center justify-center gap-0.5 flex-1 py-1.5 px-1 rounded-2xl text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-all duration-200 active:scale-90"
       >
-        <Menu className="h-5 w-5" />
-        <span className="text-[10px]">Menu</span>
+        <Menu className="h-4.5 w-4.5 stroke-[1.8]" />
+        <span className="text-[10px] font-bold tracking-tight">Plus</span>
       </button>
     </div>
   );
