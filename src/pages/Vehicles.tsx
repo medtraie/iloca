@@ -8,13 +8,14 @@ import VehicleDetailsDialog from '@/components/VehicleDetailsDialog';
 import { 
   Plus, Search, Car, CheckCircle2, KeyRound, Wrench, RefreshCcw, 
   Table2, LayoutGrid, Maximize2, X, ArrowUpDown, Sparkles, 
-  Kanban, Fuel, Zap, ShieldAlert, Check, MoreVertical
+  Kanban, Fuel, Zap, ShieldAlert, Check, MoreVertical, Radio, Navigation, Eye
 } from 'lucide-react';
 import VehicleCard from '@/components/VehicleCard';
 import VehicleTable from '@/components/VehicleTable';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useGPSwoxVehicles } from '@/hooks/useGPSwoxVehicles';
 
 type VehiclesViewMode = 'cards' | 'table' | 'kanban';
 type StatusFilter = 'all' | 'disponible' | 'loue' | 'maintenance' | 'horsService';
@@ -22,12 +23,14 @@ type SortOption = 'default' | 'price_asc' | 'price_desc' | 'km_asc' | 'km_desc' 
 
 const Vehicles = () => {
   const { vehicles, loading, addVehicle, updateVehicle, deleteVehicle } = useVehicles();
+  const { data: gpsVehiclesData } = useGPSwoxVehicles();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [selectedFuel, setSelectedFuel] = useState<string>('all');
   const [selectedGearbox, setSelectedGearbox] = useState<string>('all');
   const [sortBy, setSortBy] = useState<SortOption>('default');
   const [selectedBrand, setSelectedBrand] = useState<string>('all');
+  const [hideGpsVehicles, setHideGpsVehicles] = useState(false);
   const [formDialogOpen, setFormDialogOpen] = useState(false);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
@@ -68,9 +71,36 @@ const Vehicles = () => {
     return Array.from(brandsSet).sort();
   }, [vehicles]);
 
+  const gpsPlatesSet = useMemo(() => {
+    const set = new Set<string>();
+    if (gpsVehiclesData && Array.isArray(gpsVehiclesData)) {
+      gpsVehiclesData.forEach((g) => {
+        if (g.plate) {
+          const clean = g.plate.toLowerCase().replace(/[\s\-_]/g, '');
+          if (clean) set.add(clean);
+        }
+      });
+    }
+    return set;
+  }, [gpsVehiclesData]);
+
+  const isGpsVehicle = (vehicle: Vehicle) => {
+    if ((vehicle as any).has_gps || (vehicle as any).gps_device_id || (vehicle as any).gps_tracker) return true;
+    const cleanImmat = (vehicle.immatriculation || vehicle.registration || '').toLowerCase().replace(/[\s\-_]/g, '');
+    if (cleanImmat && gpsPlatesSet.has(cleanImmat)) return true;
+    if (Array.isArray(vehicle.documents)) {
+      if (vehicle.documents.some((d) => String(d).toLowerCase().includes('gps'))) return true;
+    }
+    return false;
+  };
+
   // Filter and sort vehicles
   const filteredVehicles = useMemo(() => {
     let result = vehicles.filter((vehicle) => {
+      if (hideGpsVehicles && isGpsVehicle(vehicle)) {
+        return false;
+      }
+
       const searchString = searchTerm.toLowerCase().trim();
       const marque = (vehicle.marque || vehicle.brand || '').toLowerCase();
       const modele = (vehicle.modele || vehicle.model || '').toLowerCase();
@@ -106,7 +136,7 @@ const Vehicles = () => {
     }
 
     return result;
-  }, [vehicles, searchTerm, statusFilter, selectedBrand, selectedFuel, selectedGearbox, sortBy]);
+  }, [vehicles, searchTerm, statusFilter, selectedBrand, selectedFuel, selectedGearbox, sortBy, hideGpsVehicles, gpsPlatesSet]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -230,7 +260,7 @@ const Vehicles = () => {
   }
 
   return (
-    <div className="min-h-screen p-4 sm:p-6 lg:p-8 space-y-8 pb-24 max-w-[1700px] mx-auto transition-all">
+    <div className="min-h-screen p-2 sm:p-4 lg:p-6 space-y-6 pb-24 w-full transition-all">
       {/* 2026 Hero Header Section */}
       <motion.div 
         className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative"
@@ -251,7 +281,20 @@ const Vehicles = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant={hideGpsVehicles ? "default" : "outline"}
+            onClick={() => setHideGpsVehicles(!hideGpsVehicles)}
+            className={`rounded-2xl h-12 px-4 font-bold text-xs shadow-sm active:scale-95 transition-all flex items-center gap-2 border ${
+              hideGpsVehicles 
+                ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-500 shadow-amber-500/20' 
+                : 'border-border/60 hover:bg-card text-foreground'
+            }`}
+          >
+            <Navigation className="w-4 h-4" />
+            {hideGpsVehicles ? 'GPS Masqués' : 'Masquer Véhicules GPS'}
+          </Button>
+
           <Button 
             onClick={() => {
               setEditingVehicle(null);
@@ -572,7 +615,7 @@ const Vehicles = () => {
           </div>
 
           {/* Reset All Filters Button */}
-          {(searchTerm || statusFilter !== 'all' || selectedBrand !== 'all' || selectedFuel !== 'all' || selectedGearbox !== 'all') && (
+          {(searchTerm || statusFilter !== 'all' || selectedBrand !== 'all' || selectedFuel !== 'all' || selectedGearbox !== 'all' || hideGpsVehicles) && (
             <button
               onClick={() => {
                 setSearchTerm('');
@@ -580,6 +623,7 @@ const Vehicles = () => {
                 setSelectedBrand('all');
                 setSelectedFuel('all');
                 setSelectedGearbox('all');
+                setHideGpsVehicles(false);
               }}
               className="text-[11px] font-bold text-accent hover:underline ml-auto"
             >

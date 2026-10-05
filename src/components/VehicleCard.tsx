@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Edit, Trash2, Eye, Car, Fuel, Gauge, ChevronLeft, ChevronRight, Zap } from "lucide-react";
+import { Edit, Trash2, Eye, Car, Fuel, Gauge, ChevronLeft, ChevronRight, Zap, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,12 @@ const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle, onEdit, onDelete, on
   const etat = vehicle.etat_vehicule || "disponible";
   const statusConfig = getStatusBadge(etat);
   const photos = Array.isArray(vehicle.photos) ? vehicle.photos : [];
+  const hasGps = Boolean(
+    (vehicle as any).has_gps || 
+    (vehicle as any).gps_device_id || 
+    (vehicle as any).gps_tracker || 
+    (Array.isArray(vehicle.documents) && vehicle.documents.some((d) => String(d).toLowerCase().includes("gps")))
+  );
   
   const [currentPhotoIdx, setCurrentPhotoIdx] = useState(0);
 
@@ -147,10 +153,18 @@ const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle, onEdit, onDelete, on
             </>
           )}
 
-          {/* Luxury Top Badges: Status & Year */}
+          {/* Luxury Top Badges: Status, Year & GPS */}
           <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-background/85 dark:bg-zinc-900/85 backdrop-blur-md border border-border/60 shadow-md pointer-events-auto">
-              <span className="text-[11px] font-extrabold tracking-wider uppercase text-foreground/90">{annee}</span>
+            <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-background/85 dark:bg-zinc-900/85 backdrop-blur-md border border-border/60 shadow-md pointer-events-auto">
+                <span className="text-[11px] font-extrabold tracking-wider uppercase text-foreground/90">{annee}</span>
+              </div>
+              {hasGps && (
+                <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/90 text-white backdrop-blur-md border border-amber-400 shadow-md font-extrabold text-[10px] pointer-events-auto">
+                  <Radio className="w-3 h-3 animate-pulse" />
+                  <span>GPS</span>
+                </div>
+              )}
             </div>
             
             <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full backdrop-blur-md border shadow-md font-bold text-xs tracking-wide ${theme.badgeBg} pointer-events-auto`}>

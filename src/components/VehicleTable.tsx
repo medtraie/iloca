@@ -1,5 +1,5 @@
 import React from "react";
-import { Edit, Trash2, Eye, Car, Fuel, Gauge } from "lucide-react";
+import { Edit, Trash2, Eye, Car, Fuel, Gauge, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Card, CardContent } from "@/components/ui/card";
@@ -75,6 +75,12 @@ const VehicleTable: React.FC<VehicleTableProps> = ({ vehicles, onEdit, onDelete,
           const etat = vehicle.etat_vehicule || "disponible";
           const statusConfig = getStatusBadge(etat);
           const theme = getStatusTheme(etat);
+          const hasGps = Boolean(
+            (vehicle as any).has_gps || 
+            (vehicle as any).gps_device_id || 
+            (vehicle as any).gps_tracker || 
+            (Array.isArray(vehicle.documents) && vehicle.documents.some((d) => String(d).toLowerCase().includes("gps")))
+          );
           
           return (
             <Card key={vehicle.id} className="border border-border/60 rounded-2xl overflow-hidden bg-card/90 backdrop-blur-md shadow-sm active:scale-[0.99] transition-transform">
@@ -100,6 +106,11 @@ const VehicleTable: React.FC<VehicleTableProps> = ({ vehicles, onEdit, onDelete,
                       <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-md bg-muted border border-border/60 text-foreground">
                         {immatriculation}
                       </span>
+                      {hasGps && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-600 dark:text-amber-400 font-extrabold text-[9px]">
+                          <Radio className="w-2.5 h-2.5 animate-pulse" /> GPS
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -207,6 +218,12 @@ const VehicleTable: React.FC<VehicleTableProps> = ({ vehicles, onEdit, onDelete,
               const etat = vehicle.etat_vehicule || "disponible";
               const statusConfig = getStatusBadge(etat);
               const theme = getStatusTheme(etat);
+              const hasGps = Boolean(
+                (vehicle as any).has_gps || 
+                (vehicle as any).gps_device_id || 
+                (vehicle as any).gps_tracker || 
+                (Array.isArray(vehicle.documents) && vehicle.documents.some((d) => String(d).toLowerCase().includes("gps")))
+              );
               
               return (
                 <TableRow key={vehicle.id} className="hover:bg-accent/5 border-b border-border/40 transition-colors group">
@@ -240,13 +257,18 @@ const VehicleTable: React.FC<VehicleTableProps> = ({ vehicles, onEdit, onDelete,
                   </TableCell>
 
                   <TableCell className="py-3">
-                    <div className="flex items-center gap-2 text-xs">
+                    <div className="flex items-center gap-1.5 flex-wrap text-xs">
                       <span className="px-2 py-0.5 rounded-lg bg-muted/40 border border-border/40 text-[11px] font-bold text-muted-foreground">
                         {vehicle.type_carburant || "Essence"}
                       </span>
                       <span className="px-2 py-0.5 rounded-lg bg-muted/40 border border-border/40 text-[11px] font-bold text-muted-foreground">
                         {vehicle.boite_vitesse || "Manuelle"}
                       </span>
+                      {hasGps && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-extrabold text-[10px]">
+                          <Radio className="w-3 h-3 animate-pulse text-amber-500" /> GPS
+                        </span>
+                      )}
                     </div>
                   </TableCell>
 
