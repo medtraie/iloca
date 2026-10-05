@@ -36,20 +36,12 @@ const ContractsSearchBar = ({ searchTerm, setSearchTerm, onAddContract }: Contra
   ];
 
   return (
-    <div>
-      <EnhancedSearchBar
-        searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
-        placeholder="Rechercher par client, véhicule, numéro de contrat..."
-        filters={filterOptions}
-      />
-      
-      <NewContractDialog 
-        onAddContract={onAddContract}
-        open={isNewContractOpen}
-        onOpenChange={setIsNewContractOpen}
-      />
-    </div>
+    <EnhancedSearchBar
+      searchTerm={searchTerm}
+      onSearchChange={setSearchTerm}
+      placeholder="Rechercher par client, véhicule, numéro de contrat..."
+      filters={filterOptions}
+    />
   );
 };
 

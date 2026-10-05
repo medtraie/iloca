@@ -570,7 +570,7 @@ function ContractsTable({
       columns={columns}
       title="Liste des contrats"
       description={`${contracts.length} contrat${contracts.length > 1 ? 's' : ''} au total`}
-      searchPlaceholder="Rechercher par client, véhicule, numéro..."
+      searchable={false}
       actions={renderActions}
       emptyMessage="Aucun contrat trouvé. Commencez par créer votre premier contrat de location."
       defaultItemsPerPage={25}
