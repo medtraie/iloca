@@ -3,7 +3,15 @@ import React, { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Eye, Edit, Trash2, FileText, Calendar, DollarSign, User, Car, Download, CreditCard, UserCheck, Share2 } from "lucide-react";
+import { Eye, Edit, Trash2, FileText, Calendar, DollarSign, User, Car, Download, CreditCard, UserCheck, Share2, MoreHorizontal, AlertTriangle, MessageSquare } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Contract } from "@/hooks/useContracts";
 import { computeContractSummary, getContractSummaryWithPayments } from "@/utils/contractMath";
 import type { PaymentSummary } from "@/types/payment";
@@ -187,24 +195,33 @@ function ContractsTable({
       key: 'contract_number',
       label: 'N° Contrat',
       sortable: true,
+      className: 'w-[110px]',
       render: (contract: Contract) => (
         <div className="flex items-center gap-2">
-          <FileText className="h-4 w-4 text-primary" />
-          <span className="font-semibold text-foreground">{contract.contract_number}</span>
+          <div className="p-2 rounded-xl bg-primary/10 text-primary font-black text-xs font-mono shrink-0">
+            #{contract.contract_number}
+          </div>
         </div>
       )
     },
     {
       key: 'customer_name',
-      label: 'Client',
+      label: 'Locataire (Client)',
       sortable: true,
+      className: 'min-w-[210px]',
       render: (contract: Contract) => (
-        <div className="flex items-center gap-2">
-          <User className="h-4 w-4 text-muted-foreground" />
-          <div>
-            <div className="font-medium text-foreground">{contract.customer_name}</div>
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-xl bg-muted/60 text-muted-foreground shrink-0">
+            <User className="h-4 w-4" />
+          </div>
+          <div className="flex flex-col justify-center py-0.5">
+            <span className="font-black text-sm text-foreground tracking-tight leading-snug">
+              {contract.customer_name}
+            </span>
             {contract.customer_phone && (
-              <div className="text-sm text-muted-foreground">{contract.customer_phone}</div>
+              <span className="text-[11px] font-mono text-muted-foreground font-semibold leading-none mt-1">
+                {contract.customer_phone}
+              </span>
             )}
           </div>
         </div>
@@ -214,58 +231,61 @@ function ContractsTable({
       key: 'vehicle',
       label: 'Véhicule',
       sortable: true,
+      className: 'min-w-[170px]',
       render: (contract: Contract) => (
-        <div className="flex items-center gap-2">
-          <Car className="h-4 w-4 text-muted-foreground" />
-          <span className="text-foreground">{contract.vehicle}</span>
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
+            <Car className="h-4 w-4" />
+          </div>
+          <div className="flex flex-col justify-center">
+            <span className="font-bold text-sm text-foreground leading-tight">
+              {contract.vehicle}
+            </span>
+            {contract.contract_data?.vehicleRegistration && (
+              <Badge variant="outline" className="text-[10px] font-mono font-bold w-fit mt-1 py-0 px-1.5 border-border/60">
+                {contract.contract_data.vehicleRegistration}
+              </Badge>
+            )}
+          </div>
         </div>
       )
     },
     {
       key: 'start_date',
-      label: 'Période',
+      label: 'Période & Durée',
       sortable: true,
+      className: 'min-w-[220px]',
       render: (contract: Contract) => {
         const { startDate, endDate } = getEffectiveDates(contract);
         const summary = computeContractSummary(contract, { advanceMode: 'field' });
-        
-        // Get extension and overdue info
         const extensionDays = summary.extensionDays || 0;
         const overdueDays = summary.overdueDays || 0;
         const baseDuration = summary.baseDuration || summary.duration;
-        
-        // Get financial status to display the right badge
-        const financialStatus = contract.status === 'ouvert' && overdueDays > 0 ? 'impaye' : contract.status;
-        
+
         return (
-          <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-            <div className="text-sm w-full">
-              <div className="text-foreground font-medium">
-                {format(startDate, 'dd/MM/yyyy', { locale: fr })}
-              </div>
-              <div className="text-muted-foreground">
-                au {format(endDate, 'dd/MM/yyyy', { locale: fr })}
-              </div>
-              <div className="text-xs text-muted-foreground mt-0.5">
-                Durée: {baseDuration} jour{baseDuration > 1 ? 's' : ''}
-              </div>
-              
+          <div className="space-y-1 py-1">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+              <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span>{format(startDate, 'dd/MM/yyyy', { locale: fr })}</span>
+              <span className="text-muted-foreground font-normal">→</span>
+              <span>{format(endDate, 'dd/MM/yyyy', { locale: fr })}</span>
+            </div>
+            
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Badge variant="secondary" className="text-[10px] font-bold py-0.5 px-2 bg-muted/60">
+                {baseDuration} jour{baseDuration > 1 ? 's' : ''}
+              </Badge>
+
               {extensionDays > 0 && (
-                <div className="text-xs text-primary font-medium mt-0.5">
-                  Prolongé de {extensionDays}j
-                </div>
+                <Badge className="text-[10px] font-bold py-0.5 px-2 bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+                  + {extensionDays}j Prolongé
+                </Badge>
               )}
-              
-              {overdueDays > 0 && (
-                <div className="mt-1 space-y-0.5">
-                  <div className="text-xs text-destructive font-semibold">
-                    En retard {overdueDays} jour{overdueDays > 1 ? 's' : ''}
-                  </div>
-                  <div className="text-xs text-destructive">
-                    Dépassement depuis le {format(endDate, 'dd/MM', { locale: fr })}
-                  </div>
-                </div>
+
+              {overdueDays > 0 && contract.status === 'ouvert' && (
+                <Badge className="text-[10px] font-black py-0.5 px-2 bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30 animate-pulse">
+                  ⚠️ Retard {overdueDays}j
+                </Badge>
               )}
             </div>
           </div>
@@ -274,18 +294,19 @@ function ContractsTable({
     },
     {
       key: 'total_amount',
-      label: 'Prix/Jour',
+      label: 'Prix / Jour & Total',
       sortable: true,
+      className: 'min-w-[150px]',
       render: (contract: Contract) => {
         const summary = computeContractSummary(contract, { advanceMode: 'field' });
         
         return (
-          <div className="flex items-center gap-2">
-            <DollarSign className="h-4 w-4 text-green-600" />
-            <div className="flex flex-col text-sm">
-              <div className="font-semibold text-foreground">{formatCurrency(contract.daily_rate || 0)}</div>
-              <div className="text-xs text-muted-foreground">{summary.duration} jour{summary.duration > 1 ? 's' : ''}</div>
-              <div className="text-xs font-semibold text-green-700">{formatCurrency(summary.total)}</div>
+          <div className="flex flex-col justify-center py-0.5">
+            <div className="text-xs font-semibold text-muted-foreground">
+              {formatCurrency(contract.daily_rate || 0)} <span className="text-[10px]">/ jour</span>
+            </div>
+            <div className="text-sm font-black text-foreground font-mono mt-0.5">
+              {formatCurrency(summary.total)}
             </div>
           </div>
         );
@@ -293,8 +314,9 @@ function ContractsTable({
     },
     {
       key: 'payment_info',
-      label: 'Avance / Reste à Payer',
+      label: 'Avance & Solde',
       sortable: false,
+      className: 'min-w-[180px]',
       render: (contract: Contract) => {
         let totalPaid = contract.advance_payment || 0;
         let remaining = 0;
@@ -308,26 +330,36 @@ function ContractsTable({
         } else {
           remaining = Math.max(0, summary.total - totalPaid);
         }
+
+        const isFullyPaid = remaining <= 0;
         
         return (
-          <div className="flex items-center gap-2">
-            <DollarSign className="h-4 w-4 text-blue-600" />
-            <div className="flex flex-col text-sm">
-              <div className="text-foreground">
-                <span className="text-xs text-muted-foreground mr-1">Payé:</span>
-                <span className="font-semibold text-blue-600">{formatCurrency(totalPaid)}</span>
-              </div>
-              <div className="text-foreground">
-                <span className="text-xs text-muted-foreground mr-1">Reste:</span>
-                <span className="font-semibold text-orange-600">{formatCurrency(remaining)}</span>
-              </div>
-              <Badge 
-                variant={remaining <= 0 ? "default" : totalPaid > 0 ? "secondary" : "destructive"}
-                className="text-xs mt-1 w-fit"
-              >
-                {remaining <= 0 ? "Payé" : totalPaid > 0 ? "En cours" : "En attente"}
-              </Badge>
+          <div className="space-y-1 py-0.5">
+            <div className="flex items-center justify-between text-xs gap-3">
+              <span className="text-[10px] uppercase font-bold text-muted-foreground">Payé:</span>
+              <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                {formatCurrency(totalPaid)}
+              </span>
             </div>
+
+            <div className="flex items-center justify-between text-xs gap-3">
+              <span className="text-[10px] uppercase font-bold text-muted-foreground">Reste:</span>
+              <span className={`font-black font-mono ${remaining > 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                {formatCurrency(remaining)}
+              </span>
+            </div>
+
+            <Badge 
+              className={`text-[10px] font-bold py-0.5 px-2 border w-fit ${
+                isFullyPaid 
+                  ? "bg-emerald-500/15 text-emerald-600 border-emerald-500/30" 
+                  : totalPaid > 0 
+                  ? "bg-amber-500/15 text-amber-600 border-amber-500/30" 
+                  : "bg-red-500/15 text-red-600 border-red-500/30"
+              }`}
+            >
+              {isFullyPaid ? "Soldé" : totalPaid > 0 ? "En cours" : "Non payé"}
+            </Badge>
           </div>
         );
       }
@@ -336,6 +368,7 @@ function ContractsTable({
       key: 'status',
       label: 'Statut',
       sortable: true,
+      className: 'w-[120px]',
       render: (contract: Contract) => getStatusBadge(contract.status)
     }
   ];
@@ -418,14 +451,14 @@ function ContractsTable({
     }
   };
 
-  // تعديل عناصر الإجراءات لإضافة زر تحميل الـPDF المفصل
+  // Modernized 2026 Action Group
   const renderActions = (contract: Contract) => (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1.5 justify-end">
       <Button
         variant="ghost"
         size="sm"
         onClick={() => onViewDetails(contract)}
-        className="h-8 w-8 p-0 hover:bg-blue-50 hover:text-blue-700"
+        className="h-8 w-8 p-0 hover:bg-primary/10 hover:text-primary rounded-xl"
         title="Voir les détails"
       >
         <Eye className="h-4 w-4" />
@@ -435,8 +468,8 @@ function ContractsTable({
         variant="ghost"
         size="sm"
         onClick={() => handleDownloadFullPDF(contract)}
-        className="h-8 w-8 p-0 hover:bg-blue-50 hover:text-blue-700"
-        title="Télécharger Contrat (Complet)"
+        className="h-8 w-8 p-0 hover:bg-blue-50 hover:text-blue-600 rounded-xl"
+        title="Télécharger Contrat (Complet PDF)"
       >
         <FileText className="h-4 w-4" />
       </Button>
@@ -445,8 +478,8 @@ function ContractsTable({
         variant="ghost"
         size="sm"
         onClick={() => handleShareWhatsAppFull(contract)}
-        className="h-8 w-8 p-0 hover:bg-green-50 hover:text-green-700"
-        title="Partager via WhatsApp (PDF Complet)"
+        className="h-8 w-8 p-0 hover:bg-emerald-50 hover:text-emerald-600 rounded-xl"
+        title="Partager via WhatsApp (PDF)"
       >
         <Share2 className="h-4 w-4" />
       </Button>
@@ -455,68 +488,79 @@ function ContractsTable({
         variant="ghost"
         size="sm"
         onClick={() => onEditContract(contract)}
-        className="h-8 w-8 p-0 hover:bg-amber-50 hover:text-amber-700"
+        className="h-8 w-8 p-0 hover:bg-amber-50 hover:text-amber-600 rounded-xl"
         title="Modifier"
       >
         <Edit className="h-4 w-4" />
       </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => handleDownloadDocument(contract, 'cin')}
-        className="h-8 w-8 p-0 hover:bg-purple-50 hover:text-purple-700"
-        title="Télécharger CIN"
-      >
-        <CreditCard className="h-4 w-4" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => handleDownloadDocument(contract, 'permis')}
-        className="h-8 w-8 p-0 hover:bg-indigo-50 hover:text-indigo-700"
-        title="Télécharger Permis"
-      >
-        <UserCheck className="h-4 w-4" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => handleDownloadPackage(contract)}
-        className="h-8 w-8 p-0 hover:bg-teal-50 hover:text-teal-700"
-        title="Télécharger Documents (CIN + Permis + Passeport)"
-      >
-        <Download className="h-4 w-4" />
-      </Button>
-      <AlertDialog>
-        <AlertDialogTrigger asChild>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-            title="Supprimer"
+            className="h-8 w-8 p-0 hover:bg-muted rounded-xl"
+            title="Plus d'actions"
           >
-            <Trash2 className="h-4 w-4" />
+            <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
           </Button>
-        </AlertDialogTrigger>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
-            <AlertDialogDescription>
-              Êtes-vous sûr de vouloir supprimer le contrat #{contract.contract_number} ? 
-              Cette action est irréversible et supprimera toutes les données associées.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => onDeleteContract(contract.id)}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-500"
-            >
-              Supprimer définitivement
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-52 rounded-2xl p-1.5 shadow-xl">
+          <DropdownMenuLabel className="text-[10px] font-black uppercase text-muted-foreground px-2 py-1">
+            Documents & Options
+          </DropdownMenuLabel>
+          <DropdownMenuItem
+            onClick={() => handleDownloadDocument(contract, 'cin')}
+            className="rounded-xl text-xs font-bold cursor-pointer gap-2 py-2"
+          >
+            <CreditCard className="h-4 w-4 text-purple-600" />
+            <span>Télécharger CIN</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => handleDownloadDocument(contract, 'permis')}
+            className="rounded-xl text-xs font-bold cursor-pointer gap-2 py-2"
+          >
+            <UserCheck className="h-4 w-4 text-indigo-600" />
+            <span>Télécharger Permis</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => handleDownloadPackage(contract)}
+            className="rounded-xl text-xs font-bold cursor-pointer gap-2 py-2"
+          >
+            <Download className="h-4 w-4 text-teal-600" />
+            <span>Package ZIP d'Identité</span>
+          </DropdownMenuItem>
+          
+          <DropdownMenuSeparator className="my-1" />
+
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <div className="flex items-center gap-2 px-2 py-2 text-xs font-bold text-destructive hover:bg-destructive/10 rounded-xl cursor-pointer">
+                <Trash2 className="h-4 w-4" />
+                <span>Supprimer le contrat</span>
+              </div>
+            </AlertDialogTrigger>
+            <AlertDialogContent className="rounded-3xl">
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-lg font-black">Confirmer la suppression</AlertDialogTitle>
+                <AlertDialogDescription className="text-xs font-medium">
+                  Êtes-vous sûr de vouloir supprimer le contrat #{contract.contract_number} ? 
+                  Cette action est irréversible et supprimera toutes les données associées.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel className="rounded-xl text-xs font-bold">Annuler</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => onDeleteContract(contract.id)}
+                  className="bg-destructive hover:bg-destructive/90 rounded-xl text-xs font-black text-destructive-foreground"
+                >
+                  Supprimer définitivement
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 

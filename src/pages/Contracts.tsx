@@ -119,17 +119,17 @@ const Contracts: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6 pb-20 max-w-7xl mx-auto px-2 sm:px-4">
+    <div className="w-full max-w-[1700px] mx-auto px-3 sm:px-6 lg:px-8 space-y-6 pb-24">
       {/* 2026 Fleet Operations Cockpit Header */}
       <motion.div
-        className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 sm:p-7 rounded-3xl bg-gradient-to-r from-card via-card/90 to-background border border-border/60 shadow-xs relative overflow-hidden"
+        className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-5 sm:p-7 rounded-3xl bg-gradient-to-r from-card via-card/90 to-background border border-border/60 shadow-xs relative overflow-hidden"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
         <div className="relative z-10">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 mb-2">
-            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            <Sparkles className="h-3.5 w-3.5 text-primary animate-pulse" />
             <span className="text-[11px] font-black uppercase tracking-wider text-primary">
               Fleet Operations & Rental Lifecycle 2026
             </span>
@@ -138,48 +138,48 @@ const Contracts: React.FC = () => {
             Centre des <span className="text-primary">Contrats & Locations</span>
           </h1>
           <p className="text-muted-foreground text-xs sm:text-sm font-medium mt-1">
-            Supervisez le cycle complet de vos locations, prolongations et règlements.
+            Supervisez le cycle complet de vos locations, prolongations et règlements في مكان واحد.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 z-10">
+        <div className="flex items-center gap-2.5 z-10 flex-wrap">
           {/* View mode switcher */}
           <div className="bg-muted/40 p-1 rounded-2xl border border-border/50 flex items-center gap-1">
             <button
               onClick={() => setViewMode("table")}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
                 viewMode === "table"
-                  ? "bg-card text-foreground shadow-xs"
+                  ? "bg-card text-foreground shadow-xs border border-border/50"
                   : "text-muted-foreground hover:text-foreground"
               }`}
               title="Vue Tableau Haute Densité"
             >
               <Table2 className="h-4 w-4" />
-              <span className="hidden sm:inline">Tableau</span>
+              <span>Tableau</span>
             </button>
             <button
               onClick={() => setViewMode("kanban")}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
                 viewMode === "kanban"
-                  ? "bg-card text-foreground shadow-xs"
+                  ? "bg-card text-foreground shadow-xs border border-border/50"
                   : "text-muted-foreground hover:text-foreground"
               }`}
               title="Pipeline Cycle de Vie Kanban"
             >
               <Columns3 className="h-4 w-4" />
-              <span className="hidden sm:inline">Pipeline</span>
+              <span>Pipeline</span>
             </button>
             <button
               onClick={() => setViewMode("cards")}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
                 viewMode === "cards"
-                  ? "bg-card text-foreground shadow-xs"
+                  ? "bg-card text-foreground shadow-xs border border-border/50"
                   : "text-muted-foreground hover:text-foreground"
               }`}
               title="Cartes Tactiles Mobiles"
             >
               <Smartphone className="h-4 w-4" />
-              <span className="hidden sm:inline">Cartes</span>
+              <span>Cartes</span>
             </button>
           </div>
 
