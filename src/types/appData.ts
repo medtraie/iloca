@@ -83,6 +83,7 @@ export interface Vehicle {
   prix_par_jour?: number;
   etat_vehicule?: string;
   km_depart?: number;
+  has_gps?: boolean;
   documents?: string[];
   photos?: string[];
   created_at: string;

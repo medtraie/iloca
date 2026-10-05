@@ -14,9 +14,11 @@ interface VehicleTableProps {
   onDelete: (vehicleId: string) => void;
   onViewDetails: (vehicle: Vehicle) => void;
   getStatusBadge: (status: string) => { label: string; variant: any; color: string };
+  onToggleGps?: (vehicle: Vehicle) => void;
+  isGpsVehicleCheck?: (vehicle: Vehicle) => boolean;
 }
 
-const VehicleTable: React.FC<VehicleTableProps> = ({ vehicles, onEdit, onDelete, onViewDetails, getStatusBadge }) => {
+const VehicleTable: React.FC<VehicleTableProps> = ({ vehicles, onEdit, onDelete, onViewDetails, getStatusBadge, onToggleGps, isGpsVehicleCheck }) => {
   const isMobile = useIsMobile();
 
   const getStatusTheme = (status: string) => {
@@ -75,12 +77,14 @@ const VehicleTable: React.FC<VehicleTableProps> = ({ vehicles, onEdit, onDelete,
           const etat = vehicle.etat_vehicule || "disponible";
           const statusConfig = getStatusBadge(etat);
           const theme = getStatusTheme(etat);
-          const hasGps = Boolean(
-            (vehicle as any).has_gps || 
-            (vehicle as any).gps_device_id || 
-            (vehicle as any).gps_tracker || 
-            (Array.isArray(vehicle.documents) && vehicle.documents.some((d) => String(d).toLowerCase().includes("gps")))
-          );
+          const hasGps = isGpsVehicleCheck 
+            ? isGpsVehicleCheck(vehicle)
+            : Boolean(
+                vehicle.has_gps || 
+                (vehicle as any).gps_device_id || 
+                (vehicle as any).gps_tracker || 
+                (Array.isArray(vehicle.documents) && vehicle.documents.some((d) => String(d).toLowerCase().includes("gps")))
+              );
           
           return (
             <Card key={vehicle.id} className="border border-border/60 rounded-2xl overflow-hidden bg-card/90 backdrop-blur-md shadow-sm active:scale-[0.99] transition-transform">
@@ -218,12 +222,14 @@ const VehicleTable: React.FC<VehicleTableProps> = ({ vehicles, onEdit, onDelete,
               const etat = vehicle.etat_vehicule || "disponible";
               const statusConfig = getStatusBadge(etat);
               const theme = getStatusTheme(etat);
-              const hasGps = Boolean(
-                (vehicle as any).has_gps || 
-                (vehicle as any).gps_device_id || 
-                (vehicle as any).gps_tracker || 
-                (Array.isArray(vehicle.documents) && vehicle.documents.some((d) => String(d).toLowerCase().includes("gps")))
-              );
+              const hasGps = isGpsVehicleCheck 
+                ? isGpsVehicleCheck(vehicle)
+                : Boolean(
+                    vehicle.has_gps || 
+                    (vehicle as any).gps_device_id || 
+                    (vehicle as any).gps_tracker || 
+                    (Array.isArray(vehicle.documents) && vehicle.documents.some((d) => String(d).toLowerCase().includes("gps")))
+                  );
               
               return (
                 <TableRow key={vehicle.id} className="hover:bg-accent/5 border-b border-border/40 transition-colors group">

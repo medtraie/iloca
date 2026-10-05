@@ -40,6 +40,7 @@ const mapVehicleRow = (row: VehicleRow): Vehicle => ({
   prix_par_jour: normalizeNumber(row.daily_rate ?? row.prix_par_jour),
   etat_vehicule: row.status || row.etat_vehicule || "disponible",
   km_depart: normalizeNumber(row.departure_mileage ?? row.km_depart),
+  has_gps: Boolean(row.has_gps ?? row.gps_installed),
   documents: normalizeArray(row.documents_urls || row.documents),
   photos: normalizeArray(row.photos_urls || row.photos),
   created_at: String(row.created_at || new Date().toISOString()),
@@ -58,6 +59,7 @@ const buildVehicleInsertPayload = (vehicle: Partial<Vehicle>) => ({
   daily_rate: vehicle.prix_par_jour ?? null,
   status: vehicle.etat_vehicule?.trim() || "disponible",
   departure_mileage: vehicle.km_depart ?? null,
+  has_gps: vehicle.has_gps ?? false,
   documents_urls: vehicle.documents || [],
   photos_urls: vehicle.photos || [],
 });
@@ -84,6 +86,7 @@ const buildVehicleUpdatePayload = (vehicle: Partial<Vehicle>) => {
   if (vehicle.prix_par_jour !== undefined) payload.daily_rate = vehicle.prix_par_jour;
   if (vehicle.etat_vehicule !== undefined) payload.status = vehicle.etat_vehicule ? String(vehicle.etat_vehicule).trim() : "disponible";
   if (vehicle.km_depart !== undefined) payload.departure_mileage = vehicle.km_depart;
+  if (vehicle.has_gps !== undefined) payload.has_gps = vehicle.has_gps;
   if (vehicle.documents !== undefined) payload.documents_urls = vehicle.documents;
   if (vehicle.photos !== undefined) payload.photos_urls = vehicle.photos;
 

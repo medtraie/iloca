@@ -8,7 +8,7 @@ import { Vehicle } from "@/hooks/useVehicles";
 import { 
   Car, Settings, Calendar, Fuel, Disc, Palette, CreditCard, 
   Image as ImageIcon, FileText, Upload, Trash2, X, Check, Plus, 
-  ChevronRight, ChevronLeft, Sparkles, ShieldCheck, Star, Gauge, AlertCircle
+  ChevronRight, ChevronLeft, Sparkles, ShieldCheck, Star, Gauge, AlertCircle, Radio
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -58,6 +58,7 @@ const VehicleFormDialog: React.FC<VehicleFormDialogProps> = ({ open, onOpenChang
     prix_par_jour: "",
     etat_vehicule: "disponible",
     km_depart: "",
+    has_gps: false,
   });
 
   const [photos, setPhotos] = useState<string[]>([]);
@@ -87,6 +88,7 @@ const VehicleFormDialog: React.FC<VehicleFormDialogProps> = ({ open, onOpenChang
         prix_par_jour: vehicle.prix_par_jour?.toString() || "200",
         etat_vehicule: vehicle.etat_vehicule || "disponible",
         km_depart: vehicle.km_depart?.toString() || "0",
+        has_gps: Boolean(vehicle.has_gps),
       });
       setPhotos(Array.isArray(vehicle.photos) ? vehicle.photos : []);
       setActiveStep(1);
@@ -107,6 +109,7 @@ const VehicleFormDialog: React.FC<VehicleFormDialogProps> = ({ open, onOpenChang
         prix_par_jour: "250",
         etat_vehicule: "disponible",
         km_depart: "0",
+        has_gps: false,
       });
       setPhotos([]);
       setDocs([]);
@@ -227,6 +230,7 @@ const VehicleFormDialog: React.FC<VehicleFormDialogProps> = ({ open, onOpenChang
       prix_par_jour: formData.prix_par_jour ? parseFloat(formData.prix_par_jour) : 200,
       etat_vehicule: formData.etat_vehicule,
       km_depart: formData.km_depart ? parseInt(formData.km_depart) : 0,
+      has_gps: formData.has_gps,
       documents: [],
       photos: photos,
     };
@@ -464,6 +468,34 @@ const VehicleFormDialog: React.FC<VehicleFormDialogProps> = ({ open, onOpenChang
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+
+                {/* GPS Tracker Toggle Box */}
+                <div 
+                  onClick={() => setFormData(prev => ({ ...prev, has_gps: !prev.has_gps }))}
+                  className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${
+                    formData.has_gps 
+                      ? "bg-amber-500/10 border-amber-500/40 shadow-sm" 
+                      : "bg-muted/20 border-border/40 hover:bg-muted/40"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-xl ${formData.has_gps ? "bg-amber-500 text-white" : "bg-muted text-muted-foreground"}`}>
+                      <Radio className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-sm text-foreground">Véhicule équipé d'un boîtier / Tracker GPS</h4>
+                      <p className="text-xs text-muted-foreground font-medium">
+                        Permet de filtrer et suivre la géolocalisation de ce véhicule.
+                      </p>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={formData.has_gps}
+                    onChange={(e) => setFormData(prev => ({ ...prev, has_gps: e.target.checked }))}
+                    className="w-5 h-5 rounded-md text-amber-500 focus:ring-amber-500 cursor-pointer"
+                  />
                 </div>
               </motion.div>
             )}

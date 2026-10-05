@@ -71,28 +71,42 @@ const Vehicles = () => {
     return Array.from(brandsSet).sort();
   }, [vehicles]);
 
-  const gpsPlatesSet = useMemo(() => {
-    const set = new Set<string>();
-    if (gpsVehiclesData && Array.isArray(gpsVehiclesData)) {
-      gpsVehiclesData.forEach((g) => {
-        if (g.plate) {
-          const clean = g.plate.toLowerCase().replace(/[\s\-_]/g, '');
-          if (clean) set.add(clean);
-        }
-      });
-    }
-    return set;
-  }, [gpsVehiclesData]);
+  const [gpsVehicleIds, setGpsVehicleIds] = useLocalStorage<string[]>('vehicles:gps-ids', []);
+  const gpsVehicleIdsSet = useMemo(() => new Set(gpsVehicleIds), [gpsVehicleIds]);
 
-  const isGpsVehicle = (vehicle: Vehicle) => {
-    if ((vehicle as any).has_gps || (vehicle as any).gps_device_id || (vehicle as any).gps_tracker) return true;
-    const cleanImmat = (vehicle.immatriculation || vehicle.registration || '').toLowerCase().replace(/[\s\-_]/g, '');
-    if (cleanImmat && gpsPlatesSet.has(cleanImmat)) return true;
-    if (Array.isArray(vehicle.documents)) {
-      if (vehicle.documents.some((d) => String(d).toLowerCase().includes('gps'))) return true;
+  const isGpsVehicle = (vehicle: Vehicle): boolean => {
+    if (vehicle.has_gps === true) return true;
+    if (gpsVehicleIdsSet.has(vehicle.id)) return true;
+    if ((vehicle as any).gps_device_id || (vehicle as any).gps_tracker) return true;
+    if (Array.isArray(vehicle.documents) && vehicle.documents.some((d) => String(d).toLowerCase().includes('gps'))) {
+      return true;
+    }
+    const cleanImmat = (vehicle.immatriculation || vehicle.registration || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (cleanImmat && cleanImmat.length >= 3 && gpsVehiclesData && Array.isArray(gpsVehiclesData)) {
+      for (const dev of gpsVehiclesData) {
+        const devPlateClean = (dev.plate || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const devNameClean = (dev.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (devPlateClean && (devPlateClean.includes(cleanImmat) || cleanImmat.includes(devPlateClean))) return true;
+        if (devNameClean && devNameClean.includes(cleanImmat)) return true;
+      }
     }
     return false;
   };
+
+  const toggleVehicleGps = async (vehicle: Vehicle) => {
+    const currentIsGps = isGpsVehicle(vehicle);
+    const nextGps = !currentIsGps;
+    if (nextGps) {
+      setGpsVehicleIds((prev) => Array.from(new Set([...prev, vehicle.id])));
+    } else {
+      setGpsVehicleIds((prev) => prev.filter((id) => id !== vehicle.id));
+    }
+    await updateVehicle(vehicle.id, { has_gps: nextGps });
+  };
+
+  const totalGpsVehiclesCount = useMemo(() => {
+    return vehicles.filter(isGpsVehicle).length;
+  }, [vehicles, gpsVehicleIdsSet, gpsVehiclesData]);
 
   // Filter and sort vehicles
   const filteredVehicles = useMemo(() => {
@@ -136,7 +150,7 @@ const Vehicles = () => {
     }
 
     return result;
-  }, [vehicles, searchTerm, statusFilter, selectedBrand, selectedFuel, selectedGearbox, sortBy, hideGpsVehicles, gpsPlatesSet]);
+  }, [vehicles, searchTerm, statusFilter, selectedBrand, selectedFuel, selectedGearbox, sortBy, hideGpsVehicles, gpsVehicleIdsSet, gpsVehiclesData]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -291,8 +305,11 @@ const Vehicles = () => {
                 : 'border-border/60 hover:bg-card text-foreground'
             }`}
           >
-            <Navigation className="w-4 h-4" />
-            {hideGpsVehicles ? 'GPS Masqués' : 'Masquer Véhicules GPS'}
+            <Radio className={`w-4 h-4 ${hideGpsVehicles ? "animate-pulse" : ""}`} />
+            <span>{hideGpsVehicles ? 'GPS Masqués' : 'Masquer Véhicules GPS'}</span>
+            <Badge variant="secondary" className={`font-mono text-[11px] font-black rounded-lg px-1.5 ${hideGpsVehicles ? "bg-white/20 text-white" : ""}`}>
+              {totalGpsVehiclesCount}
+            </Badge>
           </Button>
 
           <Button 
@@ -670,6 +687,8 @@ const Vehicles = () => {
                     onDelete={deleteVehicle}
                     onViewDetails={handleViewDetails}
                     getStatusBadge={getStatusBadge}
+                    onToggleGps={toggleVehicleGps}
+                    isGps={isGpsVehicle(vehicle)}
                   />
                 </motion.div>
               ))}
@@ -691,6 +710,8 @@ const Vehicles = () => {
                 onDelete={deleteVehicle}
                 onViewDetails={handleViewDetails}
                 getStatusBadge={getStatusBadge}
+                onToggleGps={toggleVehicleGps}
+                isGpsVehicleCheck={isGpsVehicle}
               />
             </motion.div>
           )}

@@ -12,9 +12,11 @@ interface VehicleCardProps {
   onDelete: (vehicleId: string) => void;
   onViewDetails: (vehicle: Vehicle) => void;
   getStatusBadge: (status: string) => { label: string; variant: any; color: string };
+  onToggleGps?: (vehicle: Vehicle) => void;
+  isGps?: boolean;
 }
 
-const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle, onEdit, onDelete, onViewDetails, getStatusBadge }) => {
+const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle, onEdit, onDelete, onViewDetails, getStatusBadge, onToggleGps, isGps }) => {
   const marque = vehicle.marque || vehicle.brand || "Véhicule";
   const modele = vehicle.modele || vehicle.model || "Standard";
   const immatriculation = vehicle.immatriculation || vehicle.registration || "Non spécifiée";
@@ -22,12 +24,14 @@ const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle, onEdit, onDelete, on
   const etat = vehicle.etat_vehicule || "disponible";
   const statusConfig = getStatusBadge(etat);
   const photos = Array.isArray(vehicle.photos) ? vehicle.photos : [];
-  const hasGps = Boolean(
-    (vehicle as any).has_gps || 
-    (vehicle as any).gps_device_id || 
-    (vehicle as any).gps_tracker || 
-    (Array.isArray(vehicle.documents) && vehicle.documents.some((d) => String(d).toLowerCase().includes("gps")))
-  );
+  const hasGps = isGps !== undefined 
+    ? isGps 
+    : Boolean(
+        vehicle.has_gps || 
+        (vehicle as any).gps_device_id || 
+        (vehicle as any).gps_tracker || 
+        (Array.isArray(vehicle.documents) && vehicle.documents.some((d) => String(d).toLowerCase().includes("gps")))
+      );
   
   const [currentPhotoIdx, setCurrentPhotoIdx] = useState(0);
 
@@ -159,12 +163,22 @@ const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle, onEdit, onDelete, on
               <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-background/85 dark:bg-zinc-900/85 backdrop-blur-md border border-border/60 shadow-md pointer-events-auto">
                 <span className="text-[11px] font-extrabold tracking-wider uppercase text-foreground/90">{annee}</span>
               </div>
-              {hasGps && (
-                <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/90 text-white backdrop-blur-md border border-amber-400 shadow-md font-extrabold text-[10px] pointer-events-auto">
-                  <Radio className="w-3 h-3 animate-pulse" />
-                  <span>GPS</span>
-                </div>
-              )}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onToggleGps) onToggleGps(vehicle);
+                }}
+                title={hasGps ? "Cliquer pour désactiver le GPS" : "Cliquer pour activer le GPS sur ce véhicule"}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-full backdrop-blur-md border shadow-md font-extrabold text-[10px] pointer-events-auto transition-all active:scale-95 cursor-pointer ${
+                  hasGps 
+                    ? "bg-amber-500/90 hover:bg-amber-600 text-white border-amber-400" 
+                    : "bg-background/80 hover:bg-amber-500/20 text-muted-foreground hover:text-amber-500 border-border/60 hover:border-amber-500/40 opacity-70 hover:opacity-100"
+                }`}
+              >
+                <Radio className={`w-3 h-3 ${hasGps ? "animate-pulse" : ""}`} />
+                <span>{hasGps ? "GPS" : "+ GPS"}</span>
+              </button>
             </div>
             
             <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full backdrop-blur-md border shadow-md font-bold text-xs tracking-wide ${theme.badgeBg} pointer-events-auto`}>
