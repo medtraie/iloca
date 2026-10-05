@@ -119,7 +119,7 @@ const Contracts: React.FC = () => {
   }
 
   return (
-    <div className="w-full max-w-[1700px] mx-auto px-3 sm:px-6 lg:px-8 space-y-6 pb-24">
+    <div className="w-full space-y-6 pb-24 px-1 sm:px-2 md:px-3">
       {/* 2026 Fleet Operations Cockpit Header */}
       <motion.div
         className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-5 sm:p-7 rounded-3xl bg-gradient-to-r from-card via-card/90 to-background border border-border/60 shadow-xs relative overflow-hidden"

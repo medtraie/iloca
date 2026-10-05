@@ -117,7 +117,7 @@ function ProtectedLayout() {
         <AppSidebar />
         <SidebarInset className="flex flex-col min-w-0 flex-1 overflow-hidden">
           <TopHeader />
-          <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)]">
+          <main className="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-3 md:p-4 pb-[calc(env(safe-area-inset-bottom,0px)+2rem)]">
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={location.pathname}
