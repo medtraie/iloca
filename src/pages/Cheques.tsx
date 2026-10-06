@@ -25,6 +25,10 @@ import { useRepairs } from "@/hooks/useRepairs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { motion } from "framer-motion";
 import { applySavedViewPreset, computeChequeStats, getDelayBucket, getDelayDays, getPriorityLevel, getRiskScore, isPendingStatus, SavedViewId } from "@/utils/chequeUtils";
+import ChequeStatsCards from "@/components/ChequeStatsCards";
+import ChequesFilter from "@/components/ChequesFilter";
+import ChequesTable, { CheckRecord } from "@/components/ChequesTable";
+import ChequesKanban from "@/components/ChequesKanban";
 
 interface CheckRecord extends Payment {
   sourceType: "contrat" | "reparation";
@@ -648,8 +652,9 @@ const Cheques = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background p-3 sm:p-6 pb-24 safe-pt safe-pb max-w-7xl mx-auto space-y-6">
+    <div className="w-full min-h-screen p-2 sm:p-4 lg:p-6 pb-24 space-y-6 transition-all bg-gradient-to-b from-background via-background/95 to-background safe-pt safe-pb">
       <div className="space-y-6">
+        {/* Top Header Card */}
         <motion.div
           className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 sm:p-7 rounded-3xl bg-gradient-to-r from-card via-card/90 to-background border border-border/60 shadow-xs relative overflow-hidden"
           initial={{ opacity: 0, y: 10 }}
@@ -716,162 +721,112 @@ const Cheques = () => {
           </div>
         </motion.div>
 
-        <motion.div
-          className="grid gap-4 md:grid-cols-2 xl:grid-cols-6"
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.02 }}
-        >
-          <Card className="border-primary/20 bg-primary/5">
-            <CardHeader className="pb-3"><CardTitle className="text-sm font-medium">Total chèques</CardTitle></CardHeader>
-            <CardContent><div className="text-2xl font-black">{checkPayments.length}</div><p className="text-xs text-muted-foreground mt-1">dossiers suivis</p></CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-sm font-medium">Direction</CardTitle></CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-1 text-emerald-700 font-bold"><ArrowDownLeft className="h-4 w-4" />{checkPayments.filter((c) => c.checkDirection === "reçu").length}</div>
-                <div className="flex items-center gap-1 text-indigo-700 font-bold"><ArrowUpRight className="h-4 w-4" />{checkPayments.filter((c) => c.checkDirection === "envoyé").length}</div>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">reçus / envoyés</p>
-            </CardContent>
-          </Card>
-          <Card><CardHeader className="pb-3"><CardTitle className="text-sm font-medium">Montant total</CardTitle></CardHeader><CardContent><div className="text-2xl font-black text-primary">{stats.totalAmount.toLocaleString()} MAD</div></CardContent></Card>
-          <Card className="border-amber-200 bg-amber-50/60"><CardHeader className="pb-3"><CardTitle className="text-sm font-medium">À encaisser</CardTitle></CardHeader><CardContent><div className="text-2xl font-black text-amber-700">{stats.pendingAmount.toLocaleString()} MAD</div></CardContent></Card>
-          <Card className="border-red-200 bg-red-50/60"><CardHeader className="pb-3"><CardTitle className="text-sm font-medium">Retournés</CardTitle></CardHeader><CardContent><div className="text-2xl font-black text-red-700">{stats.returnedAmount.toLocaleString()} MAD</div></CardContent></Card>
-          <Card className="border-emerald-200 bg-emerald-50/60"><CardHeader className="pb-3"><CardTitle className="text-sm font-medium">Taux d'encaissement</CardTitle></CardHeader><CardContent><div className="text-2xl font-black text-emerald-700">{Math.round(stats.recoveryRate)}%</div><p className="text-xs text-muted-foreground mt-1">{stats.dueTodayCount} aujourd'hui • {stats.next3Count} sous 3 jours</p></CardContent></Card>
-        </motion.div>
+        {/* 2026 Telemetry Stats Cards */}
+        <ChequeStatsCards
+          totalCount={checkPayments.length}
+          receivedCount={checkPayments.filter((c) => c.checkDirection === "reçu").length}
+          sentCount={checkPayments.filter((c) => c.checkDirection === "envoyé").length}
+          stats={stats}
+          onFilterClick={(filterId) => {
+            if (filterId === "returned") applySavedView("retournes");
+            if (filterId === "pending") applySavedView("urgents");
+            if (filterId === "settled") applySavedView("encaisses");
+            if (filterId === "total") applySavedView("all");
+          }}
+        />
 
-        <motion.div
-          className="grid grid-cols-1 lg:grid-cols-3 gap-4"
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.03 }}
-        >
-          <Card className="lg:col-span-2">
-            <CardHeader><CardTitle className="flex items-center gap-2"><ShieldAlert className="h-5 w-5" />Légende SLA</CardTitle></CardHeader>
-            <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-              <div className="rounded border border-red-200 bg-red-50 px-3 py-2">Critique: Retourné / Retard</div>
-              <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2">Élevé: Aujourd'hui / J-3</div>
-              <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2">Moyen: J-7</div>
-              <div className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2">Traité: Encaissé</div>
+        {/* SLA & Smart Alerts Panel */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <Card className="lg:col-span-2 rounded-3xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-xs">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base font-bold">
+                <ShieldAlert className="h-4 w-4 text-primary" />
+                Légende SLA & Priorités d'Encaissement
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+              <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-3 text-red-700 dark:text-red-300 font-semibold">
+                <p className="font-bold text-xs">Critique</p>
+                <p className="text-[11px] opacity-80 mt-0.5">Retourné / Retard</p>
+              </div>
+              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-amber-700 dark:text-amber-300 font-semibold">
+                <p className="font-bold text-xs">Élevé</p>
+                <p className="text-[11px] opacity-80 mt-0.5">Aujourd'hui / J-3</p>
+              </div>
+              <div className="rounded-2xl border border-blue-500/30 bg-blue-500/10 p-3 text-blue-700 dark:text-blue-300 font-semibold">
+                <p className="font-bold text-xs">Moyen</p>
+                <p className="text-[11px] opacity-80 mt-0.5">Échéance J-7</p>
+              </div>
+              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-emerald-700 dark:text-emerald-300 font-semibold">
+                <p className="font-bold text-xs">Traité</p>
+                <p className="text-[11px] opacity-80 mt-0.5">Encaissé avec succès</p>
+              </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2"><BellRing className="h-5 w-5" />Alertes intelligentes</CardTitle></CardHeader>
+
+          <Card className="rounded-3xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-xs">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base font-bold">
+                <BellRing className="h-4 w-4 text-amber-500" />
+                Alertes & Escalade
+              </CardTitle>
+            </CardHeader>
             <CardContent className="space-y-3">
-              <div className="text-sm text-muted-foreground">J-3/J-7 automatiques et escalade.</div>
-              <div className="space-y-2">
-                <Label>Seuil escalade (jours)</Label>
-                <Input type="number" min={1} value={escalationDays} onChange={(event) => setEscalationDays(Math.max(1, Number(event.target.value) || 1))} />
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-muted-foreground">Seuil d'escalade (jours de retard)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={escalationDays}
+                  onChange={(event) => setEscalationDays(Math.max(1, Number(event.target.value) || 1))}
+                  className="rounded-xl h-9 text-xs font-bold border-border/60"
+                />
               </div>
-              <p className="text-xs text-muted-foreground">Retard actuel: {stats.overdueCount} chèque(s)</p>
+              <p className="text-xs font-bold text-red-500">
+                ⚠️ {stats.overdueCount} chèque(s) dépassent le délai limite
+              </p>
             </CardContent>
           </Card>
-        </motion.div>
+        </div>
 
-        <motion.div className="flex flex-wrap items-center gap-2" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.04 }}>
-          {roleViews[selectedRole].map((view) => (
-            <Button key={view.id} variant={activeSavedView === view.id ? "default" : "outline"} size="sm" onClick={() => applySavedView(view.id)}>
-              {view.label}
-            </Button>
-          ))}
-        </motion.div>
-
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.05 }}>
-          <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2"><Filter className="h-5 w-5" />Filtres, tri et colonnes</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-4 xl:grid-cols-8">
-                <div className="space-y-2 md:col-span-2">
-                  <Label>Rechercher</Label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Nom, référence, contrat, client..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Filtre par jour</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-start text-left font-normal"><CalendarIcon className="mr-2 h-4 w-4" />{filterDate ? format(filterDate, "PPP", { locale: fr }) : "Sélectionner"}</Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={filterDate} onSelect={(date) => { setFilterDate(date); setStartDate(undefined); setEndDate(undefined); }} initialFocus /></PopoverContent>
-                  </Popover>
-                </div>
-                <div className="space-y-2">
-                  <Label>Période (Début)</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-start text-left font-normal"><CalendarIcon className="mr-2 h-4 w-4" />{startDate ? format(startDate, "dd/MM/yyyy") : "Début"}</Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={startDate} onSelect={(date) => { setStartDate(date); setFilterDate(undefined); }} initialFocus /></PopoverContent>
-                  </Popover>
-                </div>
-                <div className="space-y-2">
-                  <Label>Période (Fin)</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-start text-left font-normal"><CalendarIcon className="mr-2 h-4 w-4" />{endDate ? format(endDate, "dd/MM/yyyy") : "Fin"}</Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={endDate} onSelect={(date) => { setEndDate(date); setFilterDate(undefined); }} disabled={(date) => startDate ? date < startDate : false} initialFocus /></PopoverContent>
-                  </Popover>
-                </div>
-                <div className="space-y-2"><Label>Direction</Label><Select value={directionFilter} onValueChange={setDirectionFilter}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="reçu">Reçu</SelectItem><SelectItem value="envoyé">Envoyé</SelectItem></SelectContent></Select></div>
-                <div className="space-y-2"><Label>Statut</Label><Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="pending">En attente</SelectItem><SelectItem value="encaissé">Encaissé</SelectItem><SelectItem value="non encaissé">Non encaissé</SelectItem><SelectItem value="partiellement encaissé">Partiellement encaissé</SelectItem><SelectItem value="retourné">Retourné</SelectItem></SelectContent></Select></div>
-                <div className="space-y-2"><Label>Origine</Label><Select value={sourceFilter} onValueChange={setSourceFilter}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Toutes</SelectItem><SelectItem value="contrat">Contrats</SelectItem><SelectItem value="reparation">Réparations</SelectItem></SelectContent></Select></div>
-                <div className="space-y-2"><Label>Délai</Label><Select value={delayFilter} onValueChange={setDelayFilter}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="overdue">En retard</SelectItem><SelectItem value="today">Aujourd'hui</SelectItem><SelectItem value="next3">3 prochains jours</SelectItem><SelectItem value="next7">7 prochains jours</SelectItem></SelectContent></Select></div>
-              </div>
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="space-y-2"><Label>Tri primaire</Label><Select value={sortPrimary} onValueChange={(value: SortKey) => setSortPrimary(value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="priority">Priorité</SelectItem><SelectItem value="depositDate">Date encaissement</SelectItem><SelectItem value="amount">Montant</SelectItem><SelectItem value="risk">Risque</SelectItem><SelectItem value="delay">Retard</SelectItem><SelectItem value="status">Statut</SelectItem></SelectContent></Select></div>
-                <div className="space-y-2"><Label>Tri secondaire</Label><Select value={sortSecondary} onValueChange={(value: SortKey) => setSortSecondary(value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="priority">Priorité</SelectItem><SelectItem value="depositDate">Date encaissement</SelectItem><SelectItem value="amount">Montant</SelectItem><SelectItem value="risk">Risque</SelectItem><SelectItem value="delay">Retard</SelectItem><SelectItem value="status">Statut</SelectItem></SelectContent></Select></div>
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2"><Columns3 className="h-4 w-4" />Colonnes visibles</Label>
-                  <div className="rounded-md border p-2 max-h-28 overflow-y-auto space-y-1">
-                    {allColumns.map((column) => (
-                      <div className="flex items-center gap-2" key={column.key}>
-                        <Checkbox checked={visibleColumns.includes(column.key)} onCheckedChange={() => toggleColumn(column.key)} />
-                        <span className="text-xs">{column.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <div className="mt-4 flex items-center justify-between gap-3">
-                <p className="text-sm text-muted-foreground">{activeFilterCount} filtre(s) actif(s)</p>
-                <Button variant="outline" onClick={resetFilters}>Réinitialiser</Button>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.06 }}>
-          <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2"><TrendingUp className="h-5 w-5" />Prévision de trésorerie (chèques à venir)</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
+        {/* Forecast & Bulk Actions Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <Card className="rounded-3xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-xs">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base font-bold">
+                <TrendingUp className="h-4 w-4 text-primary" />
+                Prévision Trésorerie (7 jours)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 max-h-48 overflow-y-auto">
               {forecastRows.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Aucun flux prévisionnel sur la période.</p>
+                <p className="text-xs text-muted-foreground py-4 text-center font-medium">
+                  Aucun flux prévisionnel sur la période.
+                </p>
               ) : (
                 forecastRows.map((row) => (
-                  <div key={row.date} className="flex items-center justify-between rounded border p-2">
-                    <span className="text-sm">{format(new Date(row.date), "dd MMM yyyy", { locale: fr })}</span>
-                    <span className="font-semibold">{row.amount.toLocaleString()} MAD</span>
+                  <div key={row.date} className="flex items-center justify-between rounded-xl border border-border/40 bg-muted/20 p-2.5 text-xs">
+                    <span className="font-semibold text-muted-foreground">{format(new Date(row.date), "dd MMM yyyy", { locale: fr })}</span>
+                    <span className="font-black text-primary">{row.amount.toLocaleString()} MAD</span>
                   </div>
                 ))
               )}
             </CardContent>
           </Card>
-        </motion.div>
 
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.07 }}>
-          <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2"><Send className="h-5 w-5" />Actions groupées ({selectedChecks.length})</CardTitle></CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-5">
-              <div className="space-y-2">
-                <Label>Statut</Label>
+          <Card className="lg:col-span-2 rounded-3xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-xs">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base font-bold">
+                <Send className="h-4 w-4 text-primary" />
+                Actions Groupées ({selectedChecks.length} chèque(s) sélectionné(s))
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 items-end pt-1">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-muted-foreground">Statut</Label>
                 <Select value={bulkStatus} onValueChange={(value: CheckDepositStatus) => setBulkStatus(value)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
+                  <SelectTrigger className="h-9 rounded-xl border-border/60 text-xs font-bold"><SelectValue /></SelectTrigger>
+                  <SelectContent className="rounded-xl">
                     <SelectItem value="non encaissé">Non encaissé</SelectItem>
                     <SelectItem value="partiellement encaissé">Partiellement encaissé</SelectItem>
                     <SelectItem value="encaissé">Encaissé</SelectItem>
@@ -879,231 +834,99 @@ const Cheques = () => {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2"><Label>Date d'encaissement</Label><Input type="date" value={bulkDepositDate} onChange={(e) => setBulkDepositDate(e.target.value)} /></div>
-              <div className="space-y-2"><Label>Montant partiel</Label><Input type="number" min="0" step="0.01" value={bulkPartialAmount} onChange={(e) => setBulkPartialAmount(e.target.value)} /></div>
-              <div className="space-y-2"><Label>Motif retour</Label><Input value={bulkReturnReason} onChange={(e) => setBulkReturnReason(e.target.value)} placeholder="Motif si retourné" /></div>
-              <div className="flex items-end"><Button className="w-full" onClick={applyBulkActions}>Appliquer</Button></div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-muted-foreground">Date d'encaissement</Label>
+                <Input type="date" value={bulkDepositDate} onChange={(e) => setBulkDepositDate(e.target.value)} className="h-9 rounded-xl border-border/60 text-xs font-bold" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-muted-foreground">Montant partiel</Label>
+                <Input type="number" min="0" step="0.01" value={bulkPartialAmount} onChange={(e) => setBulkPartialAmount(e.target.value)} className="h-9 rounded-xl border-border/60 text-xs font-bold" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-muted-foreground">Motif retour</Label>
+                <Input value={bulkReturnReason} onChange={(e) => setBulkReturnReason(e.target.value)} placeholder="Motif si retourné" className="h-9 rounded-xl border-border/60 text-xs font-bold" />
+              </div>
+              <div>
+                <Button className="w-full h-9 rounded-xl font-bold bg-primary text-primary-foreground hover:bg-primary/90" onClick={applyBulkActions}>
+                  Appliquer
+                </Button>
+              </div>
             </CardContent>
           </Card>
-        </motion.div>
+        </div>
 
+        {/* Modular Filter Bar */}
+        <ChequesFilter
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          filterDate={filterDate}
+          onFilterDateChange={setFilterDate}
+          startDate={startDate}
+          onStartDateChange={setStartDate}
+          endDate={endDate}
+          onEndDateChange={setEndDate}
+          directionFilter={directionFilter}
+          onDirectionChange={setDirectionFilter}
+          statusFilter={statusFilter}
+          onStatusChange={setStatusFilter}
+          sourceFilter={sourceFilter}
+          onSourceChange={setSourceFilter}
+          delayFilter={delayFilter}
+          onDelayChange={setDelayFilter}
+          sortPrimary={sortPrimary}
+          onSortPrimaryChange={(val) => setSortPrimary(val)}
+          sortSecondary={sortSecondary}
+          onSortSecondaryChange={(val) => setSortSecondary(val)}
+          visibleColumns={visibleColumns}
+          onToggleColumn={toggleColumn}
+          activeSavedView={activeSavedView}
+          onApplySavedView={applySavedView}
+          roleViews={roleViews[selectedRole]}
+          allColumns={allColumns}
+          activeFilterCount={activeFilterCount}
+          onResetFilters={resetFilters}
+        />
+
+        {/* View Mode: Kanban or Table */}
         {viewMode === "kanban" ? (
-          <motion.div className="grid gap-4 lg:grid-cols-4" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.08 }}>
-            {[
-              { key: "aEncaisser", title: "À encaisser", data: kanbanGroups.aEncaisser },
-              { key: "aujourdHui", title: "Aujourd'hui", data: kanbanGroups.aujourdHui },
-              { key: "enRetard", title: "En retard", data: kanbanGroups.enRetard },
-              { key: "encaisses", title: "Encaissés", data: kanbanGroups.encaisses }
-            ].map((column) => (
-              <Card key={column.key}>
-                <CardHeader><CardTitle className="text-base">{column.title} ({column.data.length})</CardTitle></CardHeader>
-                <CardContent className="space-y-3">
-                  {column.data.slice(0, 15).map((check) => (
-                    <div key={check.id} className="rounded border p-3 space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold">{check.checkReference || "-"}</p>
-                          <p className="text-xs text-muted-foreground">{check.customerName}</p>
-                        </div>
-                        <Badge className={statusLabelClass[check.checkDepositStatus || "non encaissé"]}>{check.checkDepositStatus || "non encaissé"}</Badge>
-                      </div>
-                      <div className="text-xs text-muted-foreground">{check.amount.toLocaleString()} MAD • score {check.riskScore}</div>
-                      {renderTimeline(check)}
-                    </div>
-                  ))}
-                  {column.data.length === 0 && <p className="text-sm text-muted-foreground">Aucun élément</p>}
-                </CardContent>
-              </Card>
-            ))}
-          </motion.div>
-        ) : isMobile ? (
-          <motion.div className="space-y-3" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.08 }}>
-            {filteredChecks.length === 0 ? (
-              <Card><CardContent className="py-8 text-center text-muted-foreground">Aucun chèque trouvé</CardContent></Card>
-            ) : (
-              filteredChecks.map((check) => {
-                const priority = getPriorityLevel(check);
-                const status = check.checkDepositStatus || "non encaissé";
-                const delayDays = getDelayDays(check);
-                return (
-                  <Card key={check.id}>
-                    <CardContent className="p-4 space-y-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="space-y-1">
-                          <p className="font-semibold text-sm">{check.checkName || "Bénéficiaire inconnu"}</p>
-                          <div className="flex flex-wrap gap-1 items-center">
-                            <Badge variant="outline" className="text-[10px]">{check.sourceType === "reparation" ? "Réparation" : "Contrat"}</Badge>
-                            <Badge className={cn("text-[10px]", check.checkDirection === "reçu" ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-indigo-100 text-indigo-700 border-indigo-200")}>
-                              {check.checkDirection || "reçu"}
-                            </Badge>
-                            <Badge className={cn("text-[10px]", priorityLabelClass[priority])}>{priority}</Badge>
-                          </div>
-                        </div>
-                        <Badge className={cn("text-xs", statusLabelClass[status])}>{status}</Badge>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 text-xs border-t border-b py-2">
-                        <div>
-                          <span className="text-muted-foreground block">N° chèque:</span>
-                          <span className="font-medium">{check.checkReference || "-"}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block">Contrat:</span>
-                          <span className="font-medium">{check.contractNumber}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block">Date chèque:</span>
-                          <span className="font-medium">{format(new Date(check.paymentDate), "dd/MM/yyyy")}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block">Encaissement:</span>
-                          <span className="font-medium">{check.checkDepositDate ? format(new Date(check.checkDepositDate), "dd/MM/yyyy") : "-"}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block">Délai:</span>
-                          <span className="font-medium">{delayDays > 0 ? `Retard ${delayDays} j` : delayDays === 0 ? "Aujourd'hui" : `J${delayDays}`}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block">Score risque:</span>
-                          <span className="font-medium">{check.riskScore}/100</span>
-                        </div>
-                      </div>
-
-                      <div className="text-sm font-bold text-right text-primary">
-                        {check.amount.toLocaleString()} MAD
-                      </div>
-
-                      {renderTimeline(check)}
-
-                      <div className="flex items-center justify-between pt-2 border-t text-xs">
-                        <div className="flex items-center gap-1">
-                          <span className="text-muted-foreground mr-1">Relance:</span>
-                          <Button variant="outline" size="sm" className="h-7 w-7 p-0 text-[10px]" disabled={!check.canEdit} onClick={() => sendRelance(check.id, "1ère")}>1</Button>
-                          <Button variant="outline" size="sm" className="h-7 w-7 p-0 text-[10px]" disabled={!check.canEdit} onClick={() => sendRelance(check.id, "2ème")}>2</Button>
-                          <Button variant="outline" size="sm" className="h-7 w-7 p-0 text-[10px]" disabled={!check.canEdit} onClick={() => sendRelance(check.id, "finale")}>F</Button>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => handleEditCheck(check)} className="h-8 px-2 text-blue-600 hover:bg-blue-50 hover:text-blue-700" title="Modifier" disabled={!check.canEdit}>
-                            <Edit className="h-3.5 w-3.5 mr-1" /> Modifier
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleDeleteCheck(check)} className="h-8 px-2 text-red-600 hover:bg-red-50 hover:text-red-700" title="Supprimer" disabled={!check.canEdit}>
-                            <Trash2 className="h-3.5 w-3.5 mr-1" /> Supprimer
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })
-            )}
-          </motion.div>
+          <ChequesKanban kanbanGroups={kanbanGroups} onEdit={handleEditCheck} />
         ) : (
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.08 }}>
-            <Card>
-              <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5" />Liste des chèques ({filteredChecks.length})</CardTitle></CardHeader>
-              <CardContent>
-                <div className="rounded-md border overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        {visibleColumns.includes("selection") && (
-                          <TableHead>
-                            <Checkbox checked={allSelectableVisibleIds.length > 0 && selectedChecks.length === allSelectableVisibleIds.length} onCheckedChange={toggleSelectAllVisible} />
-                          </TableHead>
-                        )}
-                        {visibleColumns.includes("name") && <TableHead>Nom complet</TableHead>}
-                        {visibleColumns.includes("contract") && <TableHead>N° Contrat</TableHead>}
-                        {visibleColumns.includes("source") && <TableHead>Origine</TableHead>}
-                        {visibleColumns.includes("reference") && <TableHead>Référence</TableHead>}
-                        {visibleColumns.includes("paymentDate") && <TableHead>Date chèque</TableHead>}
-                        {visibleColumns.includes("depositDate") && <TableHead>Date encaissement</TableHead>}
-                        {visibleColumns.includes("direction") && <TableHead>Direction</TableHead>}
-                        {visibleColumns.includes("status") && <TableHead>Statut</TableHead>}
-                        {visibleColumns.includes("amount") && <TableHead>Montant</TableHead>}
-                        {visibleColumns.includes("delay") && <TableHead>Délai</TableHead>}
-                        {visibleColumns.includes("priority") && <TableHead>Priorité</TableHead>}
-                        {visibleColumns.includes("risk") && <TableHead>Score risque</TableHead>}
-                        {visibleColumns.includes("timeline") && <TableHead>Timeline</TableHead>}
-                        {visibleColumns.includes("relance") && <TableHead>Relance</TableHead>}
-                        {visibleColumns.includes("actions") && <TableHead>Actions</TableHead>}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredChecks.length === 0 ? (
-                        <TableRow><TableCell colSpan={visibleColumns.length} className="text-center py-8 text-muted-foreground">Aucun chèque trouvé</TableCell></TableRow>
-                      ) : (
-                        filteredChecks.map((check) => {
-                          const priority = getPriorityLevel(check);
-                          const status = check.checkDepositStatus || "non encaissé";
-                          const delayDays = getDelayDays(check);
-                          return (
-                            <TableRow key={`${check.sourceType}-${check.id}`}>
-                              {visibleColumns.includes("selection") && (
-                                <TableCell>
-                                  <Checkbox checked={selectedChecks.includes(check.id)} onCheckedChange={() => toggleSelectOne(check.id)} disabled={!canSelect(check)} />
-                                </TableCell>
-                              )}
-                              {visibleColumns.includes("name") && <TableCell className="font-medium">{check.checkName || "-"}</TableCell>}
-                              {visibleColumns.includes("contract") && <TableCell>{check.contractNumber}</TableCell>}
-                              {visibleColumns.includes("source") && <TableCell><Badge variant="outline">{check.sourceType === "reparation" ? "Réparation" : "Contrat"}</Badge></TableCell>}
-                              {visibleColumns.includes("reference") && <TableCell>{check.checkReference || "-"}</TableCell>}
-                              {visibleColumns.includes("paymentDate") && <TableCell>{format(new Date(check.paymentDate), "dd/MM/yyyy")}</TableCell>}
-                              {visibleColumns.includes("depositDate") && <TableCell>{check.checkDepositDate ? format(new Date(check.checkDepositDate), "dd/MM/yyyy") : "-"}</TableCell>}
-                              {visibleColumns.includes("direction") && <TableCell><Badge className={check.checkDirection === "reçu" ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-indigo-100 text-indigo-700 border-indigo-200"}>{check.checkDirection || "reçu"}</Badge></TableCell>}
-                              {visibleColumns.includes("status") && <TableCell><Badge className={statusLabelClass[status]}>{status}</Badge></TableCell>}
-                              {visibleColumns.includes("amount") && <TableCell className="font-semibold">{check.amount.toLocaleString()} MAD</TableCell>}
-                              {visibleColumns.includes("delay") && <TableCell>{delayDays > 0 ? `Retard ${delayDays} j` : delayDays === 0 ? "Aujourd'hui" : `J${delayDays}`}</TableCell>}
-                              {visibleColumns.includes("priority") && <TableCell><Badge className={priorityLabelClass[priority]}>{priority}</Badge></TableCell>}
-                              {visibleColumns.includes("risk") && <TableCell><Badge variant="outline">{check.riskScore}/100</Badge></TableCell>}
-                              {visibleColumns.includes("timeline") && <TableCell>{renderTimeline(check)}</TableCell>}
-                              {visibleColumns.includes("relance") && (
-                                <TableCell>
-                                  <div className="flex items-center gap-1">
-                                    <Button variant="outline" size="sm" className="h-7 px-2" disabled={!check.canEdit} onClick={() => sendRelance(check.id, "1ère")}>1</Button>
-                                    <Button variant="outline" size="sm" className="h-7 px-2" disabled={!check.canEdit} onClick={() => sendRelance(check.id, "2ème")}>2</Button>
-                                    <Button variant="outline" size="sm" className="h-7 px-2" disabled={!check.canEdit} onClick={() => sendRelance(check.id, "finale")}>F</Button>
-                                  </div>
-                                </TableCell>
-                              )}
-                              {visibleColumns.includes("actions") && (
-                                <TableCell>
-                                  <div className="flex items-center gap-2">
-                                    <Button variant="ghost" size="sm" onClick={() => handleEditCheck(check)} className="h-8 w-8 p-0 hover:bg-blue-50 hover:text-blue-700" title="Modifier" disabled={!check.canEdit}><Edit className="h-4 w-4" /></Button>
-                                    <Button variant="ghost" size="sm" onClick={() => handleDeleteCheck(check)} className="h-8 w-8 p-0 hover:bg-red-50 hover:text-red-700" title="Supprimer" disabled={!check.canEdit}><Trash2 className="h-4 w-4" /></Button>
-                                  </div>
-                                </TableCell>
-                              )}
-                            </TableRow>
-                          );
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+          <ChequesTable
+            checks={filteredChecks}
+            visibleColumns={visibleColumns}
+            selectedChecks={selectedChecks}
+            allSelectableVisibleIds={allSelectableVisibleIds}
+            onToggleSelectAll={toggleSelectAllVisible}
+            onToggleSelectOne={toggleSelectOne}
+            onEdit={handleEditCheck}
+            onDelete={handleDeleteCheck}
+            onSendRelance={sendRelance}
+            isMobile={isMobile}
+          />
         )}
 
         <CheckEditDialog open={editDialogOpen} onOpenChange={setEditDialogOpen} check={editingCheck} onSave={handleSaveCheck} />
+        
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-          <AlertDialogContent>
+          <AlertDialogContent className="rounded-3xl border-border/60">
             <AlertDialogHeader>
-              <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+              <AlertDialogTitle className="font-bold">Confirmer la suppression</AlertDialogTitle>
               <AlertDialogDescription>
                 Êtes-vous sûr de vouloir supprimer ce chèque ? Cette action est irréversible.
                 {checkToDelete && (
-                  <div className="mt-4 p-3 bg-muted rounded-md">
-                    <p className="font-medium">{checkToDelete.checkName}</p>
-                    <p className="text-sm text-muted-foreground">Référence: {checkToDelete.checkReference}</p>
-                    <p className="text-sm text-muted-foreground">Montant: {checkToDelete.amount.toLocaleString()} MAD</p>
+                  <div className="mt-4 p-3.5 bg-muted/40 rounded-2xl border border-border/50">
+                    <p className="font-bold text-foreground">{checkToDelete.checkName}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Référence: {checkToDelete.checkReference}</p>
+                    <p className="text-xs font-black text-primary mt-0.5">Montant: {checkToDelete.amount.toLocaleString()} MAD</p>
                   </div>
                 )}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Annuler</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmDeleteCheck} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Supprimer</AlertDialogAction>
+              <AlertDialogCancel className="rounded-xl font-bold">Annuler</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDeleteCheck} className="rounded-xl font-bold bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Supprimer
+              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
