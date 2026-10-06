@@ -12,6 +12,7 @@ import ExpensesTable from "@/components/ExpensesTable";
 import MonthlyExpenseChart from "@/components/MonthlyExpenseChart";
 import ExpensesFilter from "@/components/ExpensesFilter";
 import ExpenseTypePieChart from "@/components/ExpenseTypePieChart";
+import ExpenseStatsCards from "@/components/ExpenseStatsCards";
 import { ResponsiveContainer, BarChart, XAxis, YAxis, Tooltip, Bar, LineChart, Line } from "recharts";
 import VehicleSelector from "@/components/VehicleSelector";
 import { motion, useReducedMotion } from "framer-motion";
@@ -490,7 +491,7 @@ const Expenses = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background p-3 sm:p-6 pb-24 safe-pt safe-pb max-w-7xl mx-auto space-y-6">
+    <div className="w-full min-h-screen p-2 sm:p-4 lg:p-6 pb-24 space-y-6 transition-all bg-gradient-to-b from-background via-background/95 to-background safe-pt safe-pb">
       <div>
         <motion.div
           initial={shouldReduceMotion ? false : { opacity: 0, y: 12 }}
@@ -598,87 +599,59 @@ const Expenses = () => {
           </div>
         )}
 
-        <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
-          <Card className="xl:col-span-2">
+        <div className="mb-6">
+          <ExpenseStatsCards expenses={filteredExpenses} />
+        </div>
+
+        <div className="mb-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
+          <Card className="xl:col-span-2 rounded-3xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-xs">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Comparaison temporelle</CardTitle>
+              <CardTitle className="text-base font-bold flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-primary" />
+                Comparaison Temporelle
+              </CardTitle>
               <CardDescription>Comparaison du mois courant avec le mois précédent et N-1</CardDescription>
             </CardHeader>
             <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              <div className="rounded-lg border p-3">
-                <p className="text-xs text-muted-foreground">Mois courant</p>
-                <p className="text-xl font-semibold">{currentMonthTotal.toLocaleString()} DH</p>
+              <div className="rounded-2xl border border-border/50 bg-muted/20 p-3.5">
+                <p className="text-xs font-semibold text-muted-foreground">Mois courant</p>
+                <p className="text-xl font-black text-foreground mt-0.5">{currentMonthTotal.toLocaleString()} DH</p>
               </div>
-              <div className="rounded-lg border p-3">
-                <p className="text-xs text-muted-foreground">vs Mois précédent</p>
-                <p className={`text-xl font-semibold ${previousDelta >= 0 ? "text-red-600" : "text-emerald-600"}`}>
+              <div className="rounded-2xl border border-border/50 bg-muted/20 p-3.5">
+                <p className="text-xs font-semibold text-muted-foreground">vs Mois précédent</p>
+                <p className={`text-xl font-black mt-0.5 ${previousDelta >= 0 ? "text-red-500" : "text-emerald-500"}`}>
                   {previousDelta.toFixed(1)}%
                 </p>
-                <p className="text-xs text-muted-foreground">{previousMonthTotal.toLocaleString()} DH</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{previousMonthTotal.toLocaleString()} DH</p>
               </div>
-              <div className="rounded-lg border p-3">
-                <p className="text-xs text-muted-foreground">vs Même mois N-1</p>
-                <p className={`text-xl font-semibold ${yearlyDelta >= 0 ? "text-red-600" : "text-emerald-600"}`}>
+              <div className="rounded-2xl border border-border/50 bg-muted/20 p-3.5">
+                <p className="text-xs font-semibold text-muted-foreground">vs Même mois N-1</p>
+                <p className={`text-xl font-black mt-0.5 ${yearlyDelta >= 0 ? "text-red-500" : "text-emerald-500"}`}>
                   {yearlyDelta.toFixed(1)}%
                 </p>
-                <p className="text-xs text-muted-foreground">{sameMonthLastYearTotal.toLocaleString()} DH</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{sameMonthLastYearTotal.toLocaleString()} DH</p>
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="rounded-3xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-xs">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Mode KPI</CardTitle>
+              <CardTitle className="text-base font-bold">Mode KPI Dynamique</CardTitle>
+              <CardDescription>Choisir le mode d'analyse des métriques</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-2">
               <Select value={kpiMode} onValueChange={(value: "total" | "average" | "median" | "top_type") => setKpiMode(value)}>
-                <SelectTrigger>
+                <SelectTrigger className="rounded-xl border-border/60 h-11">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="total">Total</SelectItem>
-                  <SelectItem value="average">Moyenne</SelectItem>
+                <SelectContent className="rounded-xl">
+                  <SelectItem value="total">Total Cumulé</SelectItem>
+                  <SelectItem value="average">Moyenne / Dépense</SelectItem>
                   <SelectItem value="median">Médiane</SelectItem>
-                  <SelectItem value="top_type">Type dominant</SelectItem>
+                  <SelectItem value="top_type">Poste Dominant</SelectItem>
                 </SelectContent>
               </Select>
             </CardContent>
           </Card>
-        </div>
-
-        <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {statsCards.map((stat, index) => (
-            <motion.div
-              key={stat.title}
-              initial={shouldReduceMotion ? false : { opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.25, delay: index * 0.04 }}
-            >
-              <Card
-                className={`cursor-pointer border bg-gradient-to-br ${stat.panelClass}`}
-                onClick={() => {
-                  if (index === 3 && topExpenseType !== "Aucun") {
-                    setFilters((prev) => ({ ...prev, type: topExpenseType }));
-                  }
-                }}
-              >
-                <CardContent className="p-5">
-                  <div className="mb-3 flex items-center justify-between">
-                    <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
-                    <stat.icon className={`h-5 w-5 ${stat.iconClass}`} />
-                  </div>
-                  <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{stat.subtitle}</p>
-                  <div className="mt-2 h-10">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={monthlySeries}>
-                        <Line type="monotone" dataKey="amount" stroke="hsl(var(--primary))" dot={false} strokeWidth={2} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
         </div>
 
         <div className="mb-8 grid grid-cols-1 gap-6 xl:grid-cols-2">
@@ -698,9 +671,9 @@ const Expenses = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.28, delay: 0.1 }}
           >
-            <Card className="h-full border bg-card/90 shadow-sm">
+            <Card className="h-full rounded-3xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-xs">
               <CardHeader>
-                <CardTitle>
+                <CardTitle className="font-bold">
                   {selectedVehicle
                     ? `Dépenses mensuelles pour ${selectedVehicle.brand} ${selectedVehicle.model} ${selectedVehicle.year}`
                     : "Dépenses mensuelles par véhicule"}
@@ -768,9 +741,9 @@ const Expenses = () => {
         </motion.div>
 
         <div className="mb-8 grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <Card>
+          <Card className="rounded-3xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-xs">
             <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base">
+              <CardTitle className="flex items-center gap-2 text-base font-bold">
                 <AlertTriangle className="h-4 w-4 text-amber-500" />
                 Smart Alerts
               </CardTitle>
@@ -783,7 +756,7 @@ const Expenses = () => {
                   <button
                     key={alert.id}
                     type="button"
-                    className={`w-full rounded-md border p-3 text-left ${alert.level === "critical" ? "border-red-300 bg-red-50" : "border-amber-300 bg-amber-50"}`}
+                    className={`w-full rounded-2xl border p-3.5 text-left transition-all ${alert.level === "critical" ? "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300" : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"}`}
                     onClick={() => {
                       if (alert.vehicle_id) {
                         const vehicle = vehicles.find((entry) => entry.id === alert.vehicle_id) || null;
@@ -794,25 +767,25 @@ const Expenses = () => {
                       }
                     }}
                   >
-                    <p className="text-sm font-semibold">{alert.title}</p>
-                    <p className="text-xs text-muted-foreground">{alert.description}</p>
+                    <p className="text-sm font-bold">{alert.title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{alert.description}</p>
                   </button>
                 ))
               )}
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="rounded-3xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-xs">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Budget vs Actual</CardTitle>
+              <CardTitle className="text-base font-bold">Budget vs Actual</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 <div className="space-y-1">
                   <Label>Véhicule</Label>
                   <Select value={budgetForm.vehicle_id} onValueChange={(value) => setBudgetForm((prev) => ({ ...prev, vehicle_id: value }))}>
-                    <SelectTrigger><SelectValue placeholder="Choisir le véhicule" /></SelectTrigger>
-                    <SelectContent>
+                    <SelectTrigger className="rounded-xl"><SelectValue placeholder="Choisir le véhicule" /></SelectTrigger>
+                    <SelectContent className="rounded-xl">
                       {vehicles.map((vehicle) => (
                         <SelectItem key={vehicle.id} value={vehicle.id}>{vehicle.brand} {vehicle.model} {vehicle.year}</SelectItem>
                       ))}
@@ -822,8 +795,8 @@ const Expenses = () => {
                 <div className="space-y-1">
                   <Label>Type</Label>
                   <Select value={budgetForm.expense_type} onValueChange={(value) => setBudgetForm((prev) => ({ ...prev, expense_type: value }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
+                    <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                    <SelectContent className="rounded-xl">
                       <SelectItem value="all">Tous types</SelectItem>
                       <SelectItem value="vignette">Vignette</SelectItem>
                       <SelectItem value="assurance">Assurance</SelectItem>
@@ -836,23 +809,23 @@ const Expenses = () => {
                 </div>
                 <div className="space-y-1">
                   <Label>Mois</Label>
-                  <Input type="month" value={budgetForm.month_year} onChange={(event) => setBudgetForm((prev) => ({ ...prev, month_year: event.target.value }))} />
+                  <Input type="month" className="rounded-xl" value={budgetForm.month_year} onChange={(event) => setBudgetForm((prev) => ({ ...prev, month_year: event.target.value }))} />
                 </div>
                 <div className="space-y-1">
                   <Label>Budget (DH)</Label>
-                  <Input type="number" value={budgetForm.budget_amount} onChange={(event) => setBudgetForm((prev) => ({ ...prev, budget_amount: event.target.value }))} />
+                  <Input type="number" className="rounded-xl" value={budgetForm.budget_amount} onChange={(event) => setBudgetForm((prev) => ({ ...prev, budget_amount: event.target.value }))} />
                 </div>
               </div>
-              <Button onClick={handleBudgetSave} className="w-full">Enregistrer budget</Button>
+              <Button onClick={handleBudgetSave} className="w-full rounded-2xl font-bold">Enregistrer budget</Button>
               <div className="space-y-2">
                 {budgetRows.slice(0, 5).map((row) => {
                   const vehicle = vehicles.find((entry) => entry.id === row.vehicle_id);
-                  const ratioClass = row.ratio > 100 ? "text-red-600" : row.ratio > 80 ? "text-amber-600" : "text-emerald-600";
+                  const ratioClass = row.ratio > 100 ? "text-red-500 font-black" : row.ratio > 80 ? "text-amber-500 font-bold" : "text-emerald-500 font-bold";
                   return (
-                    <div key={row.id} className="rounded-md border p-2 text-sm">
+                    <div key={row.id} className="rounded-xl border border-border/50 bg-muted/20 p-2.5 text-sm">
                       <div className="flex items-center justify-between">
-                        <p className="font-medium">{vehicle ? `${vehicle.brand} ${vehicle.model}` : row.vehicle_id}</p>
-                        <p className={`font-semibold ${ratioClass}`}>{row.ratio.toFixed(1)}%</p>
+                        <p className="font-bold">{vehicle ? `${vehicle.brand} ${vehicle.model}` : row.vehicle_id}</p>
+                        <p className={`text-xs ${ratioClass}`}>{row.ratio.toFixed(1)}%</p>
                       </div>
                       <p className="text-xs text-muted-foreground">
                         Budget {row.budget_amount.toLocaleString()} DH • Réel {row.actual.toLocaleString()} DH
@@ -870,7 +843,7 @@ const Expenses = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.28, delay: 0.18 }}
         >
-          <Card className="border bg-card/95 shadow-sm">
+          <Card className="rounded-3xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-xs overflow-hidden">
             <CardHeader className="pb-3">
               <CardTitle>Liste des Dépenses</CardTitle>
               <CardDescription>

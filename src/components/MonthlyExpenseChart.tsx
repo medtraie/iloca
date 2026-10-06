@@ -1,15 +1,17 @@
 
+import React from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { MonthlyExpense } from "@/types/expense";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
+import { BarChart3 } from "lucide-react";
 
 interface MonthlyExpenseChartProps {
   monthlyExpenses: MonthlyExpense[];
 }
 
-const expenseTypeLabels = {
+const expenseTypeLabels: Record<string, string> = {
   vignette: "Vignette",
   assurance: "Assurance",
   visite_technique: "Visite technique",
@@ -21,18 +23,21 @@ const expenseTypeLabels = {
 const MonthlyExpenseChart = ({ monthlyExpenses }: MonthlyExpenseChartProps) => {
   if (!monthlyExpenses || monthlyExpenses.length === 0) {
     return (
-      <Card>
+      <Card className="rounded-3xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-sm">
         <CardHeader>
-          <CardTitle>Distribution des Charges Mensuelles</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-base font-black flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-primary" />
+            Distribution des Charges Mensuelles
+          </CardTitle>
+          <CardDescription className="text-xs font-medium">
             Affichage des charges réparties par mois selon le type
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-center h-64 text-gray-500">
-            <div className="text-center">
-              <p className="text-lg font-medium">Aucune donnée de charges mensuelles</p>
-              <p className="text-sm text-gray-400 mt-2">Ajoutez des charges pour afficher le graphique</p>
+          <div className="flex items-center justify-center h-64 text-muted-foreground">
+            <div className="text-center space-y-1">
+              <p className="text-sm font-black text-foreground">Aucune donnée de charges mensuelles</p>
+              <p className="text-xs text-muted-foreground font-medium">Ajoutez des charges pour afficher le graphique</p>
             </div>
           </div>
         </CardContent>
@@ -45,7 +50,6 @@ const MonthlyExpenseChart = ({ monthlyExpenses }: MonthlyExpenseChartProps) => {
     try {
       const expenseDate = new Date(expense.month_year);
       if (isNaN(expenseDate.getTime())) {
-        console.warn('Invalid date in monthly expense:', expense.month_year);
         return acc;
       }
 
@@ -69,7 +73,6 @@ const MonthlyExpenseChart = ({ monthlyExpenses }: MonthlyExpenseChartProps) => {
       const amount = Number(expense.allocated_amount) || 0;
       acc[monthKey].total += amount;
 
-      // Add to specific expense type (including reparation)
       if (expense.expense_type && expense.expense_type in acc[monthKey]) {
         acc[monthKey][expense.expense_type] += amount;
       }
@@ -86,55 +89,71 @@ const MonthlyExpenseChart = ({ monthlyExpenses }: MonthlyExpenseChartProps) => {
     .slice(-12);
 
   const formatTooltipValue = (value: number, name: string) => [
-    `${value.toLocaleString()} DH`,
-    expenseTypeLabels[name as keyof typeof expenseTypeLabels] || name
+    `${Number(value || 0).toLocaleString()} DH`,
+    expenseTypeLabels[name] || name
   ];
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Distribution des Charges Mensuelles</CardTitle>
-        <CardDescription>
-          Affichage des charges réparties sur les 12 derniers mois par type ({sortedData.length} mois)
-        </CardDescription>
+    <Card className="rounded-3xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-sm overflow-hidden">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-base font-black flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-primary" />
+              Distribution des Charges Mensuelles
+            </CardTitle>
+            <CardDescription className="text-xs font-medium mt-0.5">
+              Affichage des charges réparties sur les 12 derniers mois par type ({sortedData.length} mois)
+            </CardDescription>
+          </div>
+        </div>
       </CardHeader>
-      <CardContent>
-        <ResponsiveContainer width="100%" height={400}>
-          <BarChart data={sortedData} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
-            <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+      <CardContent className="pt-2">
+        <ResponsiveContainer width="100%" height={360}>
+          <BarChart data={sortedData} margin={{ top: 20, right: 20, left: 10, bottom: 60 }}>
+            <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
             <XAxis
               dataKey="month"
-              tick={{ fontSize: 11 }}
+              tick={{ fontSize: 11, fontWeight: 700 }}
               interval={0}
-              angle={-45}
+              angle={-30}
               textAnchor="end"
-              height={80}
-              stroke="#6B7280"
+              height={50}
+              stroke="currentColor"
+              className="text-muted-foreground"
             />
             <YAxis
-              tick={{ fontSize: 11 }}
-              stroke="#6B7280"
-              tickFormatter={(value) => `${value.toLocaleString()}`}
+              tick={{ fontSize: 11, fontWeight: 700 }}
+              stroke="currentColor"
+              className="text-muted-foreground"
+              tickFormatter={(value) => `${Number(value).toLocaleString()}`}
             />
             <Tooltip
               formatter={formatTooltipValue}
               labelFormatter={(label) => `Mois: ${label}`}
               contentStyle={{
-                backgroundColor: 'white',
-                border: '1px solid #E5E7EB',
-                borderRadius: '8px',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '16px',
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: '12px',
+                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)'
               }}
             />
             <Legend
-              formatter={(value) => expenseTypeLabels[value as keyof typeof expenseTypeLabels] || value}
+              formatter={(value) => (
+                <span className="text-xs font-bold text-foreground">
+                  {expenseTypeLabels[value] || value}
+                </span>
+              )}
             />
-            <Bar dataKey="vignette" stackId="a" fill="#3B82F6" />
-            <Bar dataKey="assurance" stackId="a" fill="#10B981" />
-            <Bar dataKey="visite_technique" stackId="a" fill="#F59E0B" />
-            <Bar dataKey="gps" stackId="a" fill="#8B5CF6" />
-            <Bar dataKey="credit" stackId="a" fill="#EF4444" />
-            <Bar dataKey="reparation" stackId="a" fill="#F97316" />
+            <Bar dataKey="vignette" stackId="a" fill="#3B82F6" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="assurance" stackId="a" fill="#10B981" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="visite_technique" stackId="a" fill="#F59E0B" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="gps" stackId="a" fill="#8B5CF6" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="credit" stackId="a" fill="#EF4444" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="reparation" stackId="a" fill="#F97316" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </CardContent>

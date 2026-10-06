@@ -54,15 +54,15 @@ const ExpensesTable = ({
   };
 
   const getExpenseTypeColor = (type: string) => {
-    const colors = {
-      'vignette': 'bg-blue-100 text-blue-800 border-blue-200',
-      'assurance': 'bg-green-100 text-green-800 border-green-200',
-      'visite_technique': 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      'gps': 'bg-purple-100 text-purple-800 border-purple-200',
-      'credit': 'bg-red-100 text-red-800 border-red-200',
-      'reparation': 'bg-orange-100 text-orange-800 border-orange-200'
+    const colors: Record<string, string> = {
+      'vignette': 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30',
+      'assurance': 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
+      'visite_technique': 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30',
+      'gps': 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30',
+      'credit': 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30',
+      'reparation': 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/30'
     };
-    return colors[type as keyof typeof colors] || 'bg-gray-100 text-gray-800 border-gray-200';
+    return colors[type] || 'bg-muted text-muted-foreground border-border/50';
   };
 
   const allSelected = expenses.length > 0 && selectedIds.length === expenses.length;
@@ -94,8 +94,12 @@ const ExpensesTable = ({
       sortable: true,
       render: (expense: Expense) => (
         <div className="flex items-center gap-2">
-          <Car className="h-4 w-4 text-muted-foreground" />
-          <span className="font-medium text-foreground">{getVehicleName(expense.vehicle_id)}</span>
+          <div className="p-1.5 rounded-lg bg-muted/50 border border-border/40 shrink-0">
+            <Car className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <span className="font-bold text-xs text-foreground truncate max-w-[200px]" title={getVehicleName(expense.vehicle_id)}>
+            {getVehicleName(expense.vehicle_id)}
+          </span>
         </div>
       )
     },
@@ -104,8 +108,8 @@ const ExpensesTable = ({
       label: 'Type de Charge',
       sortable: true,
       render: (expense: Expense) => (
-        <Badge className={`${getExpenseTypeColor(expense.type)} font-medium`}>
-          {expenseTypeLabels[expense.type as keyof typeof expenseTypeLabels]}
+        <Badge className={`${getExpenseTypeColor(expense.type)} font-bold text-xs px-2.5 py-0.5 rounded-xl border`}>
+          {expenseTypeLabels[expense.type as keyof typeof expenseTypeLabels] || expense.type}
         </Badge>
       )
     },
@@ -114,11 +118,9 @@ const ExpensesTable = ({
       label: 'Coût Total',
       sortable: true,
       render: (expense: Expense) => (
-        <div className="flex items-center gap-2">
-          <DollarSign className="h-4 w-4 text-green-600" />
-          <span className="font-semibold text-green-700">
-            {expense.total_cost.toLocaleString()} DH
-          </span>
+        <div className="flex items-center gap-1.5 font-mono text-sm font-black text-emerald-600 dark:text-emerald-400">
+          <DollarSign className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+          <span>{Number(expense.total_cost || 0).toLocaleString()} <span className="text-[10px] text-muted-foreground font-bold">DH</span></span>
         </div>
       )
     },
@@ -127,30 +129,26 @@ const ExpensesTable = ({
       label: 'Coût Mensuel',
       sortable: true,
       render: (expense: Expense) => (
-        <div className="flex items-center gap-2">
-          <WalletCards className="h-4 w-4 text-blue-600" />
-          <span className="font-semibold text-blue-700">
-            {expense.monthly_cost.toLocaleString()} DH
-          </span>
+        <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-blue-600 dark:text-blue-400">
+          <WalletCards className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+          <span>{Number(expense.monthly_cost || 0).toLocaleString()} <span className="text-[10px] text-muted-foreground">DH/m</span></span>
         </div>
       )
     },
     {
       key: 'start_date',
-      label: 'Période',
+      label: 'Période Validité',
       sortable: true,
       render: (expense: Expense) => (
-        <div className="flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-muted-foreground" />
-          <div className="text-sm">
-            <div className="text-foreground">
-              {format(new Date(expense.start_date), 'dd/MM/yyyy', { locale: fr })}
-            </div>
-            <div className="text-muted-foreground">à</div>
-            <div className="text-foreground">
-              {format(new Date(expense.end_date), 'dd/MM/yyyy', { locale: fr })}
-            </div>
-          </div>
+        <div className="flex items-center gap-1.5 text-xs">
+          <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <span className="font-medium text-foreground whitespace-nowrap">
+            {format(new Date(expense.start_date), 'dd/MM/yyyy', { locale: fr })}
+          </span>
+          <span className="text-muted-foreground text-[10px]">→</span>
+          <span className="font-medium text-foreground whitespace-nowrap">
+            {format(new Date(expense.end_date), 'dd/MM/yyyy', { locale: fr })}
+          </span>
         </div>
       )
     },
@@ -159,7 +157,9 @@ const ExpensesTable = ({
       label: 'Durée',
       sortable: true,
       render: (expense: Expense) => (
-        <span className="text-foreground">{expense.period_months} mois</span>
+        <span className="font-bold text-xs text-foreground px-2 py-0.5 rounded-md bg-muted/40 border border-border/40">
+          {expense.period_months} mois
+        </span>
       )
     },
     {
@@ -172,13 +172,14 @@ const ExpensesTable = ({
             variant="outline"
             size="sm"
             onClick={() => window.open(expense.document_url, '_blank')}
-            className="h-8 hover:bg-blue-50 hover:text-blue-700"
-            title="Voir le document"
+            className="h-8 rounded-xl font-bold text-xs border-border/60 hover:bg-primary/10 hover:text-primary transition-colors"
+            title="Voir le justificatif"
           >
-            <ExternalLink className="h-4 w-4" />
+            <ExternalLink className="h-3.5 w-3.5 mr-1 text-primary" />
+            Reçu
           </Button>
         ) : (
-          <span className="text-muted-foreground text-sm">Aucun</span>
+          <span className="text-muted-foreground text-xs font-medium">—</span>
         )
       )
     }
