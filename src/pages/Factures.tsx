@@ -1,8 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -12,19 +10,16 @@ import {
 } from "@/components/ui/select";
 import InvoiceForm from "@/components/InvoiceForm";
 import InvoicesTable from "@/components/InvoicesTable";
+import InvoiceStatsCards from "@/components/invoices/InvoiceStatsCards";
+import InvoiceAnalytics from "@/components/invoices/InvoiceAnalytics";
 import { motion } from "framer-motion";
 import {
   FileText,
   List,
   Sparkles,
-  AlertTriangle,
-  CheckCircle2,
-  Clock3,
   Plus,
   RefreshCcw,
-  DollarSign,
-  TrendingUp,
-  Percent,
+  BarChart3,
   Receipt
 } from "lucide-react";
 import { useInvoices } from "@/hooks/useInvoices";
@@ -37,34 +32,13 @@ const Factures: React.FC = () => {
   const [selectedRole, setSelectedRole] = useState<InvoiceRole>("Comptable");
   const { invoices } = useInvoices();
 
-  const headerStats = useMemo(() => {
-    const totalAmount = invoices.reduce((sum, invoice) => sum + (invoice.totalTTC || 0), 0);
-    const paidInvoices = invoices.filter((invoice) => invoice.status === "paid");
-    const paidAmount = paidInvoices.reduce((sum, inv) => sum + (inv.totalTTC || 0), 0);
-    const pendingCount = invoices.filter((invoice) => invoice.status === "pending").length;
-    const overdueCount = invoices.filter((invoice) => invoice.status === "overdue").length;
-    const remainingAmount = Math.max(0, totalAmount - paidAmount);
-    const recoveryRate = totalAmount > 0 ? Math.round((paidAmount / totalAmount) * 100) : 100;
-
-    return {
-      count: invoices.length,
-      totalAmount,
-      paidCount: paidInvoices.length,
-      paidAmount,
-      pendingCount,
-      overdueCount,
-      remainingAmount,
-      recoveryRate
-    };
-  }, [invoices]);
-
   const handleInvoiceCreated = () => {
     setRefreshKey((prev) => prev + 1);
     setActiveTab("list");
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background p-3 sm:p-6 pb-24 safe-pt safe-pb max-w-7xl mx-auto space-y-6">
+    <div className="w-full p-2 sm:p-4 lg:p-6 space-y-6 transition-all min-h-screen pb-24">
       {/* 2026 Enterprise Cockpit Header */}
       <motion.div
         className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 sm:p-7 rounded-3xl bg-gradient-to-r from-card via-card/90 to-background border border-border/60 shadow-xs relative overflow-hidden"
@@ -131,85 +105,12 @@ const Factures: React.FC = () => {
         </div>
       </motion.div>
 
-      {/* Telemetry Strip 2026 */}
-      <motion.div
-        className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.05 }}
-      >
-        <Card className="rounded-2xl sm:rounded-[1.75rem] border border-border/60 bg-card shadow-xs p-4 sm:p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Total Facturé TTC
-            </span>
-            <div className="p-2 rounded-xl bg-blue-500/10 text-blue-500">
-              <FileText className="h-4 w-4 sm:h-5 sm:w-5" />
-            </div>
-          </div>
-          <div className="text-2xl sm:text-3xl font-black text-foreground">
-            {headerStats.totalAmount.toLocaleString()} MAD
-          </div>
-          <p className="text-[11px] sm:text-xs font-semibold text-muted-foreground mt-1">
-            {headerStats.count} facture{headerStats.count > 1 ? "s" : ""} au grand livre
-          </p>
-        </Card>
+      {/* 2026 Telemetry Financial Stats Cards */}
+      <InvoiceStatsCards key={`stats-${refreshKey}`} invoices={invoices} />
 
-        <Card className="rounded-2xl sm:rounded-[1.75rem] border border-emerald-500/20 bg-emerald-500/5 shadow-xs p-4 sm:p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-              Règlements Reçus
-            </span>
-            <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-              <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5" />
-            </div>
-          </div>
-          <div className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400">
-            {headerStats.paidAmount.toLocaleString()} MAD
-          </div>
-          <p className="text-[11px] sm:text-xs font-semibold text-muted-foreground mt-1">
-            {headerStats.paidCount} payée{headerStats.paidCount > 1 ? "s" : ""} ({headerStats.recoveryRate}%)
-          </p>
-        </Card>
-
-        <Card className="rounded-2xl sm:rounded-[1.75rem] border border-amber-500/20 bg-amber-500/5 shadow-xs p-4 sm:p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-              En Attente
-            </span>
-            <div className="p-2 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
-              <Clock3 className="h-4 w-4 sm:h-5 sm:w-5" />
-            </div>
-          </div>
-          <div className="text-2xl sm:text-3xl font-black text-amber-600 dark:text-amber-400">
-            {headerStats.remainingAmount.toLocaleString()} MAD
-          </div>
-          <p className="text-[11px] sm:text-xs font-semibold text-muted-foreground mt-1">
-            {headerStats.pendingCount} en attente d'encaissement
-          </p>
-        </Card>
-
-        <Card className="rounded-2xl sm:rounded-[1.75rem] border border-red-500/20 bg-red-500/5 shadow-xs p-4 sm:p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-red-600 dark:text-red-400">
-              Factures Échues
-            </span>
-            <div className="p-2 rounded-xl bg-red-500/15 text-red-600 dark:text-red-400">
-              <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5" />
-            </div>
-          </div>
-          <div className="text-2xl sm:text-3xl font-black text-red-600 dark:text-red-400">
-            {headerStats.overdueCount}
-          </div>
-          <p className="text-[11px] sm:text-xs font-semibold text-muted-foreground mt-1">
-            {headerStats.overdueCount > 0 ? "Relance requise" : "Aucun retard de paiement"}
-          </p>
-        </Card>
-      </motion.div>
-
-      {/* Main Content Workspace */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full space-y-4">
-        <div className="flex items-center justify-between">
+      {/* Main Workspace Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full space-y-6">
+        <div className="flex items-center justify-between border-b border-border/40 pb-3">
           <TabsList className="bg-muted/40 p-1 rounded-2xl border border-border/50">
             <TabsTrigger
               value="list"
@@ -218,6 +119,15 @@ const Factures: React.FC = () => {
               <List className="h-4 w-4" />
               Grand Livre des Factures
             </TabsTrigger>
+
+            <TabsTrigger
+              value="analytics"
+              className="rounded-xl font-bold text-xs px-4 py-2 flex items-center gap-1.5 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-xs"
+            >
+              <BarChart3 className="h-4 w-4" />
+              Analyses & Graphiques
+            </TabsTrigger>
+
             <TabsTrigger
               value="create"
               className="rounded-xl font-bold text-xs px-4 py-2 flex items-center gap-1.5 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-xs"
@@ -230,6 +140,10 @@ const Factures: React.FC = () => {
 
         <TabsContent value="list" className="mt-0 focus-visible:ring-0">
           <InvoicesTable key={refreshKey} userRole={selectedRole} />
+        </TabsContent>
+
+        <TabsContent value="analytics" className="mt-0 focus-visible:ring-0">
+          <InvoiceAnalytics invoices={invoices} />
         </TabsContent>
 
         <TabsContent value="create" className="mt-0 focus-visible:ring-0">
