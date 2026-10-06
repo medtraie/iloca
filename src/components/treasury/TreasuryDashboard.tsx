@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, Coins, FileText, AlertTriangle, TrendingDown, TrendingUp } from "lucide-react";
+import { Building2, Coins, FileText, AlertTriangle, TrendingDown, TrendingUp, Wallet } from "lucide-react";
 
 interface TreasuryDashboardProps {
   totals: {
@@ -20,10 +20,10 @@ export const TreasuryDashboard = ({ totals }: TreasuryDashboardProps) => {
       title: "Solde Banque",
       value: totals.bankBalance,
       icon: Building2,
-      tone: "text-blue-600",
-      panel: "from-blue-500/10 to-blue-500/5 border-blue-500/20",
-      footer: totals.bankBalance >= 0 ? "Positif" : "Négatif",
-      footerTone: totals.bankBalance >= 0 ? "text-emerald-600" : "text-red-600",
+      tone: "text-blue-600 dark:text-blue-400",
+      panel: "border-blue-500/20 bg-blue-500/5",
+      footer: totals.bankBalance >= 0 ? "Solde Positif" : "Solde Négatif",
+      footerTone: totals.bankBalance >= 0 ? "text-emerald-600 font-bold" : "text-red-600 font-bold",
       isPositive: totals.bankBalance >= 0
     },
     {
@@ -31,10 +31,10 @@ export const TreasuryDashboard = ({ totals }: TreasuryDashboardProps) => {
       title: "Total Espèces",
       value: totals.cashBalance,
       icon: Coins,
-      tone: "text-emerald-600",
-      panel: "from-emerald-500/10 to-emerald-500/5 border-emerald-500/20",
-      footer: totals.cashBalance >= 0 ? "Disponible" : "Déficit",
-      footerTone: totals.cashBalance >= 0 ? "text-emerald-600" : "text-red-600",
+      tone: "text-emerald-600 dark:text-emerald-400",
+      panel: "border-emerald-500/20 bg-emerald-500/5",
+      footer: totals.cashBalance >= 0 ? "Caisse Disponible" : "Déficit Caisse",
+      footerTone: totals.cashBalance >= 0 ? "text-emerald-600 font-bold" : "text-red-600 font-bold",
       isPositive: totals.cashBalance >= 0
     },
     {
@@ -42,10 +42,10 @@ export const TreasuryDashboard = ({ totals }: TreasuryDashboardProps) => {
       title: "Total Chèques",
       value: totals.totalChecks,
       icon: FileText,
-      tone: "text-violet-600",
-      panel: "from-violet-500/10 to-violet-500/5 border-violet-500/20",
-      footer: "En circulation",
-      footerTone: "text-muted-foreground",
+      tone: "text-purple-600 dark:text-purple-400",
+      panel: "border-purple-500/20 bg-purple-500/5",
+      footer: "Portefeuille actif",
+      footerTone: "text-muted-foreground font-semibold",
       isPositive: true
     },
     {
@@ -53,10 +53,10 @@ export const TreasuryDashboard = ({ totals }: TreasuryDashboardProps) => {
       title: "Dettes Clients",
       value: totals.clientDebts,
       icon: AlertTriangle,
-      tone: "text-orange-600",
-      panel: "from-orange-500/10 to-orange-500/5 border-orange-500/20",
-      footer: "Contrats impayés",
-      footerTone: "text-muted-foreground",
+      tone: "text-orange-600 dark:text-orange-400",
+      panel: "border-orange-500/20 bg-orange-500/5",
+      footer: "Impayés contrats",
+      footerTone: "text-muted-foreground font-semibold",
       isPositive: false
     },
     {
@@ -64,10 +64,10 @@ export const TreasuryDashboard = ({ totals }: TreasuryDashboardProps) => {
       title: "Dettes Diverses",
       value: totals.supplierDebts,
       icon: TrendingDown,
-      tone: "text-rose-600",
-      panel: "from-rose-500/10 to-rose-500/5 border-rose-500/20",
-      footer: "À régler",
-      footerTone: "text-muted-foreground",
+      tone: "text-rose-600 dark:text-rose-400",
+      panel: "border-rose-500/20 bg-rose-500/5",
+      footer: "Règlements à effectuer",
+      footerTone: "text-muted-foreground font-semibold",
       isPositive: false
     }
   ];
@@ -78,10 +78,10 @@ export const TreasuryDashboard = ({ totals }: TreasuryDashboardProps) => {
       title: "Dettes Réparations",
       value: totals.repairDebts,
       icon: AlertTriangle,
-      tone: "text-amber-600",
-      panel: "from-amber-500/10 to-amber-500/5 border-amber-500/20",
-      footer: "Réparations impayées",
-      footerTone: "text-muted-foreground",
+      tone: "text-amber-600 dark:text-amber-400",
+      panel: "border-amber-500/20 bg-amber-500/5",
+      footer: "Réparations en attente",
+      footerTone: "text-muted-foreground font-semibold",
       isPositive: false
     });
   }
@@ -91,22 +91,24 @@ export const TreasuryDashboard = ({ totals }: TreasuryDashboardProps) => {
       {cards.map((item) => {
         const Icon = item.icon;
         return (
-          <Card key={item.key} className={`border bg-gradient-to-br ${item.panel} shadow-sm`}>
+          <Card key={item.key} className={`rounded-3xl border ${item.panel} shadow-xs backdrop-blur-xl transition-all duration-300 hover:shadow-md`}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
+              <CardTitle className="text-xs font-black uppercase tracking-wider text-muted-foreground">
                 {item.title}
               </CardTitle>
-              <Icon className={`h-5 w-5 ${item.tone}`} />
+              <div className="p-2 rounded-2xl bg-background/60 shadow-xs">
+                <Icon className={`h-4 w-4 ${item.tone}`} />
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-foreground">
+              <div className="text-2xl font-black tracking-tight text-foreground">
                 {item.value.toLocaleString()} DH
               </div>
               <div className={`mt-1 flex items-center text-xs ${item.footerTone}`}>
                 {item.isPositive ? (
-                  <TrendingUp className="mr-1 h-3 w-3" />
+                  <TrendingUp className="mr-1 h-3.5 w-3.5 shrink-0" />
                 ) : (
-                  <TrendingDown className="mr-1 h-3 w-3" />
+                  <TrendingDown className="mr-1 h-3.5 w-3.5 shrink-0" />
                 )}
                 <span>{item.footer}</span>
               </div>
@@ -115,18 +117,20 @@ export const TreasuryDashboard = ({ totals }: TreasuryDashboardProps) => {
         );
       })}
 
-      <Card className="border-2 border-primary shadow-lg bg-gradient-to-br from-primary/5 to-primary/10">
+      <Card className="rounded-3xl border-2 border-primary/40 shadow-md bg-gradient-to-br from-primary/10 via-card to-card/90 backdrop-blur-xl">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Trésorerie Disponible
+          <CardTitle className="text-xs font-black uppercase tracking-wider text-primary">
+            Trésorerie Globale Disponible
           </CardTitle>
-          <TrendingUp className="h-5 w-5 text-primary" />
+          <div className="p-2 rounded-2xl bg-primary/20 text-primary">
+            <Wallet className="h-4 w-4" />
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="text-3xl font-bold text-primary">
+          <div className="text-3xl font-black text-primary tracking-tight">
             {totals.totalAvailable.toLocaleString()} DH
           </div>
-          <p className="text-xs text-muted-foreground mt-1">
+          <p className="text-xs font-medium text-muted-foreground mt-1">
             Banque + Espèces + Chèques
           </p>
         </CardContent>

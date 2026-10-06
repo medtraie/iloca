@@ -33,6 +33,7 @@ import {
   ArrowRightLeft,
   Sparkles
 } from "lucide-react";
+import TreasuryStatsCards from "@/components/treasury/TreasuryStatsCards";
 import { TreasuryOverview } from "@/components/treasury/TreasuryOverview";
 import { TreasuryMovements } from "@/components/treasury/TreasuryMovements";
 import { TreasuryStats } from "@/components/treasury/TreasuryStats";
@@ -483,7 +484,7 @@ const Tresorerie = () => {
   }, [treasuryAlerts, alertLevelFilter, focusedAlertId]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background p-3 sm:p-6 pb-24 safe-pt safe-pb max-w-7xl mx-auto space-y-6">
+    <div className="w-full min-h-screen p-2 sm:p-4 lg:p-6 pb-24 space-y-6 transition-all bg-gradient-to-b from-background via-background/95 to-background safe-pt safe-pb">
       <div className="space-y-6">
         <motion.div
           initial={shouldReduceMotion ? false : { opacity: 0, y: 10 }}
@@ -518,90 +519,62 @@ const Tresorerie = () => {
           </div>
         </motion.div>
 
-        <Card className="border border-border/50 bg-card/95 shadow-xs rounded-3xl overflow-hidden">
-          <CardContent className="p-5 sm:p-6">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-                <div className="rounded-lg border bg-emerald-50 p-3">
-                  <p className="text-xs text-muted-foreground">Entrées du mois</p>
-                  <p className="text-xl font-semibold text-emerald-700">+{operationsSummary.entries.toLocaleString()} DH</p>
-                </div>
-                <div className="rounded-lg border bg-red-50 p-3">
-                  <p className="text-xs text-muted-foreground">Sorties du mois</p>
-                  <p className="text-xl font-semibold text-red-700">-{operationsSummary.exits.toLocaleString()} DH</p>
-                </div>
-                <div className={`rounded-lg border p-3 ${operationsSummary.net >= 0 ? "bg-blue-50" : "bg-amber-50"}`}>
-                  <p className="text-xs text-muted-foreground">Net mensuel</p>
-                  <p className={`text-xl font-semibold ${operationsSummary.net >= 0 ? "text-blue-700" : "text-amber-700"}`}>
-                    {operationsSummary.net >= 0 ? "+" : ""}{operationsSummary.net.toLocaleString()} DH
-                  </p>
-                </div>
-                <div className="rounded-lg border bg-card p-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Dettes en attente</p>
-                      <p className="text-xl font-semibold text-foreground">{operationsSummary.pendingDebts.toLocaleString()} DH</p>
-                    </div>
-                    <AlertCircle className="h-5 w-5 text-orange-600" />
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{operationsSummary.operationCount} opérations ce mois</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        {/* 2026 Telemetry Stats Cards */}
+        <TreasuryStatsCards totals={totals} operationsSummary={operationsSummary} />
 
+        {/* Alert Center Panel */}
         <motion.div
           initial={shouldReduceMotion ? false : { opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.04 }}
         >
-          <Card className="border bg-card/95 shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <BellRing className="h-5 w-5 text-primary" />
-                Alert Center
+          <Card className="rounded-3xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-xs overflow-hidden">
+            <CardHeader className="pb-3 border-b border-border/40">
+              <CardTitle className="flex items-center gap-2 text-base font-bold">
+                <BellRing className="h-4 w-4 text-primary" />
+                Centre d'Alertes Trésorerie
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex flex-wrap gap-2">
-                <Button variant={alertLevelFilter === "all" && !focusedAlertId ? "default" : "outline"} size="sm" onClick={() => { setAlertLevelFilter("all"); setFocusedAlertId(null); }}>
+            <CardContent className="p-4 sm:p-5 space-y-3">
+              <div className="flex flex-wrap gap-2 mb-2">
+                <Button variant={alertLevelFilter === "all" && !focusedAlertId ? "default" : "outline"} size="sm" className="rounded-full h-8 text-xs font-bold" onClick={() => { setAlertLevelFilter("all"); setFocusedAlertId(null); }}>
                   Toutes
                 </Button>
-                <Button variant={alertLevelFilter === "high" ? "default" : "outline"} size="sm" onClick={() => { setAlertLevelFilter("high"); setFocusedAlertId(null); }}>
+                <Button variant={alertLevelFilter === "high" ? "default" : "outline"} size="sm" className="rounded-full h-8 text-xs font-bold" onClick={() => { setAlertLevelFilter("high"); setFocusedAlertId(null); }}>
                   High
                 </Button>
-                <Button variant={alertLevelFilter === "medium" ? "default" : "outline"} size="sm" onClick={() => { setAlertLevelFilter("medium"); setFocusedAlertId(null); }}>
+                <Button variant={alertLevelFilter === "medium" ? "default" : "outline"} size="sm" className="rounded-full h-8 text-xs font-bold" onClick={() => { setAlertLevelFilter("medium"); setFocusedAlertId(null); }}>
                   Medium
                 </Button>
-                <Button variant={alertLevelFilter === "low" ? "default" : "outline"} size="sm" onClick={() => { setAlertLevelFilter("low"); setFocusedAlertId(null); }}>
+                <Button variant={alertLevelFilter === "low" ? "default" : "outline"} size="sm" className="rounded-full h-8 text-xs font-bold" onClick={() => { setAlertLevelFilter("low"); setFocusedAlertId(null); }}>
                   Low
                 </Button>
               </div>
               {displayedAlerts.length === 0 ? (
-                <div className="rounded-lg border bg-emerald-50 p-3 text-sm text-emerald-700">
+                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-xs font-bold text-emerald-700 dark:text-emerald-300">
                   Aucun signal pour ce filtre. Trésorerie sous contrôle.
                 </div>
               ) : (
                 displayedAlerts.map((alert) => (
-                  <div key={alert.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
+                  <div key={alert.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/50 bg-muted/20 p-3.5">
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className="font-medium">{alert.title}</p>
+                        <p className="font-bold text-xs text-foreground">{alert.title}</p>
                         <Badge
-                          variant="outline"
                           className={
                             alert.level === "high"
-                              ? "bg-red-100 text-red-800"
+                              ? "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30 font-bold rounded-lg text-[10px]"
                               : alert.level === "medium"
-                                ? "bg-orange-100 text-orange-800"
-                                : "bg-blue-100 text-blue-800"
+                                ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30 font-bold rounded-lg text-[10px]"
+                                : "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30 font-bold rounded-lg text-[10px]"
                           }
                         >
                           {alert.level === "high" ? "High" : alert.level === "medium" ? "Medium" : "Low"}
                         </Badge>
                       </div>
-                      <p className="text-sm text-muted-foreground">{alert.description}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{alert.description}</p>
                     </div>
-                    <p className="text-sm font-medium text-primary">{alert.action}</p>
+                    <p className="text-xs font-bold text-primary">{alert.action}</p>
                   </div>
                 ))
               )}
@@ -609,40 +582,44 @@ const Tresorerie = () => {
           </Card>
         </motion.div>
 
+        {/* Budget vs Réalisé Panel */}
         <motion.div
           initial={shouldReduceMotion ? false : { opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.06 }}
         >
-          <Card className="border bg-card/95 shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Target className="h-5 w-5 text-primary" />
-                Budget vs Réalisé
+          <Card className="rounded-3xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-xs overflow-hidden">
+            <CardHeader className="pb-3 border-b border-border/40">
+              <CardTitle className="flex items-center gap-2 text-base font-bold">
+                <Target className="h-4 w-4 text-primary" />
+                Budget vs Réalisé & Objectifs
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="p-4 sm:p-5 space-y-4">
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <div>
-                  <p className="mb-1 text-xs text-muted-foreground">Objectif entrées mensuel</p>
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-muted-foreground">Objectif entrées mensuel</Label>
                   <Input
                     type="number"
+                    className="rounded-xl h-9 text-xs font-bold border-border/60"
                     value={budgetTargets.entryTarget}
                     onChange={(event) => setBudgetTargets((prev) => ({ ...prev, entryTarget: Math.max(0, Number(event.target.value) || 0) }))}
                   />
                 </div>
-                <div>
-                  <p className="mb-1 text-xs text-muted-foreground">Plafond sorties mensuel</p>
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-muted-foreground">Plafond sorties mensuel</Label>
                   <Input
                     type="number"
+                    className="rounded-xl h-9 text-xs font-bold border-border/60"
                     value={budgetTargets.exitCap}
                     onChange={(event) => setBudgetTargets((prev) => ({ ...prev, exitCap: Math.max(0, Number(event.target.value) || 0) }))}
                   />
                 </div>
-                <div>
-                  <p className="mb-1 text-xs text-muted-foreground">Seuil minimum disponible</p>
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-muted-foreground">Seuil minimum disponible</Label>
                   <Input
                     type="number"
+                    className="rounded-xl h-9 text-xs font-bold border-border/60"
                     value={budgetTargets.minAvailable}
                     onChange={(event) => setBudgetTargets((prev) => ({ ...prev, minAvailable: Math.max(0, Number(event.target.value) || 0) }))}
                   />
@@ -650,30 +627,30 @@ const Tresorerie = () => {
               </div>
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <div className="rounded-lg border bg-emerald-50 p-3">
-                  <p className="text-xs text-muted-foreground">Entrées</p>
-                  <p className="text-lg font-semibold text-emerald-700">
+                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3.5">
+                  <p className="text-xs font-bold text-muted-foreground">Entrées Mouvementées</p>
+                  <p className="text-lg font-black text-emerald-700 dark:text-emerald-300 mt-0.5">
                     {operationsSummary.entries.toLocaleString()} / {budgetTargets.entryTarget.toLocaleString()} DH
                   </p>
-                  <p className={`text-sm ${budgetVsActual.entryVariance >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                  <p className={`text-xs font-bold mt-1 ${budgetVsActual.entryVariance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-500"}`}>
                     {budgetVsActual.entryVariance >= 0 ? "+" : ""}{budgetVsActual.entryVariance.toLocaleString()} DH ({budgetVsActual.entryProgress.toFixed(1)}%)
                   </p>
                 </div>
-                <div className="rounded-lg border bg-red-50 p-3">
-                  <p className="text-xs text-muted-foreground">Sorties</p>
-                  <p className="text-lg font-semibold text-red-700">
+                <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-3.5">
+                  <p className="text-xs font-bold text-muted-foreground">Sorties Mouvementées</p>
+                  <p className="text-lg font-black text-red-700 dark:text-red-300 mt-0.5">
                     {operationsSummary.exits.toLocaleString()} / {budgetTargets.exitCap.toLocaleString()} DH
                   </p>
-                  <p className={`text-sm ${budgetVsActual.exitVariance >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                  <p className={`text-xs font-bold mt-1 ${budgetVsActual.exitVariance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-500"}`}>
                     {budgetVsActual.exitVariance >= 0 ? "Sous budget" : "Dépassement"}: {Math.abs(budgetVsActual.exitVariance).toLocaleString()} DH ({budgetVsActual.exitUsage.toFixed(1)}%)
                   </p>
                 </div>
-                <div className={`rounded-lg border p-3 ${budgetVsActual.availableVariance >= 0 ? "bg-blue-50" : "bg-amber-50"}`}>
-                  <p className="text-xs text-muted-foreground">Disponible vs seuil</p>
-                  <p className={`text-lg font-semibold ${budgetVsActual.availableVariance >= 0 ? "text-blue-700" : "text-amber-700"}`}>
+                <div className={`rounded-2xl border p-3.5 ${budgetVsActual.availableVariance >= 0 ? "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300" : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"}`}>
+                  <p className="text-xs font-bold text-muted-foreground">Disponible vs Seuil Min</p>
+                  <p className="text-lg font-black mt-0.5">
                     {totals.totalAvailable.toLocaleString()} DH
                   </p>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-xs font-semibold mt-1">
                     Écart: {budgetVsActual.availableVariance >= 0 ? "+" : ""}{budgetVsActual.availableVariance.toLocaleString()} DH
                   </p>
                 </div>

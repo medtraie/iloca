@@ -95,10 +95,10 @@ export const TreasuryCharts = ({ movements, bankBalance, cashBalance }: Treasury
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-      <Card className="border bg-card/95 shadow-sm">
+      <Card className="rounded-3xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-xs overflow-hidden">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <BarChart3 className="w-5 h-5" />
+          <CardTitle className="flex items-center gap-2 font-bold text-base">
+            <BarChart3 className="w-4 h-4 text-primary" />
             Recettes vs Dépenses Mensuelles
           </CardTitle>
           <div className="flex flex-wrap gap-2">
@@ -139,10 +139,10 @@ export const TreasuryCharts = ({ movements, bankBalance, cashBalance }: Treasury
         </CardContent>
       </Card>
 
-      <Card className="border bg-card/95 shadow-sm">
+      <Card className="rounded-3xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-xs overflow-hidden">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <PieChartIcon className="w-5 h-5" />
+          <CardTitle className="flex items-center gap-2 font-bold text-base">
+            <PieChartIcon className="w-4 h-4 text-primary" />
             Répartition par Moyen de Paiement
           </CardTitle>
           <div className="flex flex-wrap gap-2">
@@ -210,10 +210,10 @@ export const TreasuryCharts = ({ movements, bankBalance, cashBalance }: Treasury
         </CardContent>
       </Card>
 
-      <Card className="lg:col-span-2 border bg-gradient-to-br from-[hsl(var(--primary)/0.06)] to-card shadow-sm">
+      <Card className="lg:col-span-2 rounded-3xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-xs overflow-hidden">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="w-5 h-5" />
+          <CardTitle className="flex items-center gap-2 font-bold text-base">
+            <TrendingUp className="w-4 h-4 text-primary" />
             Courbe de Trésorerie (30 derniers jours)
           </CardTitle>
           <div className="flex flex-wrap gap-2">

@@ -284,35 +284,35 @@ export const TreasuryMovements = ({
 
   const getTypeColor = (type: string) => {
     switch (type) {
-      case 'recette': return 'bg-green-100 text-green-800';
-      case 'depense': return 'bg-red-100 text-red-800';
-      case 'divers': return 'bg-orange-100 text-orange-800';
-      case 'transfert': return 'bg-blue-100 text-blue-800';
-      case 'reparation': return 'bg-purple-100 text-purple-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'recette': return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 font-bold';
+      case 'depense': return 'bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30 font-bold';
+      case 'divers': return 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30 font-bold';
+      case 'transfert': return 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30 font-bold';
+      case 'reparation': return 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30 font-bold';
+      default: return 'bg-muted text-muted-foreground border-border/50 font-bold';
     }
   };
 
   const getPaymentMethodColor = (method: string) => {
     switch (method) {
-      case 'Espèces': return 'bg-emerald-100 text-emerald-800';
-      case 'Chèque': return 'bg-violet-100 text-violet-800';
-      case 'Virement': return 'bg-sky-100 text-sky-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'Espèces': return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 font-bold';
+      case 'Chèque': return 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30 font-bold';
+      case 'Virement': return 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30 font-bold';
+      default: return 'bg-muted text-muted-foreground border-border/50 font-bold';
     }
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="w-5 h-5" />
-            Journal des Opérations
+    <Card className="rounded-3xl border border-border/60 bg-card/80 backdrop-blur-xl shadow-xs overflow-hidden">
+      <CardHeader className="pb-3 border-b border-border/40">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <CardTitle className="flex items-center gap-2 font-bold text-base">
+            <Calendar className="w-4 h-4 text-primary" />
+            Journal des Opérations & Mouvements
           </CardTitle>
-          <Button onClick={exportToPDF} size="sm">
+          <Button onClick={exportToPDF} size="sm" className="rounded-2xl h-10 px-4 font-bold">
             <Download className="w-4 h-4 mr-2" />
-            Export PDF
+            Exporter PDF
           </Button>
         </div>
       </CardHeader>
