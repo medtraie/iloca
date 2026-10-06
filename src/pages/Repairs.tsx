@@ -1,14 +1,14 @@
-
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, CheckCircle2, Coins, Wrench, LineChart as LineChartIcon, Sparkles, Plus, RefreshCcw } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AlertTriangle, CheckCircle2, Coins, Wrench, Sparkles, Plus, RefreshCcw, BarChart3, List } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import RepairFormDialog from "@/components/RepairFormDialog";
 import RepairDetailsDialog from "@/components/RepairDetailsDialog";
 import RepairStatsCards from "@/components/RepairStatsCards";
 import RepairFilters from "@/components/RepairFilters";
 import RepairTable from "@/components/RepairTable";
+import RepairAnalytics from "@/components/repairs/RepairAnalytics";
 import { Card, CardContent } from "@/components/ui/card";
 import { useRepairFilters } from "@/hooks/useRepairFilters";
 import { useRepairStats } from "@/hooks/useRepairStats";
@@ -18,10 +18,9 @@ import { useRepairs } from "@/hooks/useRepairs";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { motion } from "framer-motion";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
-import { CardHeader, CardTitle } from "@/components/ui/card";
-import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 const Repairs = () => {
+  const [activeTab, setActiveTab] = useState<string>("list");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [filterDateRange, setFilterDateRange] = useState("all");
@@ -36,7 +35,6 @@ const Repairs = () => {
   
   const { toast } = useToast();
   
-  
   const { vehicles, loading: vehiclesLoading } = useVehicles();
   const { repairs, loading: repairsLoading, addRepair, updateRepair, deleteRepair, reactivateVehicle, addRepairPayment, markRepairAsSettled } = useRepairs();
   const filteredRepairs = useRepairFilters(
@@ -49,73 +47,6 @@ const Repairs = () => {
     filterDelayBucket
   );
   const stats = useRepairStats(repairs);
-  const monthlyRecoveryRate = useMemo(() => {
-    const now = new Date();
-    const currentMonthRepairs = repairs.filter((repair) => {
-      const d = new Date(repair.dateReparation);
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    });
-    const totalCost = currentMonthRepairs.reduce((sum, repair) => sum + (repair.cout || 0), 0);
-    const totalPaid = currentMonthRepairs.reduce((sum, repair) => sum + (repair.paye || 0), 0);
-    return totalCost > 0 ? (totalPaid / totalCost) * 100 : 0;
-  }, [repairs]);
-
-  const averageSettlementDays = useMemo(() => {
-    const settled = repairs.filter((repair) => (repair.dette || 0) <= 0);
-    if (settled.length === 0) return 0;
-    const total = settled.reduce((sum, repair) => {
-      const closeDate = (repair.payments && repair.payments.length > 0)
-        ? new Date(repair.payments[repair.payments.length - 1].date)
-        : new Date(repair.updated_at);
-      const openDate = new Date(repair.dateReparation);
-      const days = Math.max(0, Math.floor((closeDate.getTime() - openDate.getTime()) / (1000 * 60 * 60 * 24)));
-      return sum + days;
-    }, 0);
-    return total / settled.length;
-  }, [repairs]);
-
-  const topVehiclesInMaintenance = useMemo(() => {
-    const countMap = new Map<string, number>();
-    repairs.forEach((repair) => {
-      const key = `${repair.vehicleInfo.marque} ${repair.vehicleInfo.modele}`;
-      countMap.set(key, (countMap.get(key) || 0) + 1);
-    });
-    const sorted = Array.from(countMap.entries()).sort((a, b) => b[1] - a[1]);
-    return sorted.slice(0, 3);
-  }, [repairs]);
-
-  const evolutionData = useMemo(() => {
-    const monthly = new Map<string, { label: string; cout: number; dette: number }>();
-    repairs.forEach((repair) => {
-      const date = new Date(repair.dateReparation);
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      const label = date.toLocaleDateString("fr-FR", { month: "short", year: "2-digit" });
-      const current = monthly.get(key) || { label, cout: 0, dette: 0 };
-      current.cout += repair.cout || 0;
-      current.dette += repair.dette || 0;
-      monthly.set(key, current);
-    });
-    return Array.from(monthly.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([, value]) => value);
-  }, [repairs]);
-
-  const smartAlerts = useMemo(() => {
-    const debtAlerts = repairs.filter((repair) => {
-      if ((repair.dette || 0) <= 0) return false;
-      const baseDate = new Date(repair.dueDate || repair.dateReparation);
-      const diffDays = Math.floor((Date.now() - baseDate.getTime()) / (1000 * 60 * 60 * 24));
-      return diffDays > 30;
-    });
-    const highCostAlerts = repairs.filter((repair) => (repair.cout || 0) >= 10000);
-    const slaAlerts = repairs.filter((repair) => {
-      const target = repair.slaTargetDays || 0;
-      if (target <= 0) return false;
-      const diffDays = Math.floor((Date.now() - new Date(repair.dateReparation).getTime()) / (1000 * 60 * 60 * 24));
-      return diffDays > target && (repair.dette || 0) > 0;
-    });
-    return { debtAlerts, highCostAlerts, slaAlerts };
-  }, [repairs]);
 
   const displayedRepairs = useMemo(() => {
     if (activeSavedView === "retard30") {
@@ -131,10 +62,6 @@ const Repairs = () => {
     }
     return filteredRepairs;
   }, [activeSavedView, filteredRepairs]);
-  const visibleDebt = displayedRepairs.reduce((sum, repair) => sum + (repair.dette || 0), 0);
-  const visiblePaid = displayedRepairs.reduce((sum, repair) => sum + (repair.paye || 0), 0);
-  const visibleCoverage = visiblePaid + visibleDebt > 0 ? (visiblePaid / (visiblePaid + visibleDebt)) * 100 : 0;
-  const openDebtCases = displayedRepairs.filter((repair) => (repair.dette || 0) > 0).length;
 
   const applySavedView = (viewId: string) => {
     setActiveSavedView(viewId);
@@ -188,7 +115,7 @@ const Repairs = () => {
   const handleAddClick = () => {
     setEditingRepair(null);
     setIsFormOpen(true);
-  }
+  };
 
   const handleEditRepair = (repair: Repair) => {
     setEditingRepair(repair);
@@ -199,7 +126,7 @@ const Repairs = () => {
     const paymentCount = repair.payments?.length || 0;
     const hasAttachment = !!repair.pieceJointe;
     if (paymentCount > 0 || hasAttachment) {
-      const message = `Ce dossier contient ${paymentCount} paiement(s)${hasAttachment ? " et une pièce jointe" : ""}. Confirmez la suppression définitive.`;
+      const message = `Ce dossier contient ${paymentCount} paiement(s)${hasAttachment ? " et une pièce jointe" : ""}. Confirmez la suppression definitiva.`;
       if (!window.confirm(message)) return;
     }
     deleteRepair(repair.id);
@@ -211,7 +138,7 @@ const Repairs = () => {
   };
 
   const handleReactivateVehicle = (repair: Repair) => {
-    if (window.confirm(`Êtes-vous sûr de vouloir réactiver le véhicule ${repair.vehicleInfo.marque} ${repair.vehicleInfo.modele} ? Il sera marqué comme disponible mais tous les enregistrements de maintenance seront conservés.`)) {
+    if (window.confirm(`Êtes-vous sûr de vouloir réactiver le véhicule ${repair.vehicleInfo.marque} ${repair.vehicleInfo.modele} ? Il sera marqué comme disponible.`)) {
       reactivateVehicle(repair.vehicleId);
     }
   };
@@ -238,209 +165,95 @@ const Repairs = () => {
   };
 
   if (vehiclesLoading || repairsLoading) {
-    return <LoadingSpinner message="Chargement des données..." />;
+    return <LoadingSpinner message="Chargement des données d'atelier..." />;
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background p-3 sm:p-6 pb-24 safe-pt safe-pb max-w-7xl mx-auto space-y-6">
-      <div className="space-y-6">
-        <motion.div
-          className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 sm:p-7 rounded-3xl bg-gradient-to-r from-card via-card/90 to-background border border-border/60 shadow-xs relative overflow-hidden"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35 }}
-        >
-          <div className="relative z-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 mb-2">
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
-              <span className="text-[11px] font-black uppercase tracking-wider text-primary">
-                Atelier Flotte & Maintenance Aéro-Grade 2026
-              </span>
-            </div>
-            <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-foreground">
-              Gestion de l'<span className="text-primary">Atelier & Réparations</span>
-            </h1>
-            <p className="text-muted-foreground text-xs sm:text-sm font-medium mt-1">
-              Supervision technique, gestion des pannes, réactivation immédiate et suivi des coûts garages.
-            </p>
+    <div className="w-full p-2 sm:p-4 lg:p-6 space-y-6 transition-all min-h-screen pb-24">
+      {/* 2026 Enterprise Cockpit Header */}
+      <motion.div
+        className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 sm:p-7 rounded-3xl bg-gradient-to-r from-card via-card/90 to-background border border-border/60 shadow-xs relative overflow-hidden"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35 }}
+      >
+        <div className="relative z-10">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 mb-2">
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            <span className="text-[11px] font-black uppercase tracking-wider text-primary">
+              Atelier Flotte & Maintenance Aéro-Grade 2026
+            </span>
           </div>
-          <div className="flex items-center gap-3 z-10">
-            <Button
-              variant="outline"
-              onClick={() => window.location.reload()}
-              className="rounded-2xl h-11 px-4 font-bold border-border/60 hover:bg-muted hidden sm:flex"
+          <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-foreground">
+            Gestion de l'<span className="text-primary">Atelier & Réparations</span>
+          </h1>
+          <p className="text-muted-foreground text-xs sm:text-sm font-medium mt-1">
+            Supervision technique, gestion des pannes, réactivation immédiate et suivi des coûts garages.
+          </p>
+        </div>
+        <div className="flex items-center gap-3 z-10">
+          <Button
+            variant="outline"
+            onClick={() => window.location.reload()}
+            className="rounded-2xl h-11 px-4 font-bold border-border/60 hover:bg-muted hidden sm:flex"
+          >
+            <RefreshCcw className="w-4 h-4 mr-2" />
+            Actualiser
+          </Button>
+          <Button
+            onClick={handleAddClick}
+            className="rounded-2xl h-11 px-5 font-black bg-primary text-primary-foreground hover:bg-primary/90 shadow-md shadow-primary/20 hover:scale-[1.02] transition-transform"
+          >
+            <Plus className="w-4 h-4 mr-1.5" />
+            Nouvelle réparation
+          </Button>
+        </div>
+      </motion.div>
+
+      {/* 2026 Ambient Telemetry Cards */}
+      <RepairStatsCards {...stats} />
+
+      {/* Main Workspace Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full space-y-6">
+        <div className="flex items-center justify-between border-b border-border/40 pb-3">
+          <TabsList className="bg-muted/40 p-1 rounded-2xl border border-border/50">
+            <TabsTrigger
+              value="list"
+              className="rounded-xl font-bold text-xs px-4 py-2 flex items-center gap-1.5 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-xs"
             >
-              <RefreshCcw className="w-4 h-4 mr-2" />
-              Actualiser
-            </Button>
-            <Button
-              onClick={handleAddClick}
-              className="rounded-2xl h-11 px-5 font-black bg-primary text-primary-foreground hover:bg-primary/90 shadow-md shadow-primary/20 hover:scale-[1.02] transition-transform"
+              <List className="h-4 w-4" />
+              Registre des Réparations
+            </TabsTrigger>
+
+            <TabsTrigger
+              value="analytics"
+              className="rounded-xl font-bold text-xs px-4 py-2 flex items-center gap-1.5 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-xs"
             >
-              <Plus className="w-4 h-4 mr-1.5" />
-              Nouvelle réparation
-            </Button>
-          </div>
-        </motion.div>
+              <BarChart3 className="h-4 w-4" />
+              Analyses & Graphiques Flotte
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-        <motion.div
-          className="grid gap-4"
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.05 }}
-        >
-          <RepairStatsCards {...stats} />
-        </motion.div>
+        <TabsContent value="list" className="mt-0 space-y-6 focus-visible:ring-0">
+          <RepairFilters
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            filterType={filterType}
+            setFilterType={setFilterType}
+            filterDateRange={filterDateRange}
+            setFilterDateRange={setFilterDateRange}
+            filterFinancialStatus={filterFinancialStatus}
+            setFilterFinancialStatus={setFilterFinancialStatus}
+            filterOperationalStatus={filterOperationalStatus}
+            setFilterOperationalStatus={setFilterOperationalStatus}
+            filterDelayBucket={filterDelayBucket}
+            setFilterDelayBucket={setFilterDelayBucket}
+            activeSavedView={activeSavedView}
+            onApplySavedView={applySavedView}
+            onAddRepair={handleAddClick}
+          />
 
-        <RepairFilters
-          searchTerm={searchTerm}
-          setSearchTerm={setSearchTerm}
-          filterType={filterType}
-          setFilterType={setFilterType}
-          filterDateRange={filterDateRange}
-          setFilterDateRange={setFilterDateRange}
-          filterFinancialStatus={filterFinancialStatus}
-          setFilterFinancialStatus={setFilterFinancialStatus}
-          filterOperationalStatus={filterOperationalStatus}
-          setFilterOperationalStatus={setFilterOperationalStatus}
-          filterDelayBucket={filterDelayBucket}
-          setFilterDelayBucket={setFilterDelayBucket}
-          activeSavedView={activeSavedView}
-          onApplySavedView={applySavedView}
-          onAddRepair={handleAddClick}
-        />
-
-        <motion.div
-          className="grid grid-cols-1 md:grid-cols-3 gap-4"
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.07 }}
-        >
-          <Card className="border-primary/20 bg-primary/5">
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-widest text-muted-foreground font-bold">Vue active</p>
-                  <p className="text-2xl font-black text-foreground mt-1">{displayedRepairs.length}</p>
-                  <p className="text-sm text-muted-foreground mt-1">intervention{displayedRepairs.length > 1 ? "s" : ""} affichée{displayedRepairs.length > 1 ? "s" : ""}</p>
-                </div>
-                <div className="rounded-xl bg-primary/15 p-2.5 text-primary">
-                  <Wrench className="h-5 w-5" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-amber-200 bg-amber-50/60">
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-widest text-muted-foreground font-bold">Dette visible</p>
-                  <p className="text-2xl font-black text-amber-700 mt-1">{Math.round(visibleDebt).toLocaleString()} DH</p>
-                  <p className="text-sm text-muted-foreground mt-1">{openDebtCases} dossier{openDebtCases > 1 ? "s" : ""} à traiter</p>
-                </div>
-                <div className="rounded-xl bg-amber-100 p-2.5 text-amber-700">
-                  <AlertTriangle className="h-5 w-5" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-emerald-200 bg-emerald-50/60">
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-widest text-muted-foreground font-bold">Couverture paiement</p>
-                  <p className="text-2xl font-black text-emerald-700 mt-1">{visibleCoverage.toFixed(0)}%</p>
-                  <p className="text-sm text-muted-foreground mt-1">Encaissements visibles {Math.round(visiblePaid).toLocaleString()} DH</p>
-                </div>
-                <div className="rounded-xl bg-emerald-100 p-2.5 text-emerald-700">
-                  {visibleCoverage >= 80 ? <CheckCircle2 className="h-5 w-5" /> : <Coins className="h-5 w-5" />}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <motion.div
-          className="grid grid-cols-1 md:grid-cols-3 gap-4"
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.09 }}
-        >
-          <Card className="border-blue-200 bg-blue-50/50">
-            <CardContent className="p-4">
-              <p className="text-xs uppercase tracking-widest text-muted-foreground font-bold">Taux de recouvrement mensuel</p>
-              <p className="text-2xl font-black text-blue-700 mt-1">{monthlyRecoveryRate.toFixed(1)}%</p>
-            </CardContent>
-          </Card>
-          <Card className="border-purple-200 bg-purple-50/50">
-            <CardContent className="p-4">
-              <p className="text-xs uppercase tracking-widest text-muted-foreground font-bold">Temps moyen de règlement</p>
-              <p className="text-2xl font-black text-purple-700 mt-1">{averageSettlementDays.toFixed(1)} jours</p>
-            </CardContent>
-          </Card>
-          <Card className="border-indigo-200 bg-indigo-50/50">
-            <CardContent className="p-4">
-              <p className="text-xs uppercase tracking-widest text-muted-foreground font-bold">Top véhicules en maintenance</p>
-              <div className="mt-2 space-y-1 text-sm">
-                {topVehiclesInMaintenance.length === 0 && <p className="text-muted-foreground">Aucune donnée</p>}
-                {topVehiclesInMaintenance.map(([name, count]) => (
-                  <p key={name} className="font-medium text-indigo-700">{name} · {count}</p>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <Card className="border border-border/40">
-          <CardHeader className="pb-0">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <LineChartIcon className="h-4 w-4 text-primary" />
-              Évolution coût / dette mensuelle
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4">
-            <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={evolutionData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="label" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="cout" stroke="#2563eb" name="Coût" strokeWidth={2} />
-                  <Line type="monotone" dataKey="dette" stroke="#dc2626" name="Dette" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        <motion.div className="grid grid-cols-1 md:grid-cols-3 gap-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <Card className="border-red-200 bg-red-50/40">
-            <CardContent className="p-4">
-              <p className="text-xs font-bold uppercase tracking-widest">Alertes dette &gt; 30 jours</p>
-              <p className="mt-1 text-2xl font-black text-red-700">{smartAlerts.debtAlerts.length}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-orange-200 bg-orange-50/40">
-            <CardContent className="p-4">
-              <p className="text-xs font-bold uppercase tracking-widest">Alertes coût élevé</p>
-              <p className="mt-1 text-2xl font-black text-orange-700">{smartAlerts.highCostAlerts.length}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-amber-200 bg-amber-50/40">
-            <CardContent className="p-4">
-              <p className="text-xs font-bold uppercase tracking-widest">Alertes SLA dépassé</p>
-              <p className="mt-1 text-2xl font-black text-amber-700">{smartAlerts.slaAlerts.length}</p>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.1 }}
-        >
           <RepairTable
             filteredRepairs={displayedRepairs}
             onViewDetails={handleViewDetails}
@@ -450,33 +263,37 @@ const Repairs = () => {
             onAddPayment={handleQuickPayment}
             onMarkAsSettled={handleQuickSettle}
           />
-        </motion.div>
+        </TabsContent>
 
-        <RepairFormDialog
-          open={isFormOpen}
-          onOpenChange={setIsFormOpen}
-          onSave={handleSaveRepair}
-          repair={editingRepair}
-          vehicles={vehicles}
-        />
+        <TabsContent value="analytics" className="mt-0 focus-visible:ring-0">
+          <RepairAnalytics repairs={repairs} />
+        </TabsContent>
+      </Tabs>
 
-        <RepairDetailsDialog
-          open={isDetailsOpen}
-          onOpenChange={setIsDetailsOpen}
-          repair={selectedRepair}
-          onEdit={handleEditRepair}
-        />
+      <RepairFormDialog
+        open={isFormOpen}
+        onOpenChange={setIsFormOpen}
+        onSave={handleSaveRepair}
+        repair={editingRepair}
+        vehicles={vehicles}
+      />
 
-        {/* Floating Action Button (FAB) for Mobile / Android */}
-        <div className="fixed bottom-20 right-5 z-40 lg:hidden">
-          <Button
-            onClick={handleAddClick}
-            className="h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-2xl shadow-primary/40 flex items-center justify-center p-0 hover:scale-105 active:scale-95 transition-transform"
-            title="Nouvelle réparation"
-          >
-            <Plus className="h-7 w-7" />
-          </Button>
-        </div>
+      <RepairDetailsDialog
+        open={isDetailsOpen}
+        onOpenChange={setIsDetailsOpen}
+        repair={selectedRepair}
+        onEdit={handleEditRepair}
+      />
+
+      {/* Floating Action Button (FAB) for Mobile / Android */}
+      <div className="fixed bottom-20 right-5 z-40 lg:hidden">
+        <Button
+          onClick={handleAddClick}
+          className="h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-2xl shadow-primary/40 flex items-center justify-center p-0 hover:scale-105 active:scale-95 transition-transform"
+          title="Nouvelle réparation"
+        >
+          <Plus className="h-7 w-7" />
+        </Button>
       </div>
     </div>
   );
