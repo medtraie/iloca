@@ -209,7 +209,7 @@ const parseNumber = (v: any) => {
 const parseBool = (v: any) => {
   if (typeof v === "boolean") return v;
   if (typeof v === "number") return v > 0;
-  if (typeof v === "string") return ["1", "true", "on", "online", "moving"].includes(v.toLowerCase());
+  if (typeof v === "string") return ["1", "true", "on", "online", "moving", "ack", "engine", "stopped"].includes(v.toLowerCase().trim());
   return false;
 };
 
@@ -218,16 +218,30 @@ function transformDevice(item: any) {
   const lat = parseNumber(item.lat ?? item.latitude ?? item.position?.lat ?? item.location?.lat);
   const lng = parseNumber(item.lng ?? item.longitude ?? item.position?.lng ?? item.location?.lng);
   const speed = parseNumber(item.speed ?? item.current_speed ?? item.attributes?.speed);
-  const online = parseBool(item.online ?? item.active ?? item.status ?? item.connection_status ?? item.motion);
+  const onlineRaw = String(item.online ?? item.active ?? item.status ?? item.connection_status ?? "").toLowerCase().trim();
+  const iconColor = String(item.icon_color ?? "").toLowerCase().trim();
+  const timeRaw = String(item.time ?? "").toLowerCase();
+  
+  let status = "offline";
+  if (onlineRaw === "offline" || iconColor === "red" || timeRaw.includes("non connecté")) {
+    status = "offline";
+  } else if (speed > 2 || onlineRaw === "moving" || iconColor === "green") {
+    status = "moving";
+  } else if (
+    onlineRaw === "ack" ||
+    onlineRaw === "stopped" ||
+    onlineRaw === "engine" ||
+    onlineRaw === "online" ||
+    iconColor === "yellow" ||
+    (Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0))
+  ) {
+    status = "online";
+  }
+
   const lastUpdate = item.time ?? item.last_update ?? item.server_time ?? item.updated_at ?? item.timestamp;
   const plate = String(item.plate_number ?? item.plate ?? item.registration ?? item.immatriculation ?? "");
   const id = String(item.id ?? item.device_id ?? item.imei ?? item.uniqueId ?? item.plate ?? item.name ?? "unknown");
   const name = String(item.name ?? item.device_name ?? item.title ?? item.object_name ?? "");
-  
-  const hasPosition = Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0);
-  const normalizedOnline = online || (hasPosition && speed > 0);
-  let status = "offline";
-  if (normalizedOnline) status = speed > 1 ? "moving" : "online";
 
   return {
     id,

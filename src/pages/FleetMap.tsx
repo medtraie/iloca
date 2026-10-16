@@ -91,22 +91,22 @@ const statusMeta = (s: "online" | "moving" | "offline") => {
   if (s === "moving") {
     return {
       label: "En mouvement",
-      color: "#0ea5e9", // Sky neon
-      glow: "rgba(14, 165, 233, 0.4)",
-      badge: "bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30"
-    };
-  }
-  if (s === "online") {
-    return {
-      label: "En ligne / Arrêt",
-      color: "#10b981", // Emerald neon
+      color: "#10b981", // Emerald neon for moving (GPSwox Green)
       glow: "rgba(16, 185, 129, 0.4)",
       badge: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
     };
   }
+  if (s === "online") {
+    return {
+      label: "Arrêt / Stationné",
+      color: "#f59e0b", // Amber/Gold neon for stationary (GPSwox Yellow Ack)
+      glow: "rgba(245, 158, 11, 0.4)",
+      badge: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
+    };
+  }
   return {
     label: "Hors ligne",
-    color: "#f43f5e", // Rose/Crimson
+    color: "#f43f5e", // Rose/Crimson for offline (GPSwox Red)
     glow: "rgba(244, 63, 94, 0.3)",
     badge: "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
   };
@@ -128,7 +128,7 @@ const tileCatalog: Record<
   google_hybrid: {
     label: "Google Maps Hybride",
     description: "Satellite Google + Noms des rues & POIs",
-    url: "https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=fr&gl=MA",
+    url: "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=fr&gl=MA",
     attribution: "&copy; Google Maps",
     maxZoom: 21,
     subdomains: ["0", "1", "2", "3"],
@@ -138,7 +138,7 @@ const tileCatalog: Record<
   google_roadmap: {
     label: "Google Maps Routier",
     description: "Plan officiel Google standard avec gl=MA",
-    url: "https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=fr&gl=MA",
+    url: "https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=fr&gl=MA",
     attribution: "&copy; Google Maps",
     maxZoom: 21,
     subdomains: ["0", "1", "2", "3"],
@@ -148,7 +148,7 @@ const tileCatalog: Record<
   google_traffic: {
     label: "Google Maps Trafic Live",
     description: "Trafic routier et embouteillages en direct",
-    url: "https://mt{s}.google.com/vt/lyrs=m,traffic&x={x}&y={y}&z={z}&hl=fr&gl=MA",
+    url: "https://mt1.google.com/vt/lyrs=m,traffic&x={x}&y={y}&z={z}&hl=fr&gl=MA",
     attribution: "&copy; Google Maps Traffic",
     maxZoom: 21,
     subdomains: ["0", "1", "2", "3"],
@@ -158,7 +158,7 @@ const tileCatalog: Record<
   google_satellite: {
     label: "Google Maps Satellite",
     description: "Photographie satellite pure Google",
-    url: "https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}&hl=fr&gl=MA",
+    url: "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}&hl=fr&gl=MA",
     attribution: "&copy; Google Maps",
     maxZoom: 21,
     subdomains: ["0", "1", "2", "3"],
@@ -168,7 +168,7 @@ const tileCatalog: Record<
   google_terrain: {
     label: "Google Maps Relief",
     description: "Topographie et relief physique du Maroc",
-    url: "https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}&hl=fr&gl=MA",
+    url: "https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}&hl=fr&gl=MA",
     attribution: "&copy; Google Maps",
     maxZoom: 21,
     subdomains: ["0", "1", "2", "3"],
@@ -915,7 +915,17 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
     const map = mapRef.current;
     if (!map) return;
     const old = tileRef.current;
-    if (old) old.remove();
+    if (old) {
+      try {
+        map.removeLayer(old);
+      } catch {
+        try {
+          old.remove();
+        } catch {
+          // ignore
+        }
+      }
+    }
     const theme = tileCatalog[mapTheme];
     const tile = L.tileLayer(theme.url, {
       attribution: theme.attribution,
@@ -1124,22 +1134,22 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
               onClick={() => setFilter("moving")}
               className={`px-2.5 py-1 rounded-2xl text-[11px] font-bold transition-all flex items-center gap-1.5 ${
                 filter === "moving"
-                  ? "bg-sky-500 text-white shadow-xs shadow-sky-500/20"
-                  : "text-sky-600 dark:text-sky-400 hover:bg-sky-500/10"
+                  ? "bg-emerald-600 text-white shadow-xs shadow-emerald-500/20"
+                  : "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
               }`}
             >
-              <span className="h-1.5 w-1.5 rounded-full bg-sky-400 animate-pulse" />
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
               Mouvement <span className="ml-0.5 opacity-80">{stats.moving}</span>
             </button>
             <button
               onClick={() => setFilter("online")}
               className={`px-2.5 py-1 rounded-2xl text-[11px] font-bold transition-all flex items-center gap-1.5 ${
                 filter === "online"
-                  ? "bg-emerald-600 text-white shadow-xs shadow-emerald-500/20"
-                  : "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                  ? "bg-amber-600 text-white shadow-xs shadow-amber-500/20"
+                  : "text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
               }`}
             >
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
               Arrêt <span className="ml-0.5 opacity-80">{stats.online}</span>
             </button>
             <button
@@ -1190,7 +1200,33 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
             <span className="ml-1.5 hidden md:inline">{isFetching ? "Sync..." : "Sync GPS"}</span>
           </Button>
 
-          {/* Map Layer Popover */}
+          {/* Quick 1-Click Layer Switcher Pills */}
+          <div className="hidden lg:flex items-center gap-1 bg-background/85 dark:bg-slate-950/85 backdrop-blur-2xl border border-white/10 dark:border-white/5 p-1 rounded-3xl shadow-xl">
+            {[
+              { id: "google_hybrid", label: "Google Hybride", short: "Hybride" },
+              { id: "google_roadmap", label: "Google Routier", short: "Routier" },
+              { id: "google_traffic", label: "Google Trafic", short: "Trafic" },
+              { id: "satellite", label: "Satellite ESRI", short: "Satellite" },
+              { id: "dark", label: "Cyber Dark", short: "Dark" }
+            ].map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setMapTheme(t.id as MapTheme)}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  mapTheme === t.id
+                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25 scale-105"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                }`}
+                title={t.label}
+              >
+                <span>{t.short}</span>
+                {mapTheme === t.id && <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />}
+              </button>
+            ))}
+          </div>
+
+          {/* Map Layer Popover Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -1199,10 +1235,10 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                 className="rounded-3xl h-10 px-3 bg-background/85 dark:bg-slate-950/85 backdrop-blur-2xl border border-white/10 dark:border-white/5 shadow-2xl font-bold text-xs"
               >
                 <Layers className="h-4 w-4 text-primary" />
-                <span className="ml-1.5 hidden lg:inline">{tileCatalog[mapTheme].label}</span>
+                <span className="ml-1.5 hidden xl:inline">{tileCatalog[mapTheme].label}</span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64 rounded-2xl border border-white/10 backdrop-blur-2xl bg-card/95 p-1.5 shadow-2xl max-h-[85vh] overflow-y-auto">
+            <DropdownMenuContent align="end" className="z-[3000] w-64 rounded-2xl border border-white/10 backdrop-blur-2xl bg-card/95 p-1.5 shadow-2xl max-h-[85vh] overflow-y-auto pointer-events-auto">
               <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-wider text-primary px-2 py-1 flex items-center justify-between">
                 <span>Google Maps (gl=MA • hl=fr)</span>
                 <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold">Officiel</span>
@@ -1212,6 +1248,7 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                 .map(([key, meta]) => (
                   <DropdownMenuItem
                     key={key}
+                    onSelect={() => setMapTheme(key as MapTheme)}
                     onClick={() => setMapTheme(key as MapTheme)}
                     className={`rounded-xl cursor-pointer py-2 px-3 text-xs flex flex-col items-start gap-0.5 ${
                       mapTheme === key ? "bg-primary/10 text-primary font-black" : "font-semibold"
@@ -1242,6 +1279,7 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                 .map(([key, meta]) => (
                   <DropdownMenuItem
                     key={key}
+                    onSelect={() => setMapTheme(key as MapTheme)}
                     onClick={() => setMapTheme(key as MapTheme)}
                     className={`rounded-xl cursor-pointer py-2 px-3 text-xs flex flex-col items-start gap-0.5 ${
                       mapTheme === key ? "bg-primary/10 text-primary font-black" : "font-semibold"

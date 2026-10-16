@@ -97,23 +97,38 @@ const getGpsConfig = async () => {
 
 const getApiCandidates = async () => {
   const envApi = (import.meta.env.VITE_GPSWOX_API_URL as string | undefined) || "";
-  const envBase = ensureUrl(getEnvBaseUrl());
   const { apiUrl } = await getGpsConfig();
 
   const candidates: string[] = [];
-  if (envApi) candidates.push(ensureUrl(envApi));
-  candidates.push(DEFAULT_LOCAL_API_URL);
-  if (envBase) candidates.push(`${envBase.replace(/\/+$/, "")}/api`);
 
+  // 1. Top priority: User configured apiUrl in Settings (/settings)
   if (apiUrl) {
-    const normalized = apiUrl.replace(/\/+$/, "");
-    candidates.push(normalized);
-    if (!/\/api$/i.test(normalized)) {
-      candidates.push(`${normalized}/api`);
+    const clean = apiUrl.trim().replace(/\/+$/, "");
+    if (/^https?:\/\//i.test(clean)) {
+      candidates.push(clean);
+      if (!/\/api$/i.test(clean)) candidates.push(`${clean}/api`);
+    } else {
+      candidates.push(`http://${clean}/api`);
+      candidates.push(`http://${clean}`);
+      candidates.push(`https://${clean}/api`);
+      candidates.push(`https://${clean}`);
     }
   }
 
+  // 2. Env API URL
+  if (envApi) {
+    const clean = envApi.trim().replace(/\/+$/, "");
+    candidates.push(clean);
+    if (!/\/api$/i.test(clean)) candidates.push(`${clean}/api`);
+  }
+
+  // 3. Fallbacks
+  const envBase = getEnvBaseUrl().trim().replace(/\/+$/, "");
+  if (envBase) {
+    candidates.push(`${envBase}/api`);
+  }
   candidates.push(DEFAULT_GPSWOX_API_URL);
+
   return [...new Set(candidates.filter(Boolean).map((value) => value.replace(/\/+$/, "")))];
 };
 
@@ -253,15 +268,65 @@ const detectSeverity = (item: AnyRecord): "info" | "warning" | "critical" => {
   return "info";
 };
 
+function extractDevicesStrict(payload: any): any[] {
+  const roots = pickArray(payload);
+  const queue: any[] = roots.length ? [...roots] : [payload];
+  const devices: any[] = [];
+
+  while (queue.length) {
+    const node = queue.shift();
+    if (node == null) continue;
+    if (Array.isArray(node)) {
+      queue.push(...node);
+      continue;
+    }
+    if (typeof node !== "object") continue;
+
+    if (Array.isArray(node.items)) {
+      queue.push(...node.items);
+      continue;
+    }
+
+    if (
+      "lat" in node ||
+      "latitude" in node ||
+      "position" in node ||
+      "imei" in node ||
+      "device_id" in node ||
+      "online" in node ||
+      "speed" in node
+    ) {
+      devices.push(node);
+    }
+  }
+
+  const seen = new Set<string>();
+  return devices.filter((item) => {
+    const key = String(item?.id ?? item?.device_id ?? item?.imei ?? item?.name ?? "").toLowerCase();
+    if (!key) return false;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 const parseDevice = (item: AnyRecord): GpswoxDevice => {
   const lat = parseNumber(item.lat ?? item.latitude ?? item.position?.lat ?? item.location?.lat);
   const lng = parseNumber(item.lng ?? item.longitude ?? item.position?.lng ?? item.location?.lng);
   const id = String(item.id ?? item.device_id ?? item.imei ?? item.uniqueId ?? item.uuid ?? crypto.randomUUID());
   const name = String(item.name ?? item.title ?? item.device_name ?? item.object_name ?? item.imei ?? "GPS Device");
-  const plate = String(item.plate_number ?? item.plate ?? item.registration ?? item.immatriculation ?? "");
+  const plate = String(item.plate_number ?? item.plate ?? item.registration ?? item.immatriculation ?? name);
   const speed = parseNumber(item.speed ?? item.current_speed ?? item.attributes?.speed);
-  const online = parseBool(item.online ?? item.active ?? item.status ?? item.connection_status ?? item.motion);
-  const ignition = parseBool(item.ignition ?? item.engine ?? item.attributes?.ignition);
+  
+  const onlineRaw = String(item.online ?? item.active ?? item.status ?? item.connection_status ?? "").toLowerCase().trim();
+  const iconColor = String(item.icon_color ?? "").toLowerCase().trim();
+  const timeRaw = String(item.time ?? "").toLowerCase();
+
+  const isOffline = onlineRaw === "offline" || iconColor === "red" || timeRaw.includes("non connecté");
+  const isMoving = speed > 2 || onlineRaw === "moving" || iconColor === "green";
+  const isStationary = !isOffline && !isMoving && (onlineRaw === "ack" || onlineRaw === "stopped" || onlineRaw === "engine" || onlineRaw === "online" || iconColor === "yellow" || (lat !== 0 && lng !== 0));
+  const online = !isOffline && (isMoving || isStationary);
+  const ignition = parseBool(item.ignition ?? item.engine ?? item.attributes?.ignition ?? (onlineRaw === "ack" || isMoving));
   const fuelLevel = item.fuel_level ?? item.fuelLevel ?? item.attributes?.fuel_level ?? item.sensors?.fuel_level;
   const lastUpdate = item.time ?? item.last_update ?? item.server_time ?? item.updated_at ?? item.timestamp;
   return {
@@ -317,6 +382,7 @@ async function getUserApiHash() {
 
   const apiCandidates = await getApiCandidates();
   for (const base of apiCandidates) {
+    // 1) Try GET /login?email=...&password=...
     const loginViaQuery = buildUrl(base, "/login", { email, password });
     try {
       const payload = await fetchJson(loginViaQuery);
@@ -327,9 +393,29 @@ async function getUserApiHash() {
       }
     } catch {
     }
-  }
 
-  for (const base of apiCandidates) {
+    // 2) Try POST /login with form data (standard Laravel GPSwox)
+    try {
+      const loginEndpoint = `${base.replace(/\/+$/, "")}/login`;
+      const formParams = new URLSearchParams();
+      formParams.append("email", email);
+      formParams.append("password", password);
+      const res = await fetch(loginEndpoint, {
+        method: "POST",
+        body: formParams
+      });
+      if (res.ok) {
+        const payload = await res.json();
+        const hash = parseHash(payload);
+        if (hash) {
+          await writeHashToSupabase(hash);
+          return hash;
+        }
+      }
+    } catch {
+    }
+
+    // 3) Try POST /login with JSON body
     try {
       const loginEndpoint = `${base.replace(/\/+$/, "")}/login`;
       const res = await fetch(loginEndpoint, {
@@ -337,12 +423,13 @@ async function getUserApiHash() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })
       });
-      if (!res.ok) continue;
-      const payload = await res.json();
-      const hash = parseHash(payload);
-      if (hash) {
-        await writeHashToSupabase(hash);
-        return hash;
+      if (res.ok) {
+        const payload = await res.json();
+        const hash = parseHash(payload);
+        if (hash) {
+          await writeHashToSupabase(hash);
+          return hash;
+        }
       }
     } catch {
     }
@@ -515,7 +602,7 @@ async function getDevices(): Promise<GpswoxDevice[]> {
   try {
     const payload = await requestViaSupabaseFunction("devices");
     if (payload?.data) {
-      const devices = pickArray(payload.data).map(parseDevice).filter((d) => d.id);
+      const devices = extractDevicesStrict(payload.data).map(parseDevice).filter((d) => d.id);
       if (devices.length) {
         await syncDevicesInLocalStorage(devices);
         await syncTrackingFromDevices(devices);
@@ -538,7 +625,7 @@ async function getDevices(): Promise<GpswoxDevice[]> {
   for (const endpoint of endpoints) {
     try {
       const payload = await request(endpoint);
-      const devices = pickArray(payload).map(parseDevice).filter((d) => d.id);
+      const devices = extractDevicesStrict(payload).map(parseDevice).filter((d) => d.id);
       if (devices.length) {
         await syncDevicesInLocalStorage(devices);
         await syncTrackingFromDevices(devices);
