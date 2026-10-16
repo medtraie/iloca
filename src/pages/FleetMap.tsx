@@ -57,7 +57,18 @@ import {
   ChevronLeft
 } from "lucide-react";
 
-type MapTheme = "dark" | "satellite" | "light" | "osm";
+const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyANl_xzJcEYaItw6TNeqTJ-CRHeuYjLjp8";
+
+type MapTheme =
+  | "google_hybrid"
+  | "google_roadmap"
+  | "google_traffic"
+  | "google_satellite"
+  | "google_terrain"
+  | "dark"
+  | "satellite"
+  | "light"
+  | "osm";
 type HistoryPoint = { lat: number; lng: number; timestamp: number; speed?: number };
 type DatePreset = "1h" | "today" | "24h" | "7d" | "custom";
 
@@ -101,7 +112,69 @@ const statusMeta = (s: "online" | "moving" | "offline") => {
   };
 };
 
-const tileCatalog: Record<MapTheme, { label: string; description: string; url: string; attribution: string; maxZoom: number }> = {
+const tileCatalog: Record<
+  MapTheme,
+  {
+    label: string;
+    description: string;
+    url: string;
+    attribution: string;
+    maxZoom: number;
+    subdomains?: string[];
+    isGoogle?: boolean;
+    badge?: string;
+  }
+> = {
+  google_hybrid: {
+    label: "Google Maps Hybride",
+    description: "Satellite Google + Noms des rues & POIs",
+    url: "https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=fr&gl=MA",
+    attribution: "&copy; Google Maps",
+    maxZoom: 21,
+    subdomains: ["0", "1", "2", "3"],
+    isGoogle: true,
+    badge: "Google"
+  },
+  google_roadmap: {
+    label: "Google Maps Routier",
+    description: "Plan officiel Google standard avec gl=MA",
+    url: "https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=fr&gl=MA",
+    attribution: "&copy; Google Maps",
+    maxZoom: 21,
+    subdomains: ["0", "1", "2", "3"],
+    isGoogle: true,
+    badge: "Google"
+  },
+  google_traffic: {
+    label: "Google Maps Trafic Live",
+    description: "Trafic routier et embouteillages en direct",
+    url: "https://mt{s}.google.com/vt/lyrs=m,traffic&x={x}&y={y}&z={z}&hl=fr&gl=MA",
+    attribution: "&copy; Google Maps Traffic",
+    maxZoom: 21,
+    subdomains: ["0", "1", "2", "3"],
+    isGoogle: true,
+    badge: "Trafic"
+  },
+  google_satellite: {
+    label: "Google Maps Satellite",
+    description: "Photographie satellite pure Google",
+    url: "https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}&hl=fr&gl=MA",
+    attribution: "&copy; Google Maps",
+    maxZoom: 21,
+    subdomains: ["0", "1", "2", "3"],
+    isGoogle: true,
+    badge: "Google"
+  },
+  google_terrain: {
+    label: "Google Maps Relief",
+    description: "Topographie et relief physique du Maroc",
+    url: "https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}&hl=fr&gl=MA",
+    attribution: "&copy; Google Maps",
+    maxZoom: 21,
+    subdomains: ["0", "1", "2", "3"],
+    isGoogle: true,
+    badge: "Google"
+  },
   dark: {
     label: "Cyber Dark 2026",
     description: "Contraste élevé nuit & télémétrie",
@@ -110,7 +183,7 @@ const tileCatalog: Record<MapTheme, { label: string; description: string; url: s
     maxZoom: 20
   },
   satellite: {
-    label: "Satellite Aéro",
+    label: "Satellite Aéro ESRI",
     description: "Imagerie haute résolution ESRI",
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     attribution: "Tiles &copy; Esri",
@@ -131,6 +204,7 @@ const tileCatalog: Record<MapTheme, { label: string; description: string; url: s
     maxZoom: 19
   }
 };
+
 
 const haversineKm = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
   const R = 6371;
@@ -353,7 +427,7 @@ export default function FleetMap() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "online" | "moving" | "offline">("all");
   const [selectedId, setSelectedId] = useState<string>("");
-  const [mapTheme, setMapTheme] = useState<MapTheme>("dark");
+  const [mapTheme, setMapTheme] = useState<MapTheme>("google_hybrid");
   const [deckOpen, setDeckOpen] = useState(true);
   const [activeDeckTab, setActiveDeckTab] = useState<"flotte" | "tableau" | "trajet" | "capteurs">("flotte");
   const [followSelected, setFollowSelected] = useState(false);
@@ -811,7 +885,11 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
     L.control.zoom({ position: "bottomright" }).addTo(map);
 
     const theme = tileCatalog[mapTheme];
-    const tile = L.tileLayer(theme.url, { attribution: theme.attribution, maxZoom: theme.maxZoom }).addTo(map);
+    const tile = L.tileLayer(theme.url, {
+      attribution: theme.attribution,
+      maxZoom: theme.maxZoom,
+      subdomains: theme.subdomains || "abc"
+    }).addTo(map);
 
     const markersLayer = L.layerGroup().addTo(map);
     const overlayLayer = L.layerGroup().addTo(map);
@@ -839,7 +917,11 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
     const old = tileRef.current;
     if (old) old.remove();
     const theme = tileCatalog[mapTheme];
-    const tile = L.tileLayer(theme.url, { attribution: theme.attribution, maxZoom: theme.maxZoom });
+    const tile = L.tileLayer(theme.url, {
+      attribution: theme.attribution,
+      maxZoom: theme.maxZoom,
+      subdomains: theme.subdomains || "abc"
+    });
     tile.addTo(map);
     tileRef.current = tile;
   }, [mapTheme]);
@@ -900,7 +982,7 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
               <strong style="font-size:12px;">${Math.round(item.distanceToday)} km</strong>
             </div>
           </div>
-          <div style="display:flex; gap:4px;">
+          <div style="display:flex; gap:4px; margin-bottom:4px;">
             <button onclick="window.dispatchEvent(new CustomEvent('map-focus-vehicle', { detail: '${item.id}' }))" style="
               flex:1;
               background:#0ea5e9;
@@ -923,6 +1005,44 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
               font-weight:700;
               cursor:pointer;
             ">Tracer</button>
+          </div>
+          <div style="display:flex; gap:4px;">
+            <a href="https://www.google.com/maps/search/?api=1&query=${item.last?.lat},${item.last?.lng}" target="_blank" rel="noopener noreferrer" style="
+              flex:1;
+              text-align:center;
+              text-decoration:none;
+              background:#ffffff;
+              border:1px solid #cbd5e1;
+              color:#1e293b;
+              padding:4px 6px;
+              border-radius:6px;
+              font-size:10px;
+              font-weight:700;
+              display:flex;
+              align-items:center;
+              justify-content:center;
+              gap:3px;
+            ">
+              <span style="color:#4285F4; font-weight:900;">G</span>oogle Maps ↗
+            </a>
+            <a href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${item.last?.lat},${item.last?.lng}" target="_blank" rel="noopener noreferrer" style="
+              flex:1;
+              text-align:center;
+              text-decoration:none;
+              background:#ffffff;
+              border:1px solid #cbd5e1;
+              color:#1e293b;
+              padding:4px 6px;
+              border-radius:6px;
+              font-size:10px;
+              font-weight:700;
+              display:flex;
+              align-items:center;
+              justify-content:center;
+              gap:3px;
+            ">
+              Street View ↗
+            </a>
           </div>
         </div>
       `);
@@ -1082,26 +1202,58 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                 <span className="ml-1.5 hidden lg:inline">{tileCatalog[mapTheme].label}</span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 rounded-2xl border border-white/10 backdrop-blur-2xl bg-card/95 p-1.5 shadow-2xl">
-              <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-wider text-muted-foreground px-2 py-1">
-                Fonds Cartographiques 2026
+            <DropdownMenuContent align="end" className="w-64 rounded-2xl border border-white/10 backdrop-blur-2xl bg-card/95 p-1.5 shadow-2xl max-h-[85vh] overflow-y-auto">
+              <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-wider text-primary px-2 py-1 flex items-center justify-between">
+                <span>Google Maps (gl=MA • hl=fr)</span>
+                <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold">Officiel</span>
               </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {Object.entries(tileCatalog).map(([key, meta]) => (
-                <DropdownMenuItem
-                  key={key}
-                  onClick={() => setMapTheme(key as MapTheme)}
-                  className={`rounded-xl cursor-pointer py-2 px-3 text-xs flex flex-col items-start gap-0.5 ${
-                    mapTheme === key ? "bg-primary/10 text-primary font-black" : "font-semibold"
-                  }`}
-                >
-                  <span className="flex items-center gap-1.5">
-                    {meta.label}
-                    {mapTheme === key && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground font-normal">{meta.description}</span>
-                </DropdownMenuItem>
-              ))}
+              {Object.entries(tileCatalog)
+                .filter(([_, meta]) => meta.isGoogle)
+                .map(([key, meta]) => (
+                  <DropdownMenuItem
+                    key={key}
+                    onClick={() => setMapTheme(key as MapTheme)}
+                    className={`rounded-xl cursor-pointer py-2 px-3 text-xs flex flex-col items-start gap-0.5 ${
+                      mapTheme === key ? "bg-primary/10 text-primary font-black" : "font-semibold"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="flex items-center gap-1.5">
+                        {meta.label}
+                        {mapTheme === key && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
+                      </span>
+                      {meta.badge && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-muted text-muted-foreground">
+                          {meta.badge}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground font-normal">{meta.description}</span>
+                  </DropdownMenuItem>
+                ))}
+
+              <DropdownMenuSeparator className="my-1.5" />
+
+              <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-wider text-muted-foreground px-2 py-1">
+                Autres Thèmes
+              </DropdownMenuLabel>
+              {Object.entries(tileCatalog)
+                .filter(([_, meta]) => !meta.isGoogle)
+                .map(([key, meta]) => (
+                  <DropdownMenuItem
+                    key={key}
+                    onClick={() => setMapTheme(key as MapTheme)}
+                    className={`rounded-xl cursor-pointer py-2 px-3 text-xs flex flex-col items-start gap-0.5 ${
+                      mapTheme === key ? "bg-primary/10 text-primary font-black" : "font-semibold"
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      {meta.label}
+                      {mapTheme === key && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground font-normal">{meta.description}</span>
+                  </DropdownMenuItem>
+                ))}
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -1806,6 +1958,40 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                         )}
                       </div>
                     </div>
+
+                    {/* Google Maps External Links */}
+                    {selectedItem.last && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            window.open(
+                              `https://www.google.com/maps/search/?api=1&query=${selectedItem.last!.lat},${selectedItem.last!.lng}`,
+                              "_blank"
+                            );
+                          }}
+                          className="rounded-2xl h-10 text-xs font-bold border-border/60 hover:bg-muted"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5 mr-1 text-blue-500" />
+                          Google Maps ↗
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            window.open(
+                              `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${selectedItem.last!.lat},${selectedItem.last!.lng}`,
+                              "_blank"
+                            );
+                          }}
+                          className="rounded-2xl h-10 text-xs font-bold border-border/60 hover:bg-muted"
+                        >
+                          <Navigation className="h-3.5 w-3.5 mr-1 text-emerald-500" />
+                          Street View ↗
+                        </Button>
+                      </div>
+                    )}
 
                     <Button
                       onClick={() => {
