@@ -282,7 +282,7 @@ const detectStops = (points: HistoryPoint[], radiusM = 50, minMinutes = 2) => {
   return result;
 };
 
-// 2026 Aerospace Marker Generator
+// 2026 Aerospace & Telemetry Vehicle Marker (Aerodynamic Capsule + Floating Label)
 function buildModernVehicleMarker(item: {
   status: "online" | "moving" | "offline";
   statusColor: string;
@@ -291,64 +291,108 @@ function buildModernVehicleMarker(item: {
   plate: string;
   selected: boolean;
 }) {
-  const size = item.selected ? 38 : 30;
   const isMoving = item.status === "moving";
-  const pulseClass = item.selected || isMoving ? "gps-radar-pulse" : "";
-  const speedText = isMoving ? `${Math.round(item.speed)}` : "";
+  const isOnline = item.status === "online";
+  const speedText = isMoving ? `${Math.round(item.speed)} km/h` : isOnline ? "Arrêt" : "Hors ligne";
+  const shortLabel = (item.label || item.plate || "Véhicule").slice(0, 15);
+
+  const glow = isMoving
+    ? "rgba(16, 185, 129, 0.75)"
+    : isOnline
+    ? "rgba(245, 158, 11, 0.65)"
+    : "rgba(148, 163, 184, 0.4)";
+
+  const pulseAnimation = isMoving
+    ? `<div style="position:absolute; inset:-8px; border-radius:9999px; background:${glow}; opacity:0.35; animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>`
+    : "";
+
+  const selectionHalo = item.selected
+    ? `<div style="position:absolute; inset:-12px; border-radius:9999px; border:2.5px solid #38bdf8; animation: pulse 1.5s infinite; box-shadow:0 0 18px #38bdf8;"></div>`
+    : "";
 
   const html = `
-    <div style="position:relative; width:${size}px; height:${size}px; transform:translate(-50%, -50%); cursor:pointer;">
-      ${
-        item.selected
-          ? `<div style="position:absolute; inset:-12px; border-radius:9999px; background:${item.statusColor}; opacity:0.25; animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>`
-          : ""
-      }
+    <div style="position:relative; display:flex; flex-direction:column; align-items:center; cursor:pointer; user-select:none;">
+      <!-- Vehicle Capsule -->
+      <div style="position:relative; width:${item.selected ? 42 : 36}px; height:${item.selected ? 42 : 36}px; display:flex; align-items:center; justify-content:center;">
+        ${selectionHalo}
+        ${pulseAnimation}
+        
+        <div style="
+          width:100%;
+          height:100%;
+          border-radius:9999px;
+          background: linear-gradient(135deg, ${item.statusColor} 0%, rgba(15,23,42,0.95) 100%);
+          border: ${item.selected ? "3px solid #ffffff" : "2px solid rgba(255,255,255,0.85)"};
+          box-shadow: 0 8px 20px rgba(0,0,0,0.45), 0 0 14px ${glow};
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        ">
+          <!-- 2026 Aerodynamic Vehicle SVG Icon -->
+          <svg width="${item.selected ? 20 : 16}" height="${item.selected ? 20 : 16}" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/>
+            <circle cx="7" cy="17" r="2"/>
+            <path d="M9 17h6"/>
+            <circle cx="17" cy="17" r="2"/>
+          </svg>
+        </div>
+
+        <!-- Micro status dot -->
+        <div style="
+          position:absolute;
+          top:-2px;
+          right:-2px;
+          width:10px;
+          height:10px;
+          border-radius:9999px;
+          background:${item.statusColor};
+          border:1.5px solid #ffffff;
+          box-shadow:0 0 6px ${item.statusColor};
+        "></div>
+      </div>
+
+      <!-- 2026 Floating Telemetry Pill (Vehicle Name & Speed) -->
       <div style="
-        position:absolute;
-        inset:0;
-        border-radius:9999px;
-        background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.4), transparent 70%), ${item.statusColor};
-        border: ${item.selected ? "3px solid #ffffff" : "2px solid rgba(255,255,255,0.9)"};
-        box-shadow: 0 8px 24px rgba(0,0,0,0.35), 0 0 16px ${item.statusColor}80;
+        margin-top:3px;
         display:flex;
         align-items:center;
-        justify-content:center;
-        transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        gap:4px;
+        background: rgba(15, 23, 42, 0.90);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 2px 7px;
+        border-radius: 9999px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+        white-space: nowrap;
+        pointer-events: none;
       ">
-        <svg width="${item.selected ? 18 : 14}" height="${item.selected ? 18 : 14}" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/>
-          <circle cx="7" cy="17" r="2"/>
-          <path d="M9 17h6"/>
-          <circle cx="17" cy="17" r="2"/>
-        </svg>
+        <span style="
+          color: #ffffff;
+          font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+          font-weight: 800;
+          font-size: 10px;
+          letter-spacing: -0.02em;
+        ">${shortLabel}</span>
+
+        <span style="
+          color: ${isMoving ? "#34d399" : isOnline ? "#fbbf24" : "#94a3b8"};
+          font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+          font-weight: 900;
+          font-size: 9px;
+          padding-left: 2px;
+          border-left: 1px solid rgba(255,255,255,0.2);
+        ">${speedText}</span>
       </div>
-      ${
-        speedText
-          ? `<div style="
-              position:absolute;
-              bottom:-6px;
-              left:50%;
-              transform:translateX(-50%);
-              background:rgba(15,23,42,0.92);
-              border:1px solid ${item.statusColor};
-              color:#ffffff;
-              font-size:9px;
-              font-weight:900;
-              padding:1px 5px;
-              border-radius:9999px;
-              white-space:nowrap;
-              box-shadow:0 2px 6px rgba(0,0,0,0.3);
-            ">${speedText}k</div>`
-          : ""
-      }
     </div>
   `;
 
   return L.divIcon({
-    className: `custom-telemetry-marker ${pulseClass}`,
+    className: "custom-telemetry-marker",
     html,
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2]
+    iconSize: [120, 60],
+    iconAnchor: [60, 18]
   });
 }
 
@@ -434,6 +478,7 @@ export default function FleetMap() {
   const [selectedId, setSelectedId] = useState<string>("");
   const [mapTheme, setMapTheme] = useState<MapTheme>("google_hybrid");
   const [deckOpen, setDeckOpen] = useState(false);
+  const [layersModalOpen, setLayersModalOpen] = useState(false);
   const [activeDeckTab, setActiveDeckTab] = useState<"flotte" | "tableau" | "trajet" | "capteurs">("flotte");
   const [followSelected, setFollowSelected] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -947,11 +992,30 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
 
     layer.clearLayers();
 
-    visibleItems.forEach((item) => {
-      if (!item.hasPosition || !item.last) return;
+    // Build coordinate frequency map to disperse exact duplicates slightly so every vehicle is visible
+    const coordCounts = new Map<string, number>();
+    const dispersedPositions = visibleItems.map((item) => {
+      if (!item.hasPosition || !item.last) return { item, lat: 0, lng: 0, valid: false };
+      const key = `${item.last.lat.toFixed(5)},${item.last.lng.toFixed(5)}`;
+      const index = coordCounts.get(key) || 0;
+      coordCounts.set(key, index + 1);
+
+      if (index === 0) {
+        return { item, lat: item.last.lat, lng: item.last.lng, valid: true };
+      }
+      // Micro radial offset so overlapping vehicles fan out clearly
+      const angle = (index * 2 * Math.PI) / 8 + (Math.floor(index / 8) * 0.4);
+      const radius = 0.00035 * (1 + Math.floor(index / 8) * 0.6);
+      const lat = item.last.lat + radius * Math.cos(angle);
+      const lng = item.last.lng + (radius * Math.sin(angle)) / Math.cos((item.last.lat * Math.PI) / 180);
+      return { item, lat, lng, valid: true };
+    });
+
+    dispersedPositions.forEach(({ item, lat, lng, valid }) => {
+      if (!valid) return;
       const isSelected = item.id === selectedId;
 
-      const marker = L.marker([item.last.lat, item.last.lng], {
+      const marker = L.marker([lat, lng], {
         icon: buildModernVehicleMarker({
           status: item.status,
           statusColor: item.statusColor,
@@ -1202,112 +1266,6 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
             <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin text-primary" : "text-muted-foreground"}`} />
             <span className="ml-1.5 hidden md:inline">{isFetching ? "Sync..." : "Sync GPS"}</span>
           </Button>
-
-          {/* Quick 1-Click Layer Switcher Pills */}
-          <div className="hidden lg:flex items-center gap-1 bg-background/85 dark:bg-slate-950/85 backdrop-blur-2xl border border-white/10 dark:border-white/5 p-1 rounded-3xl shadow-xl">
-            {[
-              { id: "google_hybrid", label: "Google Hybride", short: "Hybride" },
-              { id: "google_roadmap", label: "Google Routier", short: "Routier" },
-              { id: "google_traffic", label: "Google Trafic", short: "Trafic" },
-              { id: "satellite", label: "Satellite ESRI", short: "Satellite" },
-              { id: "dark", label: "Cyber Dark", short: "Dark" }
-            ].map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setMapTheme(t.id as MapTheme)}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  mapTheme === t.id
-                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25 scale-105"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
-                }`}
-                title={t.label}
-              >
-                <span>{t.short}</span>
-                {mapTheme === t.id && <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />}
-              </button>
-            ))}
-          </div>
-
-          {/* Map Layer Popover Dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                size="sm"
-                variant="outline"
-                className="rounded-3xl h-10 px-3 bg-background/85 dark:bg-slate-950/85 backdrop-blur-2xl border border-white/10 dark:border-white/5 shadow-2xl font-bold text-xs"
-              >
-                <Layers className="h-4 w-4 text-primary" />
-                <span className="ml-1.5 hidden xl:inline">{tileCatalog[mapTheme].label}</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="z-[3000] w-64 rounded-2xl border border-white/10 backdrop-blur-2xl bg-card/95 p-1.5 shadow-2xl max-h-[85vh] overflow-y-auto pointer-events-auto">
-              <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-wider text-primary px-2 py-1 flex items-center justify-between">
-                <span>Google Maps (gl=MA • hl=fr)</span>
-                <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold">Officiel</span>
-              </DropdownMenuLabel>
-              {Object.entries(tileCatalog)
-                .filter(([_, meta]) => meta.isGoogle)
-                .map(([key, meta]) => (
-                  <DropdownMenuItem
-                    key={key}
-                    onSelect={() => setMapTheme(key as MapTheme)}
-                    onClick={() => setMapTheme(key as MapTheme)}
-                    className={`rounded-xl cursor-pointer py-2 px-3 text-xs flex flex-col items-start gap-0.5 ${
-                      mapTheme === key ? "bg-primary/10 text-primary font-black" : "font-semibold"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <span className="flex items-center gap-1.5">
-                        {meta.label}
-                        {mapTheme === key && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
-                      </span>
-                      {meta.badge && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-muted text-muted-foreground">
-                          {meta.badge}
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-[10px] text-muted-foreground font-normal">{meta.description}</span>
-                  </DropdownMenuItem>
-                ))}
-
-              <DropdownMenuSeparator className="my-1.5" />
-
-              <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-wider text-muted-foreground px-2 py-1">
-                Autres Thèmes
-              </DropdownMenuLabel>
-              {Object.entries(tileCatalog)
-                .filter(([_, meta]) => !meta.isGoogle)
-                .map(([key, meta]) => (
-                  <DropdownMenuItem
-                    key={key}
-                    onSelect={() => setMapTheme(key as MapTheme)}
-                    onClick={() => setMapTheme(key as MapTheme)}
-                    className={`rounded-xl cursor-pointer py-2 px-3 text-xs flex flex-col items-start gap-0.5 ${
-                      mapTheme === key ? "bg-primary/10 text-primary font-black" : "font-semibold"
-                    }`}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      {meta.label}
-                      {mapTheme === key && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground font-normal">{meta.description}</span>
-                  </DropdownMenuItem>
-                ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Fit Bounds */}
-          <Button
-            size="icon"
-            variant="outline"
-            onClick={fitToVisible}
-            className="rounded-full h-10 w-10 bg-background/85 dark:bg-slate-950/85 backdrop-blur-2xl border border-white/10 dark:border-white/5 shadow-2xl text-muted-foreground hover:text-foreground"
-            title="Ajuster vue sur tous les véhicules"
-          >
-            <Focus className="h-4 w-4" />
-          </Button>
         </div>
       </div>
 
@@ -1455,13 +1413,13 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
         </button>
       </div>
 
-      {/* 2026 FLOATING RIGHT ACTION DOCK (Inspired by Reference Image) */}
-      <div className="absolute right-4 top-1/2 -translate-y-1/2 z-[1000] flex flex-col items-center gap-2 pointer-events-auto">
+      {/* 2026 FLOATING RIGHT ACTION DOCK (Ultra-Translucent Frosted Glass) */}
+      <div className="absolute right-4 top-1/2 -translate-y-1/2 z-[1000] flex flex-col items-center gap-2.5 pointer-events-auto">
         {/* Zoom In */}
         <button
           type="button"
           onClick={() => mapRef.current?.zoomIn()}
-          className="h-10 w-10 rounded-full bg-slate-900/60 dark:bg-slate-950/70 backdrop-blur-xl border border-white/20 text-white shadow-xl hover:bg-slate-900/90 hover:scale-110 active:scale-95 transition-all flex items-center justify-center font-bold"
+          className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/25 dark:bg-black/20 dark:hover:bg-black/40 backdrop-blur-2xl border border-white/30 text-white shadow-[0_8px_32px_rgba(0,0,0,0.2)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center font-bold"
           title="Zoomer +"
         >
           <Plus className="h-4 w-4" />
@@ -1471,7 +1429,7 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
         <button
           type="button"
           onClick={() => mapRef.current?.zoomOut()}
-          className="h-10 w-10 rounded-full bg-slate-900/60 dark:bg-slate-950/70 backdrop-blur-xl border border-white/20 text-white shadow-xl hover:bg-slate-900/90 hover:scale-110 active:scale-95 transition-all flex items-center justify-center font-bold"
+          className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/25 dark:bg-black/20 dark:hover:bg-black/40 backdrop-blur-2xl border border-white/30 text-white shadow-[0_8px_32px_rgba(0,0,0,0.2)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center font-bold"
           title="Dézoomer -"
         >
           <Minus className="h-4 w-4" />
@@ -1488,90 +1446,189 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
               focusSelected(15);
             }
           }}
-          className="h-10 w-10 rounded-full bg-slate-900/60 dark:bg-slate-950/70 backdrop-blur-xl border border-white/20 text-white shadow-xl hover:bg-slate-900/90 hover:scale-110 active:scale-95 transition-all flex items-center justify-center text-emerald-400"
+          className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/25 dark:bg-black/20 dark:hover:bg-black/40 backdrop-blur-2xl border border-white/30 text-emerald-400 shadow-[0_8px_32px_rgba(0,0,0,0.2)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center"
           title="Localiser véhicule actif"
         >
           <Radio className="h-4 w-4 animate-pulse" />
         </button>
 
-        {/* Layers Switcher Popover */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="h-10 w-10 rounded-full bg-slate-900/60 dark:bg-slate-950/70 backdrop-blur-xl border border-white/20 text-white shadow-xl hover:bg-slate-900/90 hover:scale-110 active:scale-95 transition-all flex items-center justify-center text-primary"
-              title="Changer de carte"
-            >
-              <Layers className="h-4 w-4" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="z-[3000] w-64 rounded-2xl border border-white/10 backdrop-blur-2xl bg-card/95 p-1.5 shadow-2xl max-h-[85vh] overflow-y-auto pointer-events-auto">
-            <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-wider text-primary px-2 py-1 flex items-center justify-between">
-              <span>Google Maps (gl=MA • hl=fr)</span>
-              <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold">Officiel</span>
-            </DropdownMenuLabel>
-            {Object.entries(tileCatalog)
-              .filter(([_, meta]) => meta.isGoogle)
-              .map(([key, meta]) => (
-                <DropdownMenuItem
-                  key={key}
-                  onSelect={() => setMapTheme(key as MapTheme)}
-                  onClick={() => setMapTheme(key as MapTheme)}
-                  className={`rounded-xl cursor-pointer py-2 px-3 text-xs flex flex-col items-start gap-0.5 ${
-                    mapTheme === key ? "bg-primary/10 text-primary font-black" : "font-semibold"
-                  }`}
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <span className="flex items-center gap-1.5">
-                      {meta.label}
-                      {mapTheme === key && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
-                    </span>
-                    {meta.badge && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-muted text-muted-foreground">
-                        {meta.badge}
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[10px] text-muted-foreground font-normal">{meta.description}</span>
-                </DropdownMenuItem>
-              ))}
-
-            <DropdownMenuSeparator className="my-1.5" />
-
-            <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-wider text-muted-foreground px-2 py-1">
-              Autres Thèmes
-            </DropdownMenuLabel>
-            {Object.entries(tileCatalog)
-              .filter(([_, meta]) => !meta.isGoogle)
-              .map(([key, meta]) => (
-                <DropdownMenuItem
-                  key={key}
-                  onSelect={() => setMapTheme(key as MapTheme)}
-                  onClick={() => setMapTheme(key as MapTheme)}
-                  className={`rounded-xl cursor-pointer py-2 px-3 text-xs flex flex-col items-start gap-0.5 ${
-                    mapTheme === key ? "bg-primary/10 text-primary font-black" : "font-semibold"
-                  }`}
-                >
-                  <span className="flex items-center gap-1.5">
-                    {meta.label}
-                    {mapTheme === key && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground font-normal">{meta.description}</span>
-                </DropdownMenuItem>
-              ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* Layers Switcher Modal Trigger */}
+        <button
+          type="button"
+          onClick={() => setLayersModalOpen(true)}
+          className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/25 dark:bg-black/20 dark:hover:bg-black/40 backdrop-blur-2xl border border-white/30 text-primary shadow-[0_8px_32px_rgba(0,0,0,0.2)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center"
+          title="Styles & Cartographie Google Maps"
+        >
+          <Layers className="h-4 w-4" />
+        </button>
 
         {/* Global Fleet Fit */}
         <button
           type="button"
           onClick={fitToVisible}
-          className="h-10 w-10 rounded-full bg-slate-900/60 dark:bg-slate-950/70 backdrop-blur-xl border border-white/20 text-white shadow-xl hover:bg-slate-900/90 hover:scale-110 active:scale-95 transition-all flex items-center justify-center text-slate-200"
+          className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/25 dark:bg-black/20 dark:hover:bg-black/40 backdrop-blur-2xl border border-white/30 text-slate-100 shadow-[0_8px_32px_rgba(0,0,0,0.2)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center"
           title="Ajuster vue sur tous les véhicules"
         >
           <Focus className="h-4 w-4" />
         </button>
       </div>
+
+      {/* 2026 FLOATING VISIONOS MAP LAYERS MODAL (Centered 2026 Card) */}
+      {layersModalOpen && (
+        <div className="fixed inset-0 z-[1600] flex items-center justify-center p-3 sm:p-5 pointer-events-none">
+          <div
+            onClick={() => setLayersModalOpen(false)}
+            className="absolute inset-0 bg-black/50 backdrop-blur-xs pointer-events-auto transition-opacity animate-in fade-in duration-200"
+          />
+          <div className="relative pointer-events-auto w-full max-w-[600px] max-h-[85vh] bg-slate-900/95 dark:bg-slate-950/98 backdrop-blur-3xl border border-white/20 shadow-[0_25px_70px_-15px_rgba(0,0,0,0.85)] rounded-[2.5rem] overflow-hidden flex flex-col text-slate-100 ring-1 ring-white/10 animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-white/10 flex items-center justify-between shrink-0 bg-white/[0.02]">
+              <div className="flex items-center gap-3">
+                <span className="h-10 w-10 rounded-2xl bg-primary/20 border border-primary/30 flex items-center justify-center text-primary shadow-inner">
+                  <Layers className="h-5 w-5" />
+                </span>
+                <div>
+                  <h2 className="text-base font-black tracking-tight text-white flex items-center gap-2">
+                    <span>Styles & Cartographie 2026</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-primary/25 text-primary border border-primary/40">
+                      VisionOS
+                    </span>
+                  </h2>
+                  <p className="text-[11px] text-slate-400 font-semibold">
+                    Google Maps Officiel (Maroc • gl=MA • hl=fr) & Imagerie Satellite
+                  </p>
+                </div>
+              </div>
+
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setLayersModalOpen(false)}
+                className="rounded-full h-8 w-8 text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                title="Fermer"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Modal Body with Custom Glass Scrollbar */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-5 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
+              {/* Google Maps Section */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider text-primary px-1">
+                  <span>Google Maps Officiel (Maroc)</span>
+                  <span className="text-[10px] bg-primary/10 px-2 py-0.5 rounded-full">Haute Précision</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {Object.entries(tileCatalog)
+                    .filter(([_, meta]) => meta.isGoogle)
+                    .map(([key, meta]) => {
+                      const isActive = mapTheme === key;
+                      return (
+                        <div
+                          key={key}
+                          onClick={() => {
+                            setMapTheme(key as MapTheme);
+                            toast.success(`Carte changée: ${meta.label}`);
+                          }}
+                          className={`group relative p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                            isActive
+                              ? "bg-primary/20 border-primary shadow-lg shadow-primary/20 ring-1 ring-primary"
+                              : "bg-white/[0.04] border-white/10 hover:bg-white/[0.08] hover:border-white/25"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <div className="font-extrabold text-sm text-white flex items-center gap-2">
+                                <span>{meta.label}</span>
+                                {isActive && (
+                                  <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-300 mt-0.5 line-clamp-1">
+                                {meta.description}
+                              </p>
+                            </div>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-white/10 text-slate-300 shrink-0 border border-white/10">
+                              Google
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[10px] text-slate-400">
+                            <span>Zoom max: {meta.maxZoom}x</span>
+                            {isActive ? (
+                              <span className="text-primary font-black flex items-center gap-1">
+                                <CheckCircle2 className="h-3.5 w-3.5" /> Actif
+                              </span>
+                            ) : (
+                              <span className="group-hover:text-white transition-colors">Sélectionner →</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+
+              {/* Other Themes Section */}
+              <div className="space-y-2.5">
+                <div className="text-xs font-black uppercase tracking-wider text-slate-400 px-1">
+                  Styles Spécialisés & Télémétrie
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {Object.entries(tileCatalog)
+                    .filter(([_, meta]) => !meta.isGoogle)
+                    .map(([key, meta]) => {
+                      const isActive = mapTheme === key;
+                      return (
+                        <div
+                          key={key}
+                          onClick={() => {
+                            setMapTheme(key as MapTheme);
+                            toast.success(`Carte changée: ${meta.label}`);
+                          }}
+                          className={`group relative p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                            isActive
+                              ? "bg-primary/20 border-primary shadow-lg shadow-primary/20 ring-1 ring-primary"
+                              : "bg-white/[0.04] border-white/10 hover:bg-white/[0.08] hover:border-white/25"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <div className="font-extrabold text-sm text-white flex items-center gap-2">
+                                <span>{meta.label}</span>
+                                {isActive && (
+                                  <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-300 mt-0.5 line-clamp-1">
+                                {meta.description}
+                              </p>
+                            </div>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-white/10 text-slate-300 shrink-0 border border-white/10">
+                              {key === "dark" ? "Cyberpunk" : key === "satellite" ? "Aéro" : "OSM"}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[10px] text-slate-400">
+                            <span>Zoom max: {meta.maxZoom}x</span>
+                            {isActive ? (
+                              <span className="text-primary font-black flex items-center gap-1">
+                                <CheckCircle2 className="h-3.5 w-3.5" /> Actif
+                              </span>
+                            ) : (
+                              <span className="group-hover:text-white transition-colors">Sélectionner →</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 2026 FLOATING COMPACT FLEET MODAL (Centered 2026 VisionOS Card) */}
       {deckOpen && (
@@ -1586,6 +1643,9 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
           <div className="relative pointer-events-auto w-full max-w-[540px] max-h-[82vh] sm:max-h-[640px] bg-slate-900/92 dark:bg-slate-950/95 backdrop-blur-3xl border border-white/20 dark:border-white/15 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.85)] rounded-[2.5rem] overflow-hidden flex flex-col text-slate-100 ring-1 ring-white/10 animate-in zoom-in-95 duration-200">
             {/* Modal Header */}
             <div className="p-4 sm:p-5 border-b border-white/10 space-y-3 shrink-0 bg-white/[0.02]">
+              {/* Top Grab Handle */}
+              <div className="w-12 h-1 rounded-full bg-white/20 mx-auto -mt-1 mb-2" />
+
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <span className="h-10 w-10 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-400 shadow-inner">
@@ -1613,6 +1673,26 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                 >
                   <X className="h-4 w-4" />
                 </Button>
+              </div>
+
+              {/* Quick Search inside Modal */}
+              <div className="relative w-full">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Rechercher véhicule, immatriculation, ville..."
+                  className="w-full h-8 pl-8 pr-3 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder:text-slate-400 focus:outline-hidden focus:border-emerald-400/60 transition"
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
 
               {/* Quick Status Filter Pills inside Modal */}
@@ -1685,8 +1765,8 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
             <div className="flex-1 overflow-hidden">
           {/* TAB 1: FLOTTE (Interactive Vehicle Cards) */}
           {activeDeckTab === "flotte" && (
-            <ScrollArea className="h-full p-3 sm:p-4">
-              <div className="space-y-2.5 pb-20">
+            <div className="h-full overflow-y-auto p-3 sm:p-4 space-y-2.5 pb-24 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-emerald-500/60 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-white/5 [&::-webkit-scrollbar-thumb:hover]:bg-emerald-400">
+              <div className="space-y-2.5 pb-12">
                 {visibleItems.map((item) => {
                   const isSelected = item.id === selectedId;
                   return (
@@ -1694,144 +1774,141 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                       key={item.id}
                       onClick={() => {
                         setSelectedId(item.id);
-                        focusSelected(15);
+                        focusSelected(16);
+                        setDeckOpen(false);
                       }}
-                      className={`relative overflow-hidden rounded-3xl border p-3.5 transition-all cursor-pointer ${
+                      className={`relative overflow-hidden rounded-2xl border p-3.5 transition-all cursor-pointer ${
                         isSelected
-                          ? "border-primary bg-primary/5 shadow-md shadow-primary/10 ring-1 ring-primary"
-                          : "border-border/60 bg-card/60 hover:bg-muted/40 hover:border-border"
+                          ? "border-emerald-400/80 bg-emerald-500/15 shadow-lg shadow-emerald-500/10 ring-1 ring-emerald-400/50"
+                          : "border-white/10 bg-white/[0.04] hover:bg-white/[0.08] hover:border-white/20 text-white"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="space-y-0.5 min-w-0">
                           <div className="flex items-center gap-2">
                             <span
-                              className="h-2.5 w-2.5 rounded-full shrink-0"
+                              className="h-2.5 w-2.5 rounded-full shrink-0 shadow-xs"
                               style={{ backgroundColor: item.statusColor }}
                             />
-                            <span className="font-black text-sm text-foreground truncate">{item.label}</span>
+                            <span className="font-extrabold text-sm text-white truncate">{item.label}</span>
                           </div>
-                          <p className="text-xs font-bold text-muted-foreground truncate pl-4.5">
+                          <p className="text-xs font-bold text-emerald-400 truncate pl-4.5">
                             {item.plateText} {item.city ? `• ${item.city}` : ""}
                           </p>
                         </div>
-                        <Badge className={`${item.statusBadge} text-[10px] font-black shrink-0 rounded-full px-2 py-0.5`}>
+                        <span className={`${item.statusBadge} text-[10px] font-black shrink-0 rounded-full px-2 py-0.5 shadow-xs`}>
                           {item.statusLabel}
-                        </Badge>
+                        </span>
                       </div>
 
                       {/* Mini Telemetry Grid */}
-                      <div className="grid grid-cols-3 gap-1.5 mt-3 pt-2 border-t border-border/30 text-[11px] font-bold text-muted-foreground">
-                        <div className="flex items-center gap-1 bg-muted/30 p-1.5 rounded-xl">
-                          <Gauge className="h-3.5 w-3.5 text-primary" />
+                      <div className="grid grid-cols-3 gap-1.5 mt-2.5 pt-2 border-t border-white/10 text-[11px] font-bold text-slate-300">
+                        <div className="flex items-center gap-1 bg-white/5 p-1.5 rounded-xl border border-white/5">
+                          <Gauge className="h-3.5 w-3.5 text-emerald-400" />
                           <span>{Math.round(item.speed)} km/h</span>
                         </div>
-                        <div className="flex items-center gap-1 bg-muted/30 p-1.5 rounded-xl">
-                          <Clock3 className="h-3.5 w-3.5 text-muted-foreground" />
+                        <div className="flex items-center gap-1 bg-white/5 p-1.5 rounded-xl border border-white/5">
+                          <Clock3 className="h-3.5 w-3.5 text-slate-400" />
                           <span className="truncate">{formatAgo(item.last?.timestamp)}</span>
                         </div>
-                        <div className="flex items-center gap-1 bg-muted/30 p-1.5 rounded-xl">
-                          <Route className="h-3.5 w-3.5 text-emerald-500" />
+                        <div className="flex items-center gap-1 bg-white/5 p-1.5 rounded-xl border border-white/5">
+                          <Route className="h-3.5 w-3.5 text-emerald-400" />
                           <span>{Math.round(item.distanceToday)} km</span>
                         </div>
                       </div>
 
                       {/* Battery & Fuel Levels */}
                       {(typeof item.battery === "number" || typeof item.fuel === "number") && (
-                        <div className="grid grid-cols-2 gap-2 mt-2 pt-1">
+                        <div className="grid grid-cols-2 gap-2 mt-2 pt-1 border-t border-white/5">
                           {typeof item.battery === "number" && (
                             <div className="space-y-1">
-                              <div className="flex items-center justify-between text-[10px] text-muted-foreground font-semibold">
+                              <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold">
                                 <span className="flex items-center gap-1">
-                                  <Battery className="h-3 w-3 text-emerald-500" /> Batterie
+                                  <Battery className="h-3 w-3 text-emerald-400" /> Batterie
                                 </span>
-                                <span>{Math.round(item.battery)}%</span>
+                                <span className="text-slate-200">{Math.round(item.battery)}%</span>
                               </div>
-                              <Progress value={clamp(item.battery, 0, 100)} className="h-1" />
+                              <Progress value={clamp(item.battery, 0, 100)} className="h-1 bg-white/10 [&>div]:bg-emerald-400" />
                             </div>
                           )}
                           {typeof item.fuel === "number" && (
                             <div className="space-y-1">
-                              <div className="flex items-center justify-between text-[10px] text-muted-foreground font-semibold">
+                              <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold">
                                 <span className="flex items-center gap-1">
-                                  <Fuel className="h-3 w-3 text-amber-500" /> Carburant
+                                  <Fuel className="h-3 w-3 text-amber-400" /> Carburant
                                 </span>
-                                <span>{Math.round(item.fuel)}%</span>
+                                <span className="text-slate-200">{Math.round(item.fuel)}%</span>
                               </div>
-                              <Progress value={clamp(item.fuel, 0, 100)} className="h-1" />
+                              <Progress value={clamp(item.fuel, 0, 100)} className="h-1 bg-white/10 [&>div]:bg-amber-400" />
                             </div>
                           )}
                         </div>
                       )}
 
                       {/* Action buttons */}
-                      <div className="flex items-center gap-2 mt-3 pt-2 border-t border-border/30">
-                        <Button
-                          size="sm"
-                          variant="outline"
+                      <div className="flex items-center gap-2 mt-2.5 pt-2 border-t border-white/10">
+                        <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedId(item.id);
                             focusSelected(16);
+                            setDeckOpen(false);
                           }}
-                          className="flex-1 rounded-xl h-7 text-[11px] font-bold border-border/60"
+                          className="flex-1 rounded-xl h-7 text-[11px] font-bold bg-white/10 hover:bg-emerald-500/30 text-white border border-white/15 flex items-center justify-center gap-1 transition-all"
                         >
-                          <LocateFixed className="h-3 w-3 mr-1" />
+                          <LocateFixed className="h-3 w-3 text-emerald-400" />
                           Centrer
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
+                        </button>
+                        <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedId(item.id);
                             setActiveDeckTab("trajet");
                             loadVehicleHistory(item.id);
                           }}
-                          className="flex-1 rounded-xl h-7 text-[11px] font-bold border-border/60"
+                          className="flex-1 rounded-xl h-7 text-[11px] font-bold bg-white/10 hover:bg-primary/30 text-white border border-white/15 flex items-center justify-center gap-1 transition-all"
                         >
-                          <Route className="h-3 w-3 mr-1 text-primary" />
+                          <Route className="h-3 w-3 text-primary" />
                           Trajet
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
+                        </button>
+                        <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedId(item.id);
                             setActiveDeckTab("capteurs");
                           }}
-                          className="rounded-xl h-7 px-2.5 text-[11px] font-bold border-border/60"
+                          className="rounded-xl h-7 px-2.5 text-[11px] font-bold bg-white/10 hover:bg-white/20 text-white border border-white/15 flex items-center justify-center transition-all"
                           title="Fiche capteurs"
                         >
                           <ChevronRight className="h-3.5 w-3.5" />
-                        </Button>
+                        </button>
                       </div>
                     </div>
                   );
                 })}
 
                 {!visibleItems.length && (
-                  <div className="text-center py-16 text-muted-foreground space-y-2">
+                  <div className="text-center py-16 text-slate-400 space-y-2">
                     <Car className="h-8 w-8 mx-auto opacity-30" />
                     <p className="font-bold text-xs">Aucun véhicule trouvé</p>
                   </div>
                 )}
               </div>
-            </ScrollArea>
+            </div>
           )}
 
           {/* TAB 2: TABLEAU (High Density Grid) */}
           {activeDeckTab === "tableau" && (
-            <ScrollArea className="h-full p-3 sm:p-4">
-              <div className="space-y-3 pb-20">
+            <div className="h-full overflow-y-auto p-3 sm:p-4 space-y-3 pb-24 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-emerald-500/60 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-white/5">
+              <div className="space-y-3 pb-12">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-muted-foreground">
+                  <span className="text-xs font-bold text-slate-300">
                     {visibleItems.length} balises listées
                   </span>
-                  <Button
-                    size="sm"
-                    variant="outline"
+                  <button
                     onClick={() => {
                       const header = "Nom,Plaque,Statut,Vitesse_kmh,Ville,Derniere_maj\n";
                       const rows = visibleItems
@@ -1849,58 +1926,59 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                       URL.revokeObjectURL(url);
                       toast.success("Flotte exportée en CSV");
                     }}
-                    className="rounded-xl h-8 text-xs font-bold border-border/60"
+                    className="rounded-xl h-8 px-3 text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/15 flex items-center gap-1 transition-all"
                   >
-                    <Download className="h-3.5 w-3.5 mr-1" />
+                    <Download className="h-3.5 w-3.5 mr-1 text-emerald-400" />
                     Exporter CSV
-                  </Button>
+                  </button>
                 </div>
 
-                <div className="rounded-2xl border border-border/60 overflow-hidden bg-card/40">
+                <div className="rounded-2xl border border-white/10 overflow-hidden bg-white/[0.03]">
                   <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="border-b border-border/50 bg-muted/40 font-black text-[10px] text-muted-foreground uppercase">
+                      <tr className="border-b border-white/10 bg-white/5 font-black text-[10px] text-slate-300 uppercase">
                         <th className="p-2.5">Véhicule</th>
                         <th className="p-2.5">Statut</th>
                         <th className="p-2.5">Vitesse</th>
                         <th className="p-2.5 text-right">Action</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-border/40 font-semibold">
+                    <tbody className="divide-y divide-white/10 font-semibold">
                       {visibleItems.map((item) => (
                         <tr
                           key={item.id}
                           onClick={() => {
                             setSelectedId(item.id);
-                            focusSelected();
+                            focusSelected(16);
+                            setDeckOpen(false);
                           }}
-                          className={`hover:bg-muted/30 cursor-pointer ${
-                            item.id === selectedId ? "bg-primary/10" : ""
+                          className={`hover:bg-white/5 cursor-pointer transition-colors ${
+                            item.id === selectedId ? "bg-emerald-500/15" : ""
                           }`}
                         >
                           <td className="p-2.5">
-                            <div className="font-bold text-foreground truncate max-w-[130px]">{item.label}</div>
-                            <div className="text-[10px] text-muted-foreground">{item.plateText}</div>
+                            <div className="font-bold text-white truncate max-w-[130px]">{item.label}</div>
+                            <div className="text-[10px] text-emerald-400 font-semibold">{item.plateText}</div>
                           </td>
                           <td className="p-2.5">
                             <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${item.statusBadge}`}>
                               {item.status === "moving" ? "Roulant" : item.status === "online" ? "Arrêt" : "Offline"}
                             </span>
                           </td>
-                          <td className="p-2.5 font-mono">{Math.round(item.speed)} km/h</td>
+                          <td className="p-2.5 font-mono text-slate-200">{Math.round(item.speed)} km/h</td>
                           <td className="p-2.5 text-right">
-                            <Button
-                              size="icon"
-                              variant="ghost"
+                            <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedId(item.id);
-                                focusSelected();
+                                focusSelected(16);
+                                setDeckOpen(false);
                               }}
-                              className="h-7 w-7 rounded-lg"
+                              className="h-7 w-7 rounded-lg bg-white/10 hover:bg-emerald-500/30 text-emerald-400 flex items-center justify-center transition-all inline-flex"
+                              title="Centrer sur la carte"
                             >
                               <LocateFixed className="h-3.5 w-3.5" />
-                            </Button>
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -1908,16 +1986,16 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                   </table>
                 </div>
               </div>
-            </ScrollArea>
+            </div>
           )}
 
           {/* TAB 3: TRAJETS (Advanced Historical Tracking Hub) */}
           {activeDeckTab === "trajet" && (
-            <ScrollArea className="h-full p-3 sm:p-4">
-              <div className="space-y-4 pb-20">
+            <div className="h-full overflow-y-auto p-3 sm:p-4 space-y-4 pb-24 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-emerald-500/60 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-white/5">
+              <div className="space-y-4 pb-12">
                 {/* Target Device Selector */}
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-black uppercase text-muted-foreground tracking-wider">
+                  <label className="text-[11px] font-black uppercase text-slate-300 tracking-wider">
                     Véhicule sélectionné
                   </label>
                   <select
@@ -1927,11 +2005,11 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                       clearRouteOverlays();
                       setRoutePoints([]);
                     }}
-                    className="w-full h-10 rounded-2xl bg-muted/40 border border-border/60 px-3 text-xs font-bold text-foreground focus:outline-hidden"
+                    className="w-full h-10 rounded-2xl bg-white/5 border border-white/15 px-3 text-xs font-bold text-white focus:outline-hidden"
                   >
-                    <option value="">Sélectionner un véhicule...</option>
+                    <option value="" className="bg-slate-900 text-white">Sélectionner un véhicule...</option>
                     {items.map((i) => (
-                      <option key={i.id} value={i.id}>
+                      <option key={i.id} value={i.id} className="bg-slate-900 text-white">
                         {i.label} ({i.plateText})
                       </option>
                     ))}
@@ -1940,7 +2018,7 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
 
                 {/* Date Presets */}
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-black uppercase text-muted-foreground tracking-wider">
+                  <label className="text-[11px] font-black uppercase text-slate-300 tracking-wider">
                     Période d'analyse
                   </label>
                   <div className="grid grid-cols-3 gap-1.5">
@@ -1951,163 +2029,158 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                       { key: "7d", label: "7 Jours" },
                       { key: "custom", label: "Personnalisé" }
                     ].map((p) => (
-                      <Button
+                      <button
                         key={p.key}
                         type="button"
-                        size="sm"
-                        variant={datePreset === p.key ? "default" : "outline"}
                         onClick={() => setDatePreset(p.key as DatePreset)}
-                        className={`rounded-xl h-8 text-[11px] font-bold ${
-                          p.key === "custom" ? "col-span-2" : ""
-                        }`}
+                        className={`rounded-xl h-8 text-[11px] font-bold transition-all ${
+                          datePreset === p.key
+                            ? "bg-primary text-white shadow-xs font-black"
+                            : "bg-white/5 text-slate-300 hover:bg-white/10 border border-white/10"
+                        } ${p.key === "custom" ? "col-span-2" : ""}`}
                       >
                         {p.label}
-                      </Button>
+                      </button>
                     ))}
                   </div>
                 </div>
 
                 {/* Custom Date Pickers */}
                 {datePreset === "custom" && (
-                  <div className="grid grid-cols-2 gap-2 p-3 rounded-2xl bg-muted/30 border border-border/50">
+                  <div className="grid grid-cols-2 gap-2 p-3 rounded-2xl bg-white/5 border border-white/10">
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold text-muted-foreground">Du</span>
+                      <span className="text-[10px] font-bold text-slate-400">Du</span>
                       <DatePicker value={customFrom} onChange={setCustomFrom} />
                     </div>
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold text-muted-foreground">Au</span>
+                      <span className="text-[10px] font-bold text-slate-400">Au</span>
                       <DatePicker value={customTo} onChange={setCustomTo} />
                     </div>
                   </div>
                 )}
 
                 {/* Load Route Button */}
-                <Button
+                <button
                   onClick={() => loadVehicleHistory(selectedId)}
                   disabled={!selectedId || isLoadingRoute}
-                  className="w-full rounded-2xl h-11 font-black bg-primary text-primary-foreground shadow-md hover:scale-[1.02] transition-transform"
+                  className="w-full rounded-2xl h-11 font-black bg-primary hover:bg-primary/90 text-white shadow-md hover:scale-[1.01] active:scale-95 transition-all flex items-center justify-center disabled:opacity-50"
                 >
                   <Route className="h-4 w-4 mr-2" />
                   {isLoadingRoute ? "Chargement du trajet..." : "Charger le trajet sur la carte"}
-                </Button>
+                </button>
 
                 {/* Route Analytics Cards */}
                 {routePoints.length >= 2 && (
                   <div className="space-y-3 pt-2">
                     <div className="grid grid-cols-2 gap-2">
-                      <div className="p-3 rounded-2xl bg-primary/10 border border-primary/20 space-y-0.5">
+                      <div className="p-3 rounded-2xl bg-primary/20 border border-primary/30 space-y-0.5">
                         <span className="text-[10px] font-bold uppercase text-primary">Distance</span>
-                        <div className="text-xl font-black text-foreground">{routeStats.distanceKm} km</div>
+                        <div className="text-xl font-black text-white">{routeStats.distanceKm} km</div>
                       </div>
-                      <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-0.5">
-                        <span className="text-[10px] font-bold uppercase text-emerald-600 dark:text-emerald-400">Durée</span>
-                        <div className="text-xl font-black text-foreground">{routeStats.durationMin} min</div>
+                      <div className="p-3 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 space-y-0.5">
+                        <span className="text-[10px] font-bold uppercase text-emerald-400">Durée</span>
+                        <div className="text-xl font-black text-white">{routeStats.durationMin} min</div>
                       </div>
-                      <div className="p-3 rounded-2xl bg-muted/40 border border-border/50 space-y-0.5">
-                        <span className="text-[10px] font-bold uppercase text-muted-foreground">Vitesse Moyenne</span>
-                        <div className="text-xl font-black text-foreground">{routeStats.avgSpeed} km/h</div>
+                      <div className="p-3 rounded-2xl bg-white/5 border border-white/10 space-y-0.5">
+                        <span className="text-[10px] font-bold uppercase text-slate-400">Vitesse Moyenne</span>
+                        <div className="text-xl font-black text-white">{routeStats.avgSpeed} km/h</div>
                       </div>
-                      <div className="p-3 rounded-2xl bg-muted/40 border border-border/50 space-y-0.5">
-                        <span className="text-[10px] font-bold uppercase text-muted-foreground">Vitesse Max</span>
-                        <div className="text-xl font-black text-foreground">{routeStats.maxSpeed} km/h</div>
+                      <div className="p-3 rounded-2xl bg-white/5 border border-white/10 space-y-0.5">
+                        <span className="text-[10px] font-bold uppercase text-slate-400">Vitesse Max</span>
+                        <div className="text-xl font-black text-white">{routeStats.maxSpeed} km/h</div>
                       </div>
                     </div>
 
                     {/* Detected Stops List */}
                     <div className="space-y-2 pt-2">
-                      <div className="flex items-center justify-between text-xs font-bold text-muted-foreground">
+                      <div className="flex items-center justify-between text-xs font-bold text-slate-300">
                         <span>Arrêts Détectés ({detectedStops.length})</span>
                       </div>
-                      <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                      <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-white/20">
                         {detectedStops.map((stop, i) => (
                           <div
                             key={i}
                             onClick={() => {
                               if (mapRef.current) {
                                 mapRef.current.flyTo([stop.lat, stop.lng], 16);
+                                setDeckOpen(false);
                               }
                             }}
-                            className="p-2.5 rounded-xl border border-border/50 bg-card/60 hover:bg-muted/40 transition cursor-pointer flex items-center justify-between text-xs"
+                            className="p-2.5 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] transition cursor-pointer flex items-center justify-between text-xs text-white"
                           >
                             <div className="flex items-center gap-2">
-                              <span className="h-6 w-6 rounded-full bg-red-500/15 text-red-600 flex items-center justify-center font-black text-[10px]">
+                              <span className="h-6 w-6 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center font-black text-[10px] border border-red-400/30">
                                 P
                               </span>
                               <div>
-                                <span className="font-bold text-foreground">Arrêt #{i + 1}</span>
-                                <div className="text-[10px] text-muted-foreground">
+                                <span className="font-bold text-white">Arrêt #{i + 1}</span>
+                                <div className="text-[10px] text-slate-400">
                                   {new Date(stop.from).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} → {new Date(stop.to).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                                 </div>
                               </div>
                             </div>
-                            <span className="font-black text-red-600 dark:text-red-400">
+                            <span className="font-black text-red-400">
                               {stop.durationMin} min
                             </span>
                           </div>
                         ))}
                         {!detectedStops.length && (
-                          <p className="text-xs text-muted-foreground text-center py-2">Aucun arrêt prolongé</p>
+                          <p className="text-xs text-slate-400 text-center py-2">Aucun arrêt prolongé</p>
                         )}
                       </div>
                     </div>
 
                     {/* Export Actions */}
-                    <div className="space-y-1.5 pt-2 border-t border-border/40">
-                      <span className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider block">
+                    <div className="space-y-1.5 pt-2 border-t border-white/10">
+                      <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider block">
                         Exporter le trajet
                       </span>
                       <div className="grid grid-cols-3 gap-1.5">
-                        <Button
-                          variant="outline"
-                          size="sm"
+                        <button
                           onClick={() => exportRoute("csv")}
-                          className="rounded-xl h-8 text-[11px] font-bold border-border/60"
+                          className="rounded-xl h-8 text-[11px] font-bold bg-white/10 hover:bg-white/20 text-white border border-white/15 flex items-center justify-center gap-1 transition-all"
                         >
-                          <Download className="h-3 w-3 mr-1 text-emerald-500" />
+                          <Download className="h-3 w-3 mr-1 text-emerald-400" />
                           CSV
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
+                        </button>
+                        <button
                           onClick={() => exportRoute("gpx")}
-                          className="rounded-xl h-8 text-[11px] font-bold border-border/60"
+                          className="rounded-xl h-8 text-[11px] font-bold bg-white/10 hover:bg-white/20 text-white border border-white/15 flex items-center justify-center gap-1 transition-all"
                         >
-                          <Download className="h-3 w-3 mr-1 text-sky-500" />
+                          <Download className="h-3 w-3 mr-1 text-sky-400" />
                           GPX
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
+                        </button>
+                        <button
                           onClick={() => exportRoute("txt")}
-                          className="rounded-xl h-8 text-[11px] font-bold border-border/60"
+                          className="rounded-xl h-8 text-[11px] font-bold bg-white/10 hover:bg-white/20 text-white border border-white/15 flex items-center justify-center gap-1 transition-all"
                         >
-                          <FileText className="h-3 w-3 mr-1 text-purple-500" />
+                          <FileText className="h-3 w-3 mr-1 text-purple-400" />
                           Rapport
-                        </Button>
+                        </button>
                       </div>
                     </div>
                   </div>
                 )}
               </div>
-            </ScrollArea>
+            </div>
           )}
 
           {/* TAB 4: CAPTEURS & DIAGNOSTIC */}
           {activeDeckTab === "capteurs" && (
-            <ScrollArea className="h-full p-3 sm:p-4">
-              <div className="space-y-4 pb-20">
+            <div className="h-full overflow-y-auto p-3 sm:p-4 space-y-4 pb-24 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-emerald-500/60 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-white/5">
+              <div className="space-y-4 pb-12">
                 {selectedItem ? (
                   <div className="space-y-4">
                     {/* Tachometer HUD Box */}
-                    <div className="rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-5 text-center relative overflow-hidden">
-                      <div className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">
+                    <div className="rounded-3xl border border-emerald-400/30 bg-gradient-to-br from-emerald-500/15 via-emerald-500/5 to-transparent p-5 text-center relative overflow-hidden">
+                      <div className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-1">
                         Vitesse Instantanée
                       </div>
-                      <div className="text-5xl font-black tracking-tight text-foreground my-2 font-mono">
+                      <div className="text-5xl font-black tracking-tight text-white my-2 font-mono">
                         {Math.round(selectedItem.speed)}
-                        <span className="text-sm font-semibold text-muted-foreground ml-1">km/h</span>
+                        <span className="text-sm font-semibold text-slate-400 ml-1">km/h</span>
                       </div>
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-background/80 text-xs font-bold border border-border/50">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 text-xs font-bold border border-white/15 text-white">
                         <span
                           className="h-2 w-2 rounded-full"
                           style={{ backgroundColor: selectedItem.statusColor }}
@@ -2117,52 +2190,52 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                     </div>
 
                     {/* Sensor Data Grid */}
-                    <div className="rounded-2xl border border-border/60 bg-card/60 p-4 space-y-3">
-                      <div className="font-black text-xs uppercase tracking-wider text-muted-foreground">
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 space-y-3">
+                      <div className="font-black text-xs uppercase tracking-wider text-slate-400">
                         Identité & Balise
                       </div>
                       <div className="grid grid-cols-2 gap-3 text-xs">
                         <div>
-                          <span className="text-[10px] text-muted-foreground block">Véhicule</span>
-                          <span className="font-bold text-foreground">{selectedItem.label}</span>
+                          <span className="text-[10px] text-slate-400 block">Véhicule</span>
+                          <span className="font-bold text-white">{selectedItem.label}</span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-muted-foreground block">Immatriculation</span>
-                          <span className="font-bold text-foreground">{selectedItem.plateText}</span>
+                          <span className="text-[10px] text-slate-400 block">Immatriculation</span>
+                          <span className="font-bold text-emerald-400">{selectedItem.plateText}</span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-muted-foreground block">IMEI / ID Balise</span>
-                          <span className="font-mono text-muted-foreground">{selectedItem.imei || selectedItem.id}</span>
+                          <span className="text-[10px] text-slate-400 block">IMEI / ID Balise</span>
+                          <span className="font-mono text-slate-300">{selectedItem.imei || selectedId}</span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-muted-foreground block">Conducteur</span>
-                          <span className="font-semibold text-foreground">{selectedItem.driver}</span>
+                          <span className="text-[10px] text-slate-400 block">Conducteur</span>
+                          <span className="font-semibold text-white">{selectedItem.driver}</span>
                         </div>
                       </div>
 
-                      <Separator />
+                      <div className="h-px bg-white/10 my-2" />
 
-                      <div className="font-black text-xs uppercase tracking-wider text-muted-foreground">
+                      <div className="font-black text-xs uppercase tracking-wider text-slate-400">
                         Télémétrie Aéro-Grade
                       </div>
                       <div className="grid grid-cols-2 gap-3 text-xs">
                         <div>
-                          <span className="text-[10px] text-muted-foreground block">Coordonnées GPS</span>
-                          <span className="font-mono text-xs">
+                          <span className="text-[10px] text-slate-400 block">Coordonnées GPS</span>
+                          <span className="font-mono text-xs text-slate-200">
                             {selectedItem.last ? `${selectedItem.last.lat.toFixed(5)}, ${selectedItem.last.lng.toFixed(5)}` : "-"}
                           </span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-muted-foreground block">Localisation Ville</span>
-                          <span className="font-bold text-foreground">{selectedItem.city || "Maroc"}</span>
+                          <span className="text-[10px] text-slate-400 block">Localisation Ville</span>
+                          <span className="font-bold text-white">{selectedItem.city || "Maroc"}</span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-muted-foreground block">Distance du Jour</span>
-                          <span className="font-black text-primary">{Math.round(selectedItem.distanceToday)} km</span>
+                          <span className="text-[10px] text-slate-400 block">Distance du Jour</span>
+                          <span className="font-black text-emerald-400">{Math.round(selectedItem.distanceToday)} km</span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-muted-foreground block">Dernier Rapport</span>
-                          <span className="font-semibold text-muted-foreground">{formatAgo(selectedItem.last?.timestamp)}</span>
+                          <span className="text-[10px] text-slate-400 block">Dernier Rapport</span>
+                          <span className="font-semibold text-slate-300">{formatAgo(selectedItem.last?.timestamp)}</span>
                         </div>
                       </div>
 
@@ -2170,25 +2243,25 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                       <div className="space-y-3 pt-2">
                         {typeof selectedItem.fuel === "number" && (
                           <div className="space-y-1">
-                            <div className="flex items-center justify-between text-xs font-bold">
-                              <span className="flex items-center gap-1.5 text-amber-500">
+                            <div className="flex items-center justify-between text-xs font-bold text-white">
+                              <span className="flex items-center gap-1.5 text-amber-400">
                                 <Fuel className="h-4 w-4" /> Niveau Réservoir
                               </span>
                               <span>{Math.round(selectedItem.fuel)}%</span>
                             </div>
-                            <Progress value={clamp(selectedItem.fuel, 0, 100)} className="h-2" />
+                            <Progress value={clamp(selectedItem.fuel, 0, 100)} className="h-2 bg-white/10 [&>div]:bg-amber-400" />
                           </div>
                         )}
 
                         {typeof selectedItem.battery === "number" && (
                           <div className="space-y-1">
-                            <div className="flex items-center justify-between text-xs font-bold">
-                              <span className="flex items-center gap-1.5 text-emerald-500">
+                            <div className="flex items-center justify-between text-xs font-bold text-white">
+                              <span className="flex items-center gap-1.5 text-emerald-400">
                                 <Battery className="h-4 w-4" /> Tension Batterie
                               </span>
                               <span>{Math.round(selectedItem.battery)}%</span>
                             </div>
-                            <Progress value={clamp(selectedItem.battery, 0, 100)} className="h-2" />
+                            <Progress value={clamp(selectedItem.battery, 0, 100)} className="h-2 bg-white/10 [&>div]:bg-emerald-400" />
                           </div>
                         )}
                       </div>
@@ -2197,56 +2270,52 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                     {/* Google Maps External Links */}
                     {selectedItem.last && (
                       <div className="grid grid-cols-2 gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
+                        <button
                           onClick={() => {
                             window.open(
                               `https://www.google.com/maps/search/?api=1&query=${selectedItem.last!.lat},${selectedItem.last!.lng}`,
                               "_blank"
                             );
                           }}
-                          className="rounded-2xl h-10 text-xs font-bold border-border/60 hover:bg-muted"
+                          className="rounded-2xl h-10 text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/15 flex items-center justify-center transition-all"
                         >
-                          <ExternalLink className="h-3.5 w-3.5 mr-1 text-blue-500" />
+                          <ExternalLink className="h-3.5 w-3.5 mr-1 text-blue-400" />
                           Google Maps ↗
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
+                        </button>
+                        <button
                           onClick={() => {
                             window.open(
                               `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${selectedItem.last!.lat},${selectedItem.last!.lng}`,
                               "_blank"
                             );
                           }}
-                          className="rounded-2xl h-10 text-xs font-bold border-border/60 hover:bg-muted"
+                          className="rounded-2xl h-10 text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/15 flex items-center justify-center transition-all"
                         >
-                          <Navigation className="h-3.5 w-3.5 mr-1 text-emerald-500" />
+                          <Navigation className="h-3.5 w-3.5 mr-1 text-emerald-400" />
                           Street View ↗
-                        </Button>
+                        </button>
                       </div>
                     )}
 
-                    <Button
+                    <button
                       onClick={() => {
                         setActiveDeckTab("trajet");
                         loadVehicleHistory(selectedItem.id);
                       }}
-                      className="w-full rounded-2xl h-10 font-bold bg-primary text-primary-foreground"
+                      className="w-full rounded-2xl h-10 font-bold bg-primary hover:bg-primary/90 text-white flex items-center justify-center transition-all"
                     >
                       <Route className="h-4 w-4 mr-2" />
                       Voir les trajets de ce véhicule
-                    </Button>
+                    </button>
                   </div>
                 ) : (
-                  <div className="text-center py-20 text-muted-foreground space-y-2">
+                  <div className="text-center py-20 text-slate-400 space-y-2">
                     <SlidersHorizontal className="h-8 w-8 mx-auto opacity-30" />
                     <p className="font-bold text-xs">Sélectionnez un véhicule pour afficher son diagnostic</p>
                   </div>
                 )}
               </div>
-            </ScrollArea>
+            </div>
           )}
         </div>
       </div>
