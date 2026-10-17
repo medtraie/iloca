@@ -1173,15 +1173,15 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
     <div className="relative w-full h-[calc(100vh-4.5rem)] max-h-screen overflow-hidden bg-background">
       {/* 2026 FLOATING TOP COMMAND HUD */}
       <div className="absolute top-3 left-3 right-3 z-[1000] flex flex-wrap items-center justify-between gap-2 pointer-events-none">
-        {/* Left: Brand Telemetry & Filter Capsules */}
-        <div className="flex items-center gap-1.5 bg-background/85 dark:bg-slate-950/85 backdrop-blur-2xl border border-white/10 dark:border-white/5 rounded-3xl p-1.5 px-3 shadow-2xl pointer-events-auto transition-all">
-          <div className="flex items-center gap-2 pr-2 border-r border-border/50">
+        {/* Left: Brand Telemetry & Filter Capsules (Transparent Frosted Glass) */}
+        <div className="flex items-center gap-1.5 bg-slate-900/45 dark:bg-slate-950/50 backdrop-blur-2xl border border-white/20 rounded-full p-1.5 px-3.5 shadow-xl pointer-events-auto transition-all text-white">
+          <div className="flex items-center gap-2 pr-2.5 border-r border-white/20">
             <span className="relative flex h-2.5 w-2.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
             </span>
-            <span className="text-xs font-black tracking-wider text-foreground uppercase hidden sm:inline">
-              SFT <span className="text-primary">LIVE GPS</span>
+            <span className="text-xs font-black tracking-wider text-white uppercase hidden sm:inline">
+              SFT <span className="text-emerald-400">LIVE GPS</span>
             </span>
           </div>
 
@@ -1189,83 +1189,48 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
           <div className="flex items-center gap-1">
             <button
               onClick={() => setFilter("all")}
-              className={`px-2.5 py-1 rounded-2xl text-[11px] font-bold transition-all ${
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-all ${
                 filter === "all"
-                  ? "bg-primary text-primary-foreground shadow-xs"
-                  : "text-muted-foreground hover:bg-muted/50"
+                  ? "bg-primary text-white shadow-xs"
+                  : "text-slate-200 hover:bg-white/10"
               }`}
             >
-              Tous <span className="ml-1 opacity-75">{stats.total}</span>
+              Tous <span className="ml-1 opacity-80">{stats.total}</span>
             </button>
             <button
               onClick={() => setFilter("moving")}
-              className={`px-2.5 py-1 rounded-2xl text-[11px] font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-all flex items-center gap-1.5 ${
                 filter === "moving"
-                  ? "bg-emerald-600 text-white shadow-xs shadow-emerald-500/20"
-                  : "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                  ? "bg-emerald-600 text-white shadow-xs shadow-emerald-500/30"
+                  : "text-emerald-300 hover:bg-emerald-500/15"
               }`}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Mouvement <span className="ml-0.5 opacity-80">{stats.moving}</span>
+              Mouvement <span className="ml-0.5 opacity-90">{stats.moving}</span>
             </button>
             <button
               onClick={() => setFilter("online")}
-              className={`px-2.5 py-1 rounded-2xl text-[11px] font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-all flex items-center gap-1.5 ${
                 filter === "online"
-                  ? "bg-amber-600 text-white shadow-xs shadow-amber-500/20"
-                  : "text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
+                  ? "bg-amber-600 text-white shadow-xs shadow-amber-500/30"
+                  : "text-amber-300 hover:bg-amber-500/15"
               }`}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-              Arrêt <span className="ml-0.5 opacity-80">{stats.online}</span>
+              Arrêt <span className="ml-0.5 opacity-90">{stats.online}</span>
             </button>
             <button
               onClick={() => setFilter("offline")}
-              className={`px-2.5 py-1 rounded-2xl text-[11px] font-bold transition-all hidden md:flex items-center gap-1.5 ${
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-all hidden md:flex items-center gap-1.5 ${
                 filter === "offline"
-                  ? "bg-rose-600 text-white shadow-xs shadow-rose-500/20"
-                  : "text-rose-600 dark:text-rose-400 hover:bg-rose-500/10"
+                  ? "bg-rose-600 text-white shadow-xs shadow-rose-500/30"
+                  : "text-rose-300 hover:bg-rose-500/15"
               }`}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
-              Hors ligne <span className="ml-0.5 opacity-80">{stats.offline}</span>
+              Hors ligne <span className="ml-0.5 opacity-90">{stats.offline}</span>
             </button>
           </div>
-        </div>
-
-        {/* Center / Right: Action Dock */}
-        <div className="flex items-center gap-2 pointer-events-auto">
-          {/* Search Pill */}
-          <div className="relative bg-background/85 dark:bg-slate-950/85 backdrop-blur-2xl border border-white/10 dark:border-white/5 rounded-3xl p-1 shadow-2xl flex items-center w-40 sm:w-60 focus-within:w-72 transition-all">
-            <Search className="h-4 w-4 ml-2 text-muted-foreground shrink-0" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Rechercher véhicule..."
-              className="h-8 border-0 bg-transparent text-xs font-semibold focus-visible:ring-0 placeholder:text-muted-foreground/60"
-            />
-            {search && (
-              <button
-                onClick={() => setSearch("")}
-                className="text-xs text-muted-foreground hover:text-foreground px-2"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-
-          {/* Sync Button */}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={refreshGps}
-            disabled={isFetching}
-            className="rounded-3xl h-10 px-3.5 bg-background/85 dark:bg-slate-950/85 backdrop-blur-2xl border border-white/10 dark:border-white/5 shadow-2xl font-bold text-xs hover:scale-105 transition-transform"
-            title="Synchroniser balises GPS"
-          >
-            <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin text-primary" : "text-muted-foreground"}`} />
-            <span className="ml-1.5 hidden md:inline">{isFetching ? "Sync..." : "Sync GPS"}</span>
-          </Button>
         </div>
       </div>
 
@@ -1640,7 +1605,7 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
           />
 
           {/* Centered Floating Glass Card */}
-          <div className="relative pointer-events-auto w-full max-w-[540px] max-h-[82vh] sm:max-h-[640px] bg-slate-900/92 dark:bg-slate-950/95 backdrop-blur-3xl border border-white/20 dark:border-white/15 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.85)] rounded-[2.5rem] overflow-hidden flex flex-col text-slate-100 ring-1 ring-white/10 animate-in zoom-in-95 duration-200">
+          <div className="relative pointer-events-auto w-full max-w-[540px] h-[84vh] max-h-[680px] min-h-[440px] bg-slate-900/95 dark:bg-slate-950/98 backdrop-blur-3xl border border-white/20 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.85)] rounded-[2.5rem] overflow-hidden flex flex-col text-slate-100 ring-1 ring-white/10 animate-in zoom-in-95 duration-200">
             {/* Modal Header */}
             <div className="p-4 sm:p-5 border-b border-white/10 space-y-3 shrink-0 bg-white/[0.02]">
               {/* Top Grab Handle */}
@@ -1762,10 +1727,34 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
             </div>
 
             {/* Deck Scrollable Body */}
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 min-h-0 relative overflow-hidden flex flex-col">
+              <style>{`
+                .sft-fleet-scroll {
+                  scrollbar-width: thin !important;
+                  scrollbar-color: #10b981 rgba(255, 255, 255, 0.12) !important;
+                }
+                .sft-fleet-scroll::-webkit-scrollbar {
+                  width: 9px !important;
+                  display: block !important;
+                }
+                .sft-fleet-scroll::-webkit-scrollbar-track {
+                  background: rgba(255, 255, 255, 0.08) !important;
+                  border-radius: 9999px !important;
+                  margin: 6px 0 !important;
+                }
+                .sft-fleet-scroll::-webkit-scrollbar-thumb {
+                  background: #10b981 !important;
+                  border-radius: 9999px !important;
+                  border: 2px solid rgba(15, 23, 42, 0.9) !important;
+                  box-shadow: 0 0 10px rgba(16, 185, 129, 0.6) !important;
+                }
+                .sft-fleet-scroll::-webkit-scrollbar-thumb:hover {
+                  background: #34d399 !important;
+                }
+              `}</style>
           {/* TAB 1: FLOTTE (Interactive Vehicle Cards) */}
           {activeDeckTab === "flotte" && (
-            <div className="h-full overflow-y-auto p-3 sm:p-4 space-y-2.5 pb-24 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-emerald-500/60 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-white/5 [&::-webkit-scrollbar-thumb:hover]:bg-emerald-400">
+            <div className="flex-1 min-h-0 overflow-y-scroll sft-fleet-scroll p-3 sm:p-4 space-y-2.5 pb-16">
               <div className="space-y-2.5 pb-12">
                 {visibleItems.map((item) => {
                   const isSelected = item.id === selectedId;
@@ -1902,7 +1891,7 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
 
           {/* TAB 2: TABLEAU (High Density Grid) */}
           {activeDeckTab === "tableau" && (
-            <div className="h-full overflow-y-auto p-3 sm:p-4 space-y-3 pb-24 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-emerald-500/60 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-white/5">
+            <div className="flex-1 min-h-0 overflow-y-scroll sft-fleet-scroll p-3 sm:p-4 space-y-3 pb-16">
               <div className="space-y-3 pb-12">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-300">
@@ -1991,7 +1980,7 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
 
           {/* TAB 3: TRAJETS (Advanced Historical Tracking Hub) */}
           {activeDeckTab === "trajet" && (
-            <div className="h-full overflow-y-auto p-3 sm:p-4 space-y-4 pb-24 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-emerald-500/60 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-white/5">
+            <div className="flex-1 min-h-0 overflow-y-scroll sft-fleet-scroll p-3 sm:p-4 space-y-4 pb-16">
               <div className="space-y-4 pb-12">
                 {/* Target Device Selector */}
                 <div className="space-y-1.5">
@@ -2167,7 +2156,7 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
 
           {/* TAB 4: CAPTEURS & DIAGNOSTIC */}
           {activeDeckTab === "capteurs" && (
-            <div className="h-full overflow-y-auto p-3 sm:p-4 space-y-4 pb-24 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-emerald-500/60 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-white/5">
+            <div className="flex-1 min-h-0 overflow-y-scroll sft-fleet-scroll p-3 sm:p-4 space-y-4 pb-16">
               <div className="space-y-4 pb-12">
                 {selectedItem ? (
                   <div className="space-y-4">
@@ -2317,6 +2306,38 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
               </div>
             </div>
           )}
+
+          {/* Modal Bottom Quick Scroll & Fleet Status Bar */}
+          <div className="shrink-0 px-4 py-2 bg-slate-950/85 border-t border-white/10 flex items-center justify-between text-[11px] font-bold text-slate-300">
+            <span className="flex items-center gap-1.5 text-slate-300">
+              <Car className="h-3.5 w-3.5 text-emerald-400" />
+              <span>{visibleItems.length} véhicules au parc</span>
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  const el = document.querySelector('.sft-fleet-scroll');
+                  if (el) el.scrollBy({ top: -240, behavior: 'smooth' });
+                }}
+                className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white transition flex items-center gap-1 text-[10px] font-bold cursor-pointer"
+                title="Défiler vers le haut"
+              >
+                <ChevronUp className="h-3 w-3" /> Haut
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const el = document.querySelector('.sft-fleet-scroll');
+                  if (el) el.scrollBy({ top: 240, behavior: 'smooth' });
+                }}
+                className="px-2.5 py-1 rounded-lg bg-emerald-500/25 hover:bg-emerald-500/35 text-emerald-300 border border-emerald-400/30 transition flex items-center gap-1 text-[10px] font-bold cursor-pointer"
+                title="Défiler vers le bas"
+              >
+                <ChevronDown className="h-3 w-3" /> Bas
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
