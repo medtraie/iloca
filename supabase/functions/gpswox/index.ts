@@ -313,6 +313,67 @@ serve(async (req) => {
     const apiBase = normalizeApiUrl(api_url);
     const userApiHash = await getUserApiHash(apiBase, email, password);
 
+    if (target === "history" || target === "get_history" || target === "trajets") {
+      let device_id = url.searchParams.get("device_id") || url.searchParams.get("deviceId") || "";
+      let from_date = url.searchParams.get("from_date") || "";
+      let from_time = url.searchParams.get("from_time") || "00:00:00";
+      let to_date = url.searchParams.get("to_date") || "";
+      let to_time = url.searchParams.get("to_time") || "23:59:59";
+
+      if (req.method === "POST") {
+        try {
+          const body = await req.clone().json();
+          if (body) {
+            device_id = String(body.device_id || body.deviceId || body.id || device_id);
+            from_date = String(body.from_date || from_date);
+            from_time = String(body.from_time || from_time);
+            to_date = String(body.to_date || to_date);
+            to_time = String(body.to_time || to_time);
+          }
+        } catch {
+        }
+      }
+
+      const endpoints = ["/get_history", "/history"];
+      let historyPoints: any[] = [];
+      let lastError = "";
+
+      for (const endpoint of endpoints) {
+        try {
+          const endpointUrl = new URL(`${apiBase}${endpoint}`);
+          endpointUrl.searchParams.set("user_api_hash", userApiHash);
+          if (device_id) endpointUrl.searchParams.set("device_id", device_id);
+          if (from_date) endpointUrl.searchParams.set("from_date", from_date);
+          if (from_time) endpointUrl.searchParams.set("from_time", from_time);
+          if (to_date) endpointUrl.searchParams.set("to_date", to_date);
+          if (to_time) endpointUrl.searchParams.set("to_time", to_time);
+
+          const payload = await retry(() => fetchWithTimeout(endpointUrl.toString()));
+          const rows = pickArray(payload).flatMap((item) => {
+            if (Array.isArray(item?.items)) return item.items;
+            return [item];
+          });
+          const records = rows.map((item) => ({
+            lat: parseNumber(item.lat ?? item.latitude),
+            lng: parseNumber(item.lng ?? item.longitude),
+            timestamp: Number(item.timestamp ?? (item.raw_time ? Number(item.raw_time) * 1000 : null) ?? (item.time ? new Date(item.time).getTime() : null) ?? Date.now()),
+            speed: parseNumber(item.speed ?? item.current_speed)
+          })).filter((record) => Number.isFinite(record.lat) && Number.isFinite(record.lng) && (record.lat !== 0 || record.lng !== 0));
+
+          if (records.length) {
+            historyPoints = records;
+            break;
+          }
+        } catch (error) {
+          lastError = String(error);
+        }
+      }
+
+      return new Response(JSON.stringify({ ok: true, data: historyPoints, items: historyPoints, count: historyPoints.length, error: historyPoints.length ? null : lastError }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
     if (target === "alerts" || target === "reports") {
       const endpoints =
         target === "alerts"

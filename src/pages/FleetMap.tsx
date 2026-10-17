@@ -718,7 +718,8 @@ export default function FleetMap() {
         toIso = (customTo || new Date()).toISOString();
       }
 
-      const res = await gpswoxService.getDeviceHistory(deviceId, fromIso, toIso);
+      const targetItem = visibleItems.find((i) => String(i.id) === String(deviceId)) || selectedItem;
+      const res = await gpswoxService.getDeviceHistory(deviceId, fromIso, toIso, targetItem);
       const normalized: HistoryPoint[] = (res || [])
         .filter((p: any) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
         .map((p: any) => ({

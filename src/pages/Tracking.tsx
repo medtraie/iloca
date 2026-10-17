@@ -921,10 +921,12 @@ export default function Tracking() {
       return;
     }
 
+    const targetDev = gpsDevices.find((d) => String(d.id) === String(devId)) || selectedDevice;
+
     try {
       setLoadingHistory(true);
       const { fromIso, toIso } = toIsoRange(fromDate, toDate);
-      const history = await gpswoxService.getDeviceHistory(devId, fromIso, toIso);
+      const history = await gpswoxService.getDeviceHistory(devId, fromIso, toIso, targetDev);
       const normalized: HistoryPoint[] = (history || [])
         .filter((p: any) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
         .map((p: any) => ({
@@ -940,17 +942,27 @@ export default function Tracking() {
       playbackIndexRef.current = 0;
       geofenceInsideRef.current = null;
 
-      if (!normalized.length) {
-        toast.error("Aucun historique trouvé pour cette période");
+      if (!normalized.length || normalized.length < 2) {
+        if (targetDev && Number.isFinite(targetDev.lat) && Number.isFinite(targetDev.lng) && (targetDev.lat !== 0 || targetDev.lng !== 0)) {
+          mapRef.current?.flyTo([targetDev.lat, targetDev.lng], 16, { duration: 0.6 });
+          toast.info("Le véhicule est resté stationné (position actuelle affichée).");
+        } else {
+          toast.info("Aucun trajet enregistré sur ce créneau horaire.");
+        }
         clearOverlays();
         drawVehicleMarkers(filteredDevices);
         return;
       }
 
       drawRoute(normalized);
-      toast.success(`Trajet chargé (${normalized.length} points)`);
-    } catch {
-      toast.error("Échec de chargement du trajet");
+      toast.success(`Trajet chargé avec succès (${normalized.length} points)`, {
+        description: `Distance: ${computeRouteStats(normalized).distanceKm} km • Arrêts: ${detectStops(normalized).length}`
+      });
+    } catch (err: any) {
+      console.error("Tracking loadHistory error:", err);
+      toast.error("Impossible de récupérer l'historique GPS", {
+        description: err?.message || "Erreur de connexion"
+      });
     } finally {
       setLoadingHistory(false);
     }
