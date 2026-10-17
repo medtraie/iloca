@@ -1,68 +1,142 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { toast } from "@/components/ui/sonner";
+import { useGPSwoxVehiclesOnly, GPSwoxDevice } from "@/hooks/useGPSwoxVehiclesOnly";
+import { gpswoxService } from "@/services/gpswoxService";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { DatePicker } from "@/components/ui/date-picker";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { toast } from "@/components/ui/sonner";
-import { gpswoxService } from "@/services/gpswoxService";
-import { useGPSwoxVehiclesOnly, GPSwoxDevice } from "@/hooks/useGPSwoxVehiclesOnly";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
-  Compass,
-  Download,
-  FileText,
+  Battery,
+  Clock3,
   Focus,
+  Gauge,
   Layers,
   LocateFixed,
+  MapPin,
   Pause,
-  PanelRightClose,
-  PanelRightOpen,
   Play,
   RefreshCw,
-  Route,
   Search,
+  Fuel,
+  Route,
+  Car,
+  Download,
+  FileText,
+  Navigation,
+  Compass,
+  Zap,
+  Radio,
+  SlidersHorizontal,
+  ChevronRight,
+  ChevronUp,
+  ChevronDown,
+  RotateCcw,
+  Sparkles,
+  ShieldCheck,
+  CheckCircle2,
+  AlertCircle,
+  ExternalLink,
   ShieldAlert,
-  TimerReset
+  TimerReset,
+  Plus,
+  Minus,
+  X,
+  Target
 } from "lucide-react";
 
 type HistoryPoint = { lat: number; lng: number; timestamp: number; speed?: number };
-type MapTheme = "osm" | "light" | "dark" | "satellite";
+
+type MapTheme =
+  | "google_roadmap"
+  | "google_hybrid"
+  | "google_traffic"
+  | "google_satellite"
+  | "google_terrain"
+  | "dark"
+  | "osm";
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
-const tileCatalog: Record<MapTheme, { label: string; url: string; attribution: string; maxZoom: number }> = {
-  osm: {
-    label: "Standard",
-    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    attribution: "&copy; OpenStreetMap contributors",
-    maxZoom: 19
+const tileCatalog: Record<
+  MapTheme,
+  {
+    label: string;
+    description: string;
+    url: string;
+    attribution: string;
+    maxZoom: number;
+    subdomains?: string[];
+    isGoogle?: boolean;
+    badge?: string;
+  }
+> = {
+  google_roadmap: {
+    label: "Google Maps Routier",
+    description: "Plan officiel Google standard Maroc",
+    url: "https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=fr&gl=MA",
+    attribution: "&copy; Google Maps",
+    maxZoom: 21,
+    subdomains: ["0", "1", "2", "3"],
+    isGoogle: true,
+    badge: "Google"
   },
-  light: {
-    label: "Clair",
-    url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-    attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
-    maxZoom: 20
+  google_hybrid: {
+    label: "Google Maps Hybride",
+    description: "Satellite Google + Noms des rues & POIs",
+    url: "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=fr&gl=MA",
+    attribution: "&copy; Google Maps",
+    maxZoom: 21,
+    subdomains: ["0", "1", "2", "3"],
+    isGoogle: true,
+    badge: "Google"
+  },
+  google_traffic: {
+    label: "Google Maps Trafic Live",
+    description: "Trafic routier et embouteillages en direct",
+    url: "https://mt1.google.com/vt/lyrs=m,traffic&x={x}&y={y}&z={z}&hl=fr&gl=MA",
+    attribution: "&copy; Google Maps Traffic",
+    maxZoom: 21,
+    subdomains: ["0", "1", "2", "3"],
+    isGoogle: true,
+    badge: "Trafic"
+  },
+  google_satellite: {
+    label: "Google Maps Satellite",
+    description: "Photographie satellite pure Google",
+    url: "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}&hl=fr&gl=MA",
+    attribution: "&copy; Google Maps",
+    maxZoom: 21,
+    subdomains: ["0", "1", "2", "3"],
+    isGoogle: true,
+    badge: "Google"
+  },
+  google_terrain: {
+    label: "Google Maps Relief",
+    description: "Topographie et relief physique",
+    url: "https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}&hl=fr&gl=MA",
+    attribution: "&copy; Google Maps",
+    maxZoom: 21,
+    subdomains: ["0", "1", "2", "3"],
+    isGoogle: true,
+    badge: "Google"
   },
   dark: {
-    label: "Sombre",
+    label: "Cyber Dark 2026",
+    description: "Mode sombre haute lisibilité",
     url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
     attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
     maxZoom: 20
   },
-  satellite: {
-    label: "Satellite",
-    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    attribution: "Tiles &copy; Esri",
+  osm: {
+    label: "OpenStreetMap",
+    description: "Cartographie collaborative",
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attribution: "&copy; OpenStreetMap contributors",
     maxZoom: 19
   }
 };
@@ -71,13 +145,13 @@ const formatAgo = (timestamp: number | undefined) => {
   if (!timestamp || !Number.isFinite(timestamp)) return "—";
   const diffMs = Date.now() - timestamp;
   const s = Math.max(0, Math.floor(diffMs / 1000));
-  if (s < 60) return `il y a ${s}s`;
+  if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);
-  if (m < 60) return `il y a ${m}m`;
+  if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `il y a ${h}h`;
+  if (h < 24) return `${h}h`;
   const d = Math.floor(h / 24);
-  return `il y a ${d}j`;
+  return `${d}j`;
 };
 
 const toIsoRange = (from: Date | undefined, to: Date | undefined) => {
@@ -157,30 +231,189 @@ const detectStops = (points: HistoryPoint[], radiusM = 50, minMinutes = 2) => {
   return result;
 };
 
-const buildDotIcon = (color: string, size = 12, label?: string) => {
-  const baseStyle = `width:${size}px;height:${size}px;border-radius:9999px;background:${color};box-shadow:0 10px 25px rgba(0,0,0,0.2),0 2px 6px rgba(0,0,0,0.25)`;
-  const labelStyle = label
-    ? `<div style="margin-top:6px;padding:2px 6px;border-radius:6px;background:rgba(17,24,39,0.85);color:#fff;font:600 10px/1.2 system-ui;white-space:nowrap">${label}</div>`
+// 2026 High-Tech Vehicle Marker
+function buildModernVehicleMarker(item: {
+  status: "online" | "moving" | "offline";
+  speed: number;
+  label: string;
+  plate: string;
+  selected: boolean;
+}) {
+  const isMoving = item.status === "moving";
+  const isOnline = item.status === "online";
+  const statusColor = isMoving ? "#10b981" : isOnline ? "#f59e0b" : "#f43f5e";
+  const speedText = isMoving ? `${Math.round(item.speed)} km/h` : isOnline ? "Arrêt" : "Hors ligne";
+  const shortLabel = (item.plate || item.label || "SFT").slice(0, 14);
+
+  const glow = isMoving
+    ? "rgba(16, 185, 129, 0.75)"
+    : isOnline
+    ? "rgba(245, 158, 11, 0.65)"
+    : "rgba(244, 63, 94, 0.4)";
+
+  const pulseAnimation = isMoving
+    ? `<div style="position:absolute; inset:-8px; border-radius:9999px; background:${glow}; opacity:0.35; animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>`
     : "";
-  const html = `<div style="display:flex;flex-direction:column;align-items:center"><div style="${baseStyle}"></div>${labelStyle}</div>`;
-  return L.divIcon({ className: "traceur-dot", html, iconSize: [size, size + (label ? 18 : 0)], iconAnchor: [size / 2, size / 2] });
-};
 
-const buildStopIcon = () =>
-  L.divIcon({
-    className: "traceur-stop",
-    html: `<div style="display:flex;flex-direction:column;align-items:center"><div style="width:18px;height:18px;border:3px solid #f59e0b;border-radius:9999px;background:#fff;box-shadow:0 6px 12px rgba(0,0,0,0.25)"></div><div style="margin-top:4px;padding:2px 6px;border-radius:6px;background:#f59e0b;color:#111827;font:600 10px/1.2 system-ui;white-space:nowrap">Arrêt</div></div>`,
-    iconSize: [18, 36],
-    iconAnchor: [9, 9]
-  });
+  const selectionHalo = item.selected
+    ? `<div style="position:absolute; inset:-12px; border-radius:9999px; border:2.5px solid #38bdf8; animation: pulse 1.5s infinite; box-shadow:0 0 18px #38bdf8;"></div>`
+    : "";
 
-const buildGeofenceIcon = () =>
-  L.divIcon({
-    className: "geofence-icon",
-    html: `<div style="width:18px;height:18px;border:3px solid #ef4444;border-radius:9999px;background:#fff;box-shadow:0 6px 12px rgba(0,0,0,0.25)"></div>`,
-    iconSize: [18, 18],
-    iconAnchor: [9, 9]
+  const html = `
+    <div style="position:relative; display:flex; flex-direction:column; align-items:center; cursor:pointer; user-select:none;">
+      <div style="position:relative; width:${item.selected ? 42 : 36}px; height:${item.selected ? 42 : 36}px; display:flex; align-items:center; justify-content:center;">
+        ${selectionHalo}
+        ${pulseAnimation}
+        
+        <div style="
+          width:100%;
+          height:100%;
+          border-radius:9999px;
+          background: linear-gradient(135deg, ${statusColor} 0%, rgba(15,23,42,0.95) 100%);
+          border: ${item.selected ? "3px solid #ffffff" : "2px solid rgba(255,255,255,0.85)"};
+          box-shadow: 0 8px 20px rgba(0,0,0,0.45), 0 0 14px ${glow};
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        ">
+          <svg width="${item.selected ? 20 : 16}" height="${item.selected ? 20 : 16}" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/>
+            <circle cx="7" cy="17" r="2"/>
+            <path d="M9 17h6"/>
+            <circle cx="17" cy="17" r="2"/>
+          </svg>
+        </div>
+
+        <div style="
+          position:absolute;
+          top:-2px;
+          right:-2px;
+          width:10px;
+          height:10px;
+          border-radius:9999px;
+          background:${statusColor};
+          border:1.5px solid #ffffff;
+          box-shadow:0 0 6px ${statusColor};
+        "></div>
+      </div>
+
+      <div style="
+        margin-top:3px;
+        display:flex;
+        align-items:center;
+        gap:4px;
+        background: rgba(15, 23, 42, 0.90);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 2px 7px;
+        border-radius: 9999px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+        white-space: nowrap;
+        pointer-events: none;
+      ">
+        <span style="
+          color: #ffffff;
+          font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+          font-weight: 800;
+          font-size: 10px;
+          letter-spacing: -0.02em;
+        ">${shortLabel}</span>
+
+        <span style="
+          color: ${isMoving ? "#34d399" : isOnline ? "#fbbf24" : "#f43f5e"};
+          font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+          font-weight: 900;
+          font-size: 9px;
+          padding-left: 2px;
+          border-left: 1px solid rgba(255,255,255,0.2);
+        ">${speedText}</span>
+      </div>
+    </div>
+  `;
+
+  return L.divIcon({
+    className: "custom-telemetry-marker",
+    html,
+    iconSize: [120, 60],
+    iconAnchor: [60, 18]
   });
+}
+
+function buildFlagMarker(type: "start" | "end") {
+  const isStart = type === "start";
+  const bg = isStart ? "#10b981" : "#8b5cf6";
+  const label = isStart ? "Départ" : "Arrivée";
+  const html = `
+    <div style="display:flex; flex-direction:column; align-items:center; transform:translate(-50%, -100%);">
+      <div style="
+        padding:3px 8px;
+        border-radius:9999px;
+        background:${bg};
+        color:#ffffff;
+        font:800 10px/1.2 system-ui;
+        box-shadow:0 6px 16px rgba(0,0,0,0.4);
+        border:1.5px solid #ffffff;
+        display:flex;
+        align-items:center;
+        gap:4px;
+      ">
+        <span>${isStart ? "🏁" : "🎯"}</span>
+        <span>${label}</span>
+      </div>
+      <div style="width:2px; height:8px; background:${bg};"></div>
+    </div>
+  `;
+  return L.divIcon({ className: "custom-flag-marker", html, iconSize: [80, 40], iconAnchor: [40, 40] });
+}
+
+function buildStopMarker(durationMin: number, idx: number) {
+  const html = `
+    <div style="display:flex; flex-direction:column; align-items:center; transform:translate(-50%, -100%); cursor:pointer;">
+      <div style="
+        padding:3px 7px;
+        border-radius:9999px;
+        background:#f59e0b;
+        color:#0f172a;
+        font:900 10px/1.2 system-ui;
+        box-shadow:0 6px 14px rgba(245,158,11,0.5);
+        border:2px solid #ffffff;
+        display:flex;
+        align-items:center;
+        gap:3px;
+        white-space:nowrap;
+      ">
+        <span>⏱️</span>
+        <span>Arrêt #${idx} (${durationMin}m)</span>
+      </div>
+      <div style="width:2px; height:7px; background:#f59e0b;"></div>
+    </div>
+  `;
+  return L.divIcon({ className: "custom-stop-marker", html, iconSize: [100, 36], iconAnchor: [50, 36] });
+}
+
+function buildPlaybackTraceMarker(speed = 0) {
+  const html = `
+    <div style="position:relative; width:34px; height:34px; display:flex; align-items:center; justify-content:center; transform:translate(-50%, -50%);">
+      <div style="position:absolute; inset:-6px; border-radius:9999px; background:rgba(56,189,248,0.4); animation: ping 1.2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+      <div style="
+        width:24px;
+        height:24px;
+        border-radius:9999px;
+        background:linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
+        border:3px solid #ffffff;
+        box-shadow:0 0 16px #38bdf8, 0 6px 12px rgba(0,0,0,0.5);
+        display:flex;
+        align-items:center;
+        justify-content:center;
+      ">
+        <div style="width:8px; height:8px; border-radius:9999px; background:#ffffff;"></div>
+      </div>
+    </div>
+  `;
+  return L.divIcon({ className: "custom-trace-marker", html, iconSize: [34, 34], iconAnchor: [17, 17] });
+}
 
 const downloadBlob = (filename: string, content: string, mime: string) => {
   const blob = new Blob([content], { type: mime });
@@ -217,7 +450,9 @@ ${trkpts}
 
 const toCsv = (deviceLabel: string, points: HistoryPoint[]) => {
   const header = "timestamp,lat,lng,speed_kmh,iso_time";
-  const rows = points.map((p) => `${p.timestamp},${p.lat.toFixed(6)},${p.lng.toFixed(6)},${Math.round(Number(p.speed || 0))},${new Date(p.timestamp).toISOString()}`);
+  const rows = points.map(
+    (p) => `${p.timestamp},${p.lat.toFixed(6)},${p.lng.toFixed(6)},${Math.round(Number(p.speed || 0))},${new Date(p.timestamp).toISOString()}`
+  );
   return [header, ...rows].join("\n");
 };
 
@@ -227,20 +462,22 @@ const buildReport = (deviceLabel: string, points: HistoryPoint[]) => {
   const start = points[0] ? new Date(points[0].timestamp).toLocaleString() : "—";
   const end = points.length ? new Date(points[points.length - 1].timestamp).toLocaleString() : "—";
   const lines: string[] = [];
-  lines.push(`Rapport Trajet — ${deviceLabel}`);
-  lines.push("=".repeat(40));
-  lines.push(`Période: ${start} → ${end}`);
-  lines.push(`Points: ${points.length}`);
-  lines.push(`Distance: ${stats.distanceKm} km`);
-  lines.push(`Durée: ${stats.durationMin} min`);
-  lines.push(`Vitesse moyenne: ${stats.avgSpeed} km/h`);
-  lines.push(`Vitesse max: ${stats.maxSpeed} km/h`);
-  lines.push(`Arrêts détectés: ${stops.length}`);
+  lines.push(`RAPPORT TRAJET SFT TRACKING — ${deviceLabel}`);
+  lines.push("=".repeat(50));
+  lines.push(`Période d'analyse : ${start} → ${end}`);
+  lines.push(`Points GPS enregistrés : ${points.length}`);
+  lines.push(`Distance totale : ${stats.distanceKm} km`);
+  lines.push(`Durée totale du trajet : ${stats.durationMin} min`);
+  lines.push(`Vitesse moyenne : ${stats.avgSpeed} km/h`);
+  lines.push(`Vitesse maximale : ${stats.maxSpeed} km/h`);
+  lines.push(`Arrêts détectés : ${stops.length}`);
   lines.push("");
   if (stops.length) {
-    lines.push("Arrêts:");
+    lines.push("Détail des arrêts détectés :");
     stops.forEach((s, idx) => {
-      lines.push(`  #${idx + 1} ${s.durationMin} min — ${new Date(s.from).toLocaleTimeString()} → ${new Date(s.to).toLocaleTimeString()} @ ${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}`);
+      lines.push(
+        `  #${idx + 1} | Durée: ${s.durationMin} min | De: ${new Date(s.from).toLocaleTimeString()} À: ${new Date(s.to).toLocaleTimeString()} | Coordonnées: ${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}`
+      );
     });
   }
   return lines.join("\n");
@@ -265,23 +502,31 @@ export default function Tracking() {
   const playbackIndexRef = useRef(0);
   const geofenceInsideRef = useRef<boolean | null>(null);
 
+  // States
   const [vehicleId, setVehicleId] = useState("");
   const [gpsDevices, setGpsDevices] = useState<GPSwoxDevice[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"all" | "moving" | "online" | "offline">("all");
   const [fromDate, setFromDate] = useState<Date | undefined>(new Date(Date.now() - 24 * 3600 * 1000));
   const [toDate, setToDate] = useState<Date | undefined>(new Date());
-  const [mapTheme, setMapTheme] = useState<MapTheme>("light");
-  const [controlsOpen, setControlsOpen] = useState(true);
+  const [datePreset, setDatePreset] = useState<"1h" | "today" | "24h" | "7d" | "custom">("24h");
+  const [mapTheme, setMapTheme] = useState<MapTheme>("google_roadmap");
+  const [layersModalOpen, setLayersModalOpen] = useState(false);
+  const [deckOpen, setDeckOpen] = useState(false);
+  const [activeDeckTab, setActiveDeckTab] = useState<"vehicules" | "trajet" | "geofence" | "rapport">("vehicules");
   const [follow, setFollow] = useState(true);
   const [points, setPoints] = useState<HistoryPoint[]>([]);
+  const [playbackIndex, setPlaybackIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playSpeedMs, setPlaySpeedMs] = useState(160);
   const [liveMode, setLiveMode] = useState(false);
   const [geofenceEnabled, setGeofenceEnabled] = useState(false);
-  const [geofenceRadiusM, setGeofenceRadiusM] = useState(300);
+  const [geofenceRadiusM, setGeofenceRadiusM] = useState(400);
   const [drawGeofence, setDrawGeofence] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
+  // Auto fetch devices from hook
   const { data: vehiclesFromGps = [] } = useGPSwoxVehiclesOnly(60000);
 
   useEffect(() => {
@@ -293,27 +538,44 @@ export default function Tracking() {
     return gpsDevices.find((d) => String(d.id) === String(vehicleId)) || null;
   }, [vehicleId, gpsDevices]);
 
-  const filteredDevices = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return gpsDevices;
-    return gpsDevices.filter((d) => {
-      return (
-        d.name.toLowerCase().includes(q) ||
-        d.plate.toLowerCase().includes(q) ||
-        d.imei.toLowerCase().includes(q) ||
-        d.id.toLowerCase().includes(q)
-      );
-    });
-  }, [gpsDevices, search]);
-
   const deviceLabel = useMemo(() => {
-    if (!selectedDevice) return "vehicule";
+    if (!selectedDevice) return "Véhicule SFT";
     return selectedDevice.plate || selectedDevice.name || selectedDevice.imei || selectedDevice.id;
   }, [selectedDevice]);
 
+  // Filtered devices list
+  const filteredDevices = useMemo(() => {
+    let list = gpsDevices;
+    if (filter === "moving") list = list.filter((d) => d.online && d.speed > 1);
+    else if (filter === "online") list = list.filter((d) => d.online && d.speed <= 1);
+    else if (filter === "offline") list = list.filter((d) => !d.online);
+
+    const q = search.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((d) => {
+      return (
+        d.name?.toLowerCase().includes(q) ||
+        d.plate?.toLowerCase().includes(q) ||
+        d.imei?.toLowerCase().includes(q) ||
+        d.id?.toLowerCase().includes(q)
+      );
+    });
+  }, [gpsDevices, filter, search]);
+
   const stats = useMemo(() => computeRouteStats(points), [points]);
   const detectedStops = useMemo(() => detectStops(points), [points]);
+  const lastPoint = points.length ? points[points.length - 1] : null;
 
+  // Fleet overview statistics
+  const fleetStats = useMemo(() => {
+    const total = gpsDevices.length;
+    const moving = gpsDevices.filter((d) => d.online && d.speed > 1).length;
+    const online = gpsDevices.filter((d) => d.online && d.speed <= 1).length;
+    const offline = gpsDevices.filter((d) => !d.online).length;
+    return { total, moving, online, offline };
+  }, [gpsDevices]);
+
+  // Synchronize GPS devices with API
   const syncGps = async () => {
     try {
       setSyncing(true);
@@ -355,7 +617,7 @@ export default function Tracking() {
       if (mapped.length) {
         setGpsDevices(mapped);
         drawVehicleMarkers(mapped);
-        toast.success(`${mapped.length} véhicules SFT chargés`);
+        toast.success(`${mapped.length} véhicules SFT synchronisés`);
       } else {
         toast.error("Aucun véhicule SFT trouvé");
       }
@@ -366,34 +628,40 @@ export default function Tracking() {
     }
   };
 
-  const ensureMap = () => {
+  // Ensure map is initialized
+  const ensureMap = useCallback(() => {
     if (!mapContainerRef.current || mapRef.current) return;
-    const center: L.LatLngExpression = [33.5731, -7.5898];
-    const map = L.map(mapContainerRef.current, { center, zoom: 11, zoomControl: false });
-    L.control.zoom({ position: "bottomright" }).addTo(map);
+    const center: L.LatLngExpression = [31.7917, -7.0926];
+    const map = L.map(mapContainerRef.current, {
+      center,
+      zoom: 6,
+      zoomControl: false,
+      attributionControl: false
+    });
+
+    L.control.attribution({ position: "bottomleft", prefix: false }).addTo(map);
+
     const theme = tileCatalog[mapTheme];
-    const tile = L.tileLayer(theme.url, { attribution: theme.attribution, maxZoom: theme.maxZoom }).addTo(map);
+    const tile = L.tileLayer(theme.url, {
+      attribution: theme.attribution,
+      maxZoom: theme.maxZoom,
+      subdomains: theme.subdomains || ["a", "b", "c"]
+    }).addTo(map);
+
     const overlay = L.layerGroup().addTo(map);
     mapRef.current = map;
     tileRef.current = tile;
     overlayLayerRef.current = overlay;
+
     map.on("click", (e) => {
       if (!drawGeofence) return;
       setGeofenceCircle({ lat: e.latlng.lat, lng: e.latlng.lng });
-      toast.success("Zone définie sur la carte");
+      toast.success("Zone géofence définie sur la carte");
       setDrawGeofence(false);
     });
-  };
+  }, [mapTheme, drawGeofence]);
 
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const id = window.setTimeout(() => {
-      map.invalidateSize();
-    }, 60);
-    return () => window.clearTimeout(id);
-  }, [controlsOpen]);
-
+  // Switch Google Maps & Other Themes
   const setTileTheme = (theme: MapTheme) => {
     setMapTheme(theme);
     const map = mapRef.current;
@@ -401,11 +669,16 @@ export default function Tracking() {
     const old = tileRef.current;
     if (old) old.remove();
     const next = tileCatalog[theme];
-    const tile = L.tileLayer(next.url, { attribution: next.attribution, maxZoom: next.maxZoom });
+    const tile = L.tileLayer(next.url, {
+      attribution: next.attribution,
+      maxZoom: next.maxZoom,
+      subdomains: next.subdomains || ["a", "b", "c"]
+    });
     tile.addTo(map);
     tileRef.current = tile;
   };
 
+  // Clear Overlays
   const clearOverlays = () => {
     if (routeLineRef.current) {
       routeLineRef.current.remove();
@@ -456,16 +729,21 @@ export default function Tracking() {
     const map = mapRef.current;
     if (!map || points.length < 2) return;
     const coords = points.map((p) => [p.lat, p.lng] as [number, number]);
-    map.fitBounds(L.latLngBounds(coords), { padding: [24, 24], maxZoom: 16 });
+    map.fitBounds(L.latLngBounds(coords), { padding: [40, 40], maxZoom: 17 });
   };
 
-  const centerOnLast = () => {
+  const centerOnActive = () => {
     const map = mapRef.current;
-    const last = points.length ? points[points.length - 1] : null;
-    if (!map || !last) return;
-    map.flyTo([last.lat, last.lng], Math.max(map.getZoom(), 14), { duration: 0.6 });
+    if (!map) return;
+    if (points.length && points[playbackIndex]) {
+      const p = points[playbackIndex];
+      map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 15), { duration: 0.5 });
+    } else if (selectedDevice && Number.isFinite(selectedDevice.lat) && Number.isFinite(selectedDevice.lng)) {
+      map.flyTo([selectedDevice.lat, selectedDevice.lng], Math.max(map.getZoom(), 15), { duration: 0.5 });
+    }
   };
 
+  // Draw Route Polylines and Pins
   const drawRoute = (input: HistoryPoint[]) => {
     const map = mapRef.current;
     const overlay = overlayLayerRef.current;
@@ -474,173 +752,75 @@ export default function Tracking() {
     clearOverlays();
     if (input.length < 2) return;
     const coords = input.map((p) => [p.lat, p.lng] as [number, number]);
-    routeLineRef.current = L.polyline(coords, { color: "#0ea5e9", weight: 4, opacity: 0.85, lineCap: "round" }).addTo(overlay);
-    startMarkerRef.current = L.marker(coords[0], { icon: buildDotIcon("#0ea5e9", 12, "Départ"), zIndexOffset: 800 }).addTo(overlay);
-    endMarkerRef.current = L.marker(coords[coords.length - 1], { icon: buildDotIcon("#111827", 14, "Arrivée"), zIndexOffset: 900 }).addTo(overlay);
+
+    // Neon Glow Cyan/Emerald Route Line
+    routeLineRef.current = L.polyline(coords, {
+      color: "#06b6d4",
+      weight: 5,
+      opacity: 0.88,
+      lineCap: "round",
+      lineJoin: "round"
+    }).addTo(overlay);
+
+    startMarkerRef.current = L.marker(coords[0], {
+      icon: buildFlagMarker("start"),
+      zIndexOffset: 800
+    }).addTo(overlay);
+
+    endMarkerRef.current = L.marker(coords[coords.length - 1], {
+      icon: buildFlagMarker("end"),
+      zIndexOffset: 900
+    }).addTo(overlay);
 
     const stops = detectStops(input);
-    stops.forEach((s) => {
-      const m = L.marker([s.lat, s.lng], { icon: buildStopIcon(), zIndexOffset: 700 }).addTo(overlay);
-      m.bindPopup(
-        `<div style="min-width:180px"><div style="font-weight:600">Arrêt</div><div>Durée: ${s.durationMin} min</div><div>${new Date(s.from).toLocaleTimeString()} → ${new Date(s.to).toLocaleTimeString()}</div></div>`
-      );
+    stops.forEach((s, idx) => {
+      const m = L.marker([s.lat, s.lng], {
+        icon: buildStopMarker(s.durationMin, idx + 1),
+        zIndexOffset: 750
+      }).addTo(overlay);
+      m.bindPopup(`
+        <div style="font-family:system-ui; padding:4px 6px;">
+          <div style="font-weight:900; font-size:12px; color:#f59e0b; margin-bottom:4px;">Arrêt #${idx + 1} (${s.durationMin} min)</div>
+          <div style="font-size:11px; color:#64748b;">De: <b>${new Date(s.from).toLocaleTimeString()}</b></div>
+          <div style="font-size:11px; color:#64748b;">À: <b>${new Date(s.to).toLocaleTimeString()}</b></div>
+          <div style="font-size:10px; color:#94a3b8; margin-top:3px; font-family:monospace;">${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}</div>
+        </div>
+      `);
       stopMarkersRef.current.push(m);
     });
 
     fitToRoute();
   };
 
+  // Geofence Circle Overlay
   const setGeofenceCircle = (center: { lat: number; lng: number }) => {
     const map = mapRef.current;
     const overlay = overlayLayerRef.current;
     if (!map || !overlay) return;
     if (geofenceCircleRef.current) geofenceCircleRef.current.remove();
     if (geofenceMarkerRef.current) geofenceMarkerRef.current.remove();
+
     geofenceCircleRef.current = L.circle([center.lat, center.lng], {
       radius: geofenceRadiusM,
       color: "#ef4444",
-      weight: 2,
-      opacity: 0.9,
-      fillOpacity: 0.08
+      weight: 2.5,
+      opacity: 0.95,
+      fillColor: "#ef4444",
+      fillOpacity: 0.12,
+      dashArray: "6, 6"
     }).addTo(overlay);
-    geofenceMarkerRef.current = L.marker([center.lat, center.lng], { icon: buildGeofenceIcon(), zIndexOffset: 950 }).addTo(overlay);
+
+    geofenceMarkerRef.current = L.marker([center.lat, center.lng], {
+      icon: L.divIcon({
+        className: "geofence-center-pin",
+        html: `<div style="width:14px; height:14px; border-radius:9999px; background:#ef4444; border:2.5px solid #ffffff; box-shadow:0 0 10px #ef4444; transform:translate(-50%, -50%);"></div>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7]
+      }),
+      zIndexOffset: 950
+    }).addTo(overlay);
+
     geofenceInsideRef.current = null;
-  };
-
-  const drawVehicleMarkers = (devices: GPSwoxDevice[]) => {
-    const overlay = overlayLayerRef.current;
-    if (!overlay) return;
-    clearVehicleMarkers();
-    const usable = devices.filter((device) => Number.isFinite(device.lat) && Number.isFinite(device.lng) && (device.lat !== 0 || device.lng !== 0));
-    usable.forEach((device) => {
-      const isSelected = selectedDevice ? String(selectedDevice.id) === String(device.id) : false;
-      const color = device.status === "moving" ? "#16a34a" : device.status === "online" ? "#0ea5e9" : "#6b7280";
-      const label = isSelected ? (device.plate || device.name || device.id) : undefined;
-      const marker = L.marker([device.lat, device.lng], {
-        icon: buildDotIcon(color, isSelected ? 14 : 11, label),
-        zIndexOffset: isSelected ? 1200 : 500
-      }).addTo(overlay);
-      marker.bindPopup(
-        `<div style="min-width:180px"><div style="font-weight:600">${device.plate || device.name}</div><div>ID: ${device.id}</div><div>Statut: ${device.status}</div><div>Vitesse: ${Math.round(device.speed || 0)} km/h</div></div>`
-      );
-      vehicleMarkersRef.current.push(marker);
-    });
-  };
-
-  const loadHistory = async () => {
-    ensureMap();
-    stopPlayback();
-    stopLive();
-
-    if (!selectedDevice) {
-      toast.error("Choisissez un véhicule SFT");
-      return;
-    }
-
-    try {
-      const { fromIso, toIso } = toIsoRange(fromDate, toDate);
-      const history = await gpswoxService.getDeviceHistory(selectedDevice.id, fromIso, toIso);
-      const normalized: HistoryPoint[] = (history || [])
-        .filter((p: any) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
-        .map((p: any) => ({
-          lat: Number(p.lat),
-          lng: Number(p.lng),
-          timestamp: Number(p.timestamp) || Date.now(),
-          speed: Number.isFinite(Number(p.speed)) ? Number(p.speed) : 0
-        }))
-        .sort((a, b) => a.timestamp - b.timestamp);
-
-      setPoints(normalized);
-      geofenceInsideRef.current = null;
-
-      if (!normalized.length) {
-        toast.error("Aucun historique pour cette période");
-        clearOverlays();
-        drawVehicleMarkers(filteredDevices);
-        return;
-      }
-      drawRoute(normalized);
-      toast.success("Trajet chargé");
-    } catch {
-      toast.error("Échec de chargement du trajet");
-    }
-  };
-
-  const togglePlayback = () => {
-    ensureMap();
-    const map = mapRef.current;
-    const overlay = overlayLayerRef.current;
-    if (!map || !overlay) return;
-    if (points.length < 2) {
-      toast.error("Aucun trajet chargé");
-      return;
-    }
-
-    if (isPlaying) {
-      stopPlayback();
-      return;
-    }
-
-    stopLive();
-    setIsPlaying(true);
-
-    if (playbackIndexRef.current >= points.length - 1) playbackIndexRef.current = 0;
-    const start = points[playbackIndexRef.current];
-
-    if (!traceMarkerRef.current) {
-      traceMarkerRef.current = L.marker([start.lat, start.lng], { icon: buildDotIcon("#111827", 12), zIndexOffset: 1000 }).addTo(overlay);
-    } else {
-      traceMarkerRef.current.setLatLng([start.lat, start.lng]);
-      traceMarkerRef.current.addTo(overlay);
-    }
-
-    if (!traceLineRef.current) {
-      traceLineRef.current = L.polyline([[start.lat, start.lng]], { color: "#111827", weight: 5, opacity: 0.8, lineCap: "round" }).addTo(overlay);
-    } else {
-      traceLineRef.current.setLatLngs([[start.lat, start.lng]]);
-      traceLineRef.current.addTo(overlay);
-    }
-
-    map.panTo([start.lat, start.lng], { animate: true, duration: 0.3 });
-
-    if (playbackTimerRef.current) clearInterval(playbackTimerRef.current);
-    playbackTimerRef.current = window.setInterval(() => {
-      if (playbackIndexRef.current >= points.length - 1) {
-        stopPlayback();
-        toast.success("Fin de la lecture");
-        return;
-      }
-      playbackIndexRef.current += 1;
-      const p = points[playbackIndexRef.current];
-      const latlng: [number, number] = [p.lat, p.lng];
-      if (traceMarkerRef.current) traceMarkerRef.current.setLatLng(latlng);
-      if (traceLineRef.current) {
-        const nextCoords = points.slice(0, playbackIndexRef.current + 1).map((x) => [x.lat, x.lng] as [number, number]);
-        traceLineRef.current.setLatLngs(nextCoords);
-      }
-      if (follow) map.panTo(latlng, { animate: true, duration: 0.25 });
-
-      if (geofenceEnabled && geofenceCircleRef.current) {
-        const center = geofenceCircleRef.current.getLatLng();
-        const inside = center.distanceTo(L.latLng(latlng)) <= geofenceRadiusM;
-        if (geofenceInsideRef.current === null) {
-          geofenceInsideRef.current = inside;
-        } else if (geofenceInsideRef.current !== inside) {
-          geofenceInsideRef.current = inside;
-          toast(inside ? "Entrée dans la zone" : "Sortie de la zone", {
-            description: deviceLabel
-          });
-        }
-      }
-    }, clamp(playSpeedMs, 80, 600));
-  };
-
-  const replay = () => {
-    playbackIndexRef.current = 0;
-    stopPlayback();
-    clearOverlays();
-    drawRoute(points);
-    togglePlayback();
   };
 
   const setGeofenceAtCenter = () => {
@@ -649,7 +829,16 @@ export default function Tracking() {
     if (!map) return;
     const c = map.getCenter();
     setGeofenceCircle({ lat: c.lat, lng: c.lng });
-    toast.success("Zone définie au centre de la carte");
+    toast.success("Zone géofence centrée sur la carte");
+  };
+
+  const setGeofenceOnVehicle = () => {
+    if (!selectedDevice || !Number.isFinite(selectedDevice.lat) || !Number.isFinite(selectedDevice.lng)) {
+      toast.error("Aucun véhicule sélectionné");
+      return;
+    }
+    setGeofenceCircle({ lat: selectedDevice.lat, lng: selectedDevice.lng });
+    toast.success(`Zone géofence placée sur ${deviceLabel}`);
   };
 
   const applyGeofenceVisibility = (enabled: boolean) => {
@@ -666,6 +855,258 @@ export default function Tracking() {
     }
   };
 
+  // Draw Vehicle Markers
+  const drawVehicleMarkers = (devices: GPSwoxDevice[]) => {
+    const overlay = overlayLayerRef.current;
+    if (!overlay) return;
+    clearVehicleMarkers();
+    const usable = devices.filter(
+      (device) =>
+        Number.isFinite(device.lat) &&
+        Number.isFinite(device.lng) &&
+        (device.lat !== 0 || device.lng !== 0)
+    );
+    usable.forEach((device) => {
+      const isSelected = selectedDevice ? String(selectedDevice.id) === String(device.id) : false;
+      const status: "online" | "moving" | "offline" = device.online
+        ? device.speed > 1
+          ? "moving"
+          : "online"
+        : "offline";
+
+      const marker = L.marker([device.lat, device.lng], {
+        icon: buildModernVehicleMarker({
+          status,
+          speed: device.speed,
+          label: device.name,
+          plate: device.plate,
+          selected: isSelected
+        }),
+        zIndexOffset: isSelected ? 1200 : 500
+      }).addTo(overlay);
+
+      marker.on("click", () => {
+        setVehicleId(device.id);
+        mapRef.current?.flyTo([device.lat, device.lng], 16, { duration: 0.6 });
+      });
+
+      marker.bindPopup(`
+        <div style="font-family:system-ui; padding:4px 6px; min-width:180px;">
+          <div style="font-weight:900; font-size:13px; color:#0f172a; margin-bottom:2px;">${device.plate || device.name}</div>
+          <div style="font-size:11px; color:#64748b; margin-bottom:6px;">${device.name || "Véhicule SFT"}</div>
+          <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:3px;">
+            <span style="color:#64748b;">Statut:</span>
+            <b style="color:${status === "moving" ? "#10b981" : status === "online" ? "#f59e0b" : "#f43f5e"};">${status === "moving" ? "En mouvement" : status === "online" ? "Arrêt" : "Hors ligne"}</b>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:3px;">
+            <span style="color:#64748b;">Vitesse:</span>
+            <b>${Math.round(device.speed)} km/h</b>
+          </div>
+          <div style="font-size:10px; color:#94a3b8; font-family:monospace; margin-top:4px;">${device.lat.toFixed(5)}, ${device.lng.toFixed(5)}</div>
+        </div>
+      `);
+      vehicleMarkersRef.current.push(marker);
+    });
+  };
+
+  // Load Device Trip History
+  const loadHistory = async (targetId?: string) => {
+    ensureMap();
+    stopPlayback();
+    stopLive();
+
+    const devId = targetId || selectedDevice?.id;
+    if (!devId) {
+      toast.error("Choisissez un véhicule SFT");
+      return;
+    }
+
+    try {
+      setLoadingHistory(true);
+      const { fromIso, toIso } = toIsoRange(fromDate, toDate);
+      const history = await gpswoxService.getDeviceHistory(devId, fromIso, toIso);
+      const normalized: HistoryPoint[] = (history || [])
+        .filter((p: any) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+        .map((p: any) => ({
+          lat: Number(p.lat),
+          lng: Number(p.lng),
+          timestamp: Number(p.timestamp) || Date.now(),
+          speed: Number.isFinite(Number(p.speed)) ? Number(p.speed) : 0
+        }))
+        .sort((a, b) => a.timestamp - b.timestamp);
+
+      setPoints(normalized);
+      setPlaybackIndex(0);
+      playbackIndexRef.current = 0;
+      geofenceInsideRef.current = null;
+
+      if (!normalized.length) {
+        toast.error("Aucun historique trouvé pour cette période");
+        clearOverlays();
+        drawVehicleMarkers(filteredDevices);
+        return;
+      }
+
+      drawRoute(normalized);
+      toast.success(`Trajet chargé (${normalized.length} points)`);
+    } catch {
+      toast.error("Échec de chargement du trajet");
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  // Quick Preset Date Range
+  const applyDatePreset = (preset: "1h" | "today" | "24h" | "7d") => {
+    setDatePreset(preset);
+    const now = new Date();
+    if (preset === "1h") {
+      setFromDate(new Date(now.getTime() - 3600 * 1000));
+      setToDate(now);
+    } else if (preset === "today") {
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+      setFromDate(todayStart);
+      setToDate(now);
+    } else if (preset === "24h") {
+      setFromDate(new Date(now.getTime() - 24 * 3600 * 1000));
+      setToDate(now);
+    } else if (preset === "7d") {
+      setFromDate(new Date(now.getTime() - 7 * 24 * 3600 * 1000));
+      setToDate(now);
+    }
+  };
+
+  // Seek / Scrub directly to a point in route
+  const seekToPoint = (index: number) => {
+    if (!points.length || index < 0 || index >= points.length) return;
+    playbackIndexRef.current = index;
+    setPlaybackIndex(index);
+    const map = mapRef.current;
+    const overlay = overlayLayerRef.current;
+    if (!map || !overlay) return;
+
+    const p = points[index];
+    const latlng: [number, number] = [p.lat, p.lng];
+
+    if (!traceMarkerRef.current) {
+      traceMarkerRef.current = L.marker(latlng, {
+        icon: buildPlaybackTraceMarker(p.speed || 0),
+        zIndexOffset: 1100
+      }).addTo(overlay);
+    } else {
+      traceMarkerRef.current.setLatLng(latlng);
+      traceMarkerRef.current.addTo(overlay);
+    }
+
+    if (!traceLineRef.current) {
+      traceLineRef.current = L.polyline([latlng], {
+        color: "#ffffff",
+        weight: 6,
+        opacity: 0.95,
+        lineCap: "round"
+      }).addTo(overlay);
+    } else {
+      const nextCoords = points.slice(0, index + 1).map((x) => [x.lat, x.lng] as [number, number]);
+      traceLineRef.current.setLatLngs(nextCoords);
+    }
+
+    if (follow) map.panTo(latlng, { animate: true, duration: 0.2 });
+  };
+
+  // Toggle Video Playback
+  const togglePlayback = () => {
+    ensureMap();
+    const map = mapRef.current;
+    const overlay = overlayLayerRef.current;
+    if (!map || !overlay) return;
+    if (points.length < 2) {
+      toast.error("Aucun trajet à lire");
+      return;
+    }
+
+    if (isPlaying) {
+      stopPlayback();
+      return;
+    }
+
+    stopLive();
+    setIsPlaying(true);
+
+    if (playbackIndexRef.current >= points.length - 1) {
+      playbackIndexRef.current = 0;
+      setPlaybackIndex(0);
+    }
+
+    const start = points[playbackIndexRef.current];
+
+    if (!traceMarkerRef.current) {
+      traceMarkerRef.current = L.marker([start.lat, start.lng], {
+        icon: buildPlaybackTraceMarker(start.speed || 0),
+        zIndexOffset: 1100
+      }).addTo(overlay);
+    } else {
+      traceMarkerRef.current.setLatLng([start.lat, start.lng]);
+      traceMarkerRef.current.addTo(overlay);
+    }
+
+    if (!traceLineRef.current) {
+      traceLineRef.current = L.polyline([[start.lat, start.lng]], {
+        color: "#ffffff",
+        weight: 6,
+        opacity: 0.95,
+        lineCap: "round"
+      }).addTo(overlay);
+    } else {
+      traceLineRef.current.setLatLngs([[start.lat, start.lng]]);
+      traceLineRef.current.addTo(overlay);
+    }
+
+    map.panTo([start.lat, start.lng], { animate: true, duration: 0.3 });
+
+    if (playbackTimerRef.current) clearInterval(playbackTimerRef.current);
+    playbackTimerRef.current = window.setInterval(() => {
+      if (playbackIndexRef.current >= points.length - 1) {
+        stopPlayback();
+        toast.success("Lecture terminée");
+        return;
+      }
+      playbackIndexRef.current += 1;
+      const curIdx = playbackIndexRef.current;
+      setPlaybackIndex(curIdx);
+      const p = points[curIdx];
+      const latlng: [number, number] = [p.lat, p.lng];
+      if (traceMarkerRef.current) traceMarkerRef.current.setLatLng(latlng);
+      if (traceLineRef.current) {
+        const nextCoords = points.slice(0, curIdx + 1).map((x) => [x.lat, x.lng] as [number, number]);
+        traceLineRef.current.setLatLngs(nextCoords);
+      }
+      if (follow) map.panTo(latlng, { animate: true, duration: 0.25 });
+
+      if (geofenceEnabled && geofenceCircleRef.current) {
+        const center = geofenceCircleRef.current.getLatLng();
+        const inside = center.distanceTo(L.latLng(latlng)) <= geofenceRadiusM;
+        if (geofenceInsideRef.current === null) {
+          geofenceInsideRef.current = inside;
+        } else if (geofenceInsideRef.current !== inside) {
+          geofenceInsideRef.current = inside;
+          toast(inside ? "🛡️ Entrée dans la zone géofence" : "⚠️ Sortie de la zone géofence", {
+            description: deviceLabel
+          });
+        }
+      }
+    }, clamp(playSpeedMs, 80, 600));
+  };
+
+  const replay = () => {
+    playbackIndexRef.current = 0;
+    setPlaybackIndex(0);
+    stopPlayback();
+    clearOverlays();
+    drawRoute(points);
+    togglePlayback();
+  };
+
+  // Real-time Live Tracking Mode (polls every 8s)
   const startLive = async () => {
     ensureMap();
     stopPlayback();
@@ -681,12 +1122,22 @@ export default function Tracking() {
       try {
         const devices = await gpswoxService.getDevices();
         setGpsDevices(devices.map((item, _idx, arr) => arr.find((x) => x.id === item.id) || item) as any);
-        const device = devices.find((d) => d.id === selectedDevice.id) || devices.find((d) => d.plate === selectedDevice.plate) || null;
+        const device =
+          devices.find((d) => d.id === selectedDevice.id) ||
+          devices.find((d) => d.plate === selectedDevice.plate) ||
+          null;
         if (!device || !device.lat || !device.lng) return;
-        const next: HistoryPoint = { lat: device.lat, lng: device.lng, timestamp: Date.now(), speed: device.speed };
+        const next: HistoryPoint = {
+          lat: device.lat,
+          lng: device.lng,
+          timestamp: Date.now(),
+          speed: device.speed
+        };
         setPoints((prev) => {
           const last = prev.length ? prev[prev.length - 1] : null;
-          if (last && Math.abs(last.lat - next.lat) < 0.000001 && Math.abs(last.lng - next.lng) < 0.000001) return prev;
+          if (last && Math.abs(last.lat - next.lat) < 0.000001 && Math.abs(last.lng - next.lng) < 0.000001) {
+            return prev;
+          }
           const updated = [...prev, next];
           drawRoute(updated);
           if (follow && mapRef.current) {
@@ -695,11 +1146,13 @@ export default function Tracking() {
           return updated;
         });
       } catch {
+        // silent sync retry
       }
     }, 8000);
-    toast.success("Mode temps reel active");
+    toast.success("Mode Direct Live activé (~8s)");
   };
 
+  // Lifecycle Map Init & Cleanup
   useEffect(() => {
     ensureMap();
     return () => {
@@ -721,7 +1174,7 @@ export default function Tracking() {
       stopMarkersRef.current = [];
       vehicleMarkersRef.current = [];
     };
-  }, []);
+  }, [ensureMap]);
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -737,7 +1190,7 @@ export default function Tracking() {
     ensureMap();
     if (points.length) return;
     drawVehicleMarkers(filteredDevices);
-  }, [filteredDevices, selectedDevice?.id, points.length]);
+  }, [filteredDevices, selectedDevice?.id, points.length, ensureMap]);
 
   useEffect(() => {
     stopPlayback();
@@ -746,28 +1199,33 @@ export default function Tracking() {
     clearOverlays();
     drawVehicleMarkers(filteredDevices);
     playbackIndexRef.current = 0;
+    setPlaybackIndex(0);
     geofenceInsideRef.current = null;
   }, [vehicleId]);
 
   useEffect(() => {
     if (!selectedDevice) return;
-    if (!points.length && mapRef.current && Number.isFinite(selectedDevice.lat) && Number.isFinite(selectedDevice.lng) && (selectedDevice.lat !== 0 || selectedDevice.lng !== 0)) {
-      mapRef.current.flyTo([selectedDevice.lat, selectedDevice.lng], Math.max(mapRef.current.getZoom(), 13), { duration: 0.6 });
+    if (
+      !points.length &&
+      mapRef.current &&
+      Number.isFinite(selectedDevice.lat) &&
+      Number.isFinite(selectedDevice.lng) &&
+      (selectedDevice.lat !== 0 || selectedDevice.lng !== 0)
+    ) {
+      mapRef.current.flyTo([selectedDevice.lat, selectedDevice.lng], Math.max(mapRef.current.getZoom(), 14), {
+        duration: 0.6
+      });
     }
   }, [selectedDevice?.id]);
 
   useEffect(() => {
-    if (!follow) return;
-    if (!points.length) return;
-    if (!mapRef.current) return;
-    if (isPlaying) return;
-    const last = points[points.length - 1];
-    mapRef.current.panTo([last.lat, last.lng], { animate: true, duration: 0.25 });
-  }, [follow, isPlaying, points]);
+    const map = mapRef.current;
+    if (!map) return;
+    const timer = window.setTimeout(() => map.invalidateSize(), 150);
+    return () => window.clearTimeout(timer);
+  }, [deckOpen, activeDeckTab]);
 
-  const lastPoint = points.length ? points[points.length - 1] : null;
-  const canPlay = points.length >= 2;
-
+  // Handle file export
   const handleExport = (format: "gpx" | "csv" | "txt") => {
     if (!points.length) {
       toast.error("Aucun trajet à exporter");
@@ -781,335 +1239,1107 @@ export default function Tracking() {
     } else {
       downloadBlob(`rapport-${deviceLabel}-${stamp}.txt`, buildReport(deviceLabel, points), "text/plain");
     }
-    toast.success("Export pret");
+    toast.success(`Export ${format.toUpperCase()} téléchargé avec succès`);
   };
 
+  const activePlaybackPoint = points[playbackIndex] || lastPoint;
+
   return (
-    <div className="space-y-4 safe-pt safe-pb">
-      <Card className="border-0 shadow-none">
-        <CardHeader className="pb-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="space-y-1">
-              <CardTitle className="text-xl font-semibold">Suivi SFT — Trajet vidéo</CardTitle>
-              <div className="text-xs text-muted-foreground">
-                Sélectionnez un véhicule SFT, choisissez une période, puis lanceز la lecture animée du trajet.
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" onClick={syncGps} disabled={syncing}>
-                <RefreshCw className={`mr-2 h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-                {syncing ? "Synchronisation..." : "Synchroniser SFT"}
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline">
-                    <Layers className="mr-2 h-4 w-4" />
-                    Fond: {tileCatalog[mapTheme].label}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {Object.entries(tileCatalog).map(([key, meta]) => (
-                    <DropdownMenuItem key={key} onClick={() => setMapTheme(key as MapTheme)}>
-                      {meta.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Button variant="outline" onClick={fitToRoute} disabled={points.length < 2}>
-                <Focus className="mr-2 h-4 w-4" />
-                Ajuster
-              </Button>
-            </div>
+    <div className="relative w-full h-[calc(100vh-4.5rem)] max-h-screen overflow-hidden bg-background rounded-3xl border border-border/40 shadow-2xl">
+      {/* 2026 FLOATING TOP COMMAND HUD */}
+      <div className="absolute top-3 left-3 right-3 z-[1000] flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+        {/* Left: Brand Telemetry & Active Status Capsule (Transparent Frosted Glass) */}
+        <div className="flex items-center gap-2 bg-slate-900/45 dark:bg-slate-950/50 backdrop-blur-2xl border border-white/20 rounded-full p-1.5 px-3.5 shadow-xl pointer-events-auto transition-all text-white">
+          <div className="flex items-center gap-2 pr-2.5 border-r border-white/20">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500"></span>
+            </span>
+            <span className="text-xs font-black tracking-wider text-white uppercase hidden sm:inline">
+              SFT <span className="text-cyan-400">TRACKING</span>
+            </span>
           </div>
-        </CardHeader>
 
-        <CardContent className={`grid gap-3 ${controlsOpen ? "lg:grid-cols-[1fr_420px]" : "lg:grid-cols-1"}`}>
-          <div className="relative overflow-hidden rounded-3xl border bg-muted h-[40vh] lg:h-[calc(100dvh-16rem)]">
-            <div className="absolute left-3 top-3 z-[600] flex flex-wrap gap-2">
-              <div className="rounded-full bg-black/70 text-white text-[11px] px-2.5 py-1 inline-flex items-center gap-2">
-                <Route className="h-3.5 w-3.5" />
-                <span className="whitespace-nowrap">Distance</span>
-                <span className="font-semibold">{stats.distanceKm} km</span>
-              </div>
-              <div className="rounded-full bg-black/70 text-white text-[11px] px-2.5 py-1 inline-flex items-center gap-2">
-                <TimerReset className="h-3.5 w-3.5" />
-                <span className="whitespace-nowrap">Durée</span>
-                <span className="font-semibold">{stats.durationMin} min</span>
-              </div>
-              <div className="rounded-full bg-black/70 text-white text-[11px] px-2.5 py-1 inline-flex items-center gap-2">
-                <Compass className="h-3.5 w-3.5" />
-                <span className="whitespace-nowrap">Arrêts</span>
-                <span className="font-semibold">{stats.stops}</span>
-              </div>
-              {lastPoint ? (
-                <div className="rounded-full bg-black/70 text-white text-[11px] px-2.5 py-1 inline-flex items-center gap-2">
-                  <Compass className="h-3.5 w-3.5" />
-                  <span className="whitespace-nowrap">Dernière</span>
-                  <span className="font-semibold">{formatAgo(lastPoint.timestamp)}</span>
+          {/* Active Vehicle Capsule */}
+          {selectedDevice ? (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 text-xs font-bold text-white border border-white/15">
+              <Car className="h-3.5 w-3.5 text-cyan-400" />
+              <span>{selectedDevice.plate || selectedDevice.name}</span>
+            </div>
+          ) : (
+            <span className="text-xs text-slate-300 font-semibold hidden md:inline">
+              Sélectionnez un véhicule pour tracer
+            </span>
+          )}
+
+          {/* Key Metrics Pills */}
+          {points.length >= 2 && (
+            <div className="hidden lg:flex items-center gap-1 pl-1 text-[11px] font-bold text-slate-200">
+              <span className="px-2 py-0.5 rounded-full bg-white/10 flex items-center gap-1">
+                <Route className="h-3 w-3 text-cyan-400" /> {stats.distanceKm} km
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-white/10 flex items-center gap-1">
+                <Clock3 className="h-3 w-3 text-amber-400" /> {stats.durationMin} min
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-white/10 flex items-center gap-1">
+                <Gauge className="h-3 w-3 text-emerald-400" /> {stats.avgSpeed} km/h
+              </span>
+              {detectedStops.length > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/30">
+                  {detectedStops.length} arrêts
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Live Direct Status Beacon */}
+          {liveMode && (
+            <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/25 border border-emerald-400/40 text-emerald-300 text-[11px] font-bold animate-pulse">
+              <Radio className="h-3 w-3" />
+              <span>LIVE 8s</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* FULL-WIDTH LEAFLET MAP CONTAINER */}
+      <div ref={mapContainerRef} className="h-full w-full bg-slate-900" />
+
+      {/* FLOATING BOTTOM REPLAY SCRUBBER HUD (Appears when route is loaded) */}
+      {points.length >= 2 && (
+        <div className="absolute bottom-5 left-3 right-3 sm:left-1/2 sm:-translate-x-1/2 sm:w-[680px] z-[1000] bg-slate-950/90 backdrop-blur-3xl border border-cyan-500/30 rounded-3xl p-3 sm:p-4 shadow-2xl space-y-2.5 text-white animate-in slide-in-from-bottom-5 duration-200">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="p-2 rounded-2xl bg-cyan-500/20 text-cyan-400 shrink-0 border border-cyan-400/30">
+                <Route className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <div className="text-xs font-black tracking-tight flex items-center gap-2">
+                  <span className="truncate">{deviceLabel}</span>
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-cyan-400/50 text-cyan-300 font-bold shrink-0">
+                    {points.length} pts
+                  </Badge>
                 </div>
-              ) : null}
+                <div className="text-[11px] text-slate-300 font-medium truncate">
+                  {stats.distanceKm} km • {stats.durationMin} min • {detectedStops.length} arrêts
+                </div>
+              </div>
             </div>
 
-            <div className="absolute right-3 top-3 z-[600] flex items-center gap-2 rounded-2xl border bg-background/80 backdrop-blur px-3 py-2 shadow-sm">
-              <div className="text-xs text-muted-foreground">Suivi auto</div>
-              <Switch checked={follow} onCheckedChange={(v) => setFollow(v)} />
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => setControlsOpen((v) => !v)}
-                aria-label={controlsOpen ? "Masquer les contrôles" : "Afficher les contrôles"}
+            {/* Current Speed Tachometer Badge */}
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="text-right">
+                <div className="text-base font-black text-cyan-400 font-mono leading-none">
+                  {Math.round(activePlaybackPoint?.speed || 0)} <span className="text-[10px] text-slate-300">km/h</span>
+                </div>
+                <div className="text-[10px] text-slate-400 font-mono">
+                  {activePlaybackPoint ? new Date(activePlaybackPoint.timestamp).toLocaleTimeString() : "--:--"}
+                </div>
+              </div>
+
+              {/* Play / Pause Toggle Button */}
+              <button
+                type="button"
+                onClick={togglePlayback}
+                className="h-10 w-10 rounded-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black shadow-lg shadow-cyan-500/30 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+                title={isPlaying ? "Pause" : "Lecture vidéo"}
               >
-                {controlsOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
-              </Button>
-              <Button size="icon" variant="ghost" onClick={centerOnLast} disabled={!lastPoint}>
-                <LocateFixed className="h-4 w-4" />
-              </Button>
-            </div>
+                {isPlaying ? <Pause className="h-4 w-4 fill-current" /> : <Play className="h-4 w-4 fill-current ml-0.5" />}
+              </button>
 
-            <div ref={mapContainerRef} className="h-full w-full" />
+              <button
+                type="button"
+                onClick={replay}
+                className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all"
+                title="Rejouer depuis le début"
+              >
+                <RotateCcw className="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
-          {controlsOpen ? (
-          <div className="rounded-3xl border bg-card overflow-hidden flex flex-col h-[52vh] lg:h-[calc(100dvh-16rem)]">
-            <div className="p-4 border-b space-y-3 overflow-y-auto">
-              <div className="flex items-start justify-between gap-2">
-                <div className="space-y-1 min-w-0">
-                  <div className="font-semibold">Contrôles</div>
-                  <div className="text-[11px] text-muted-foreground truncate">
-                    {selectedDevice ? `${selectedDevice.plate || selectedDevice.name}` : "Aucun vehicule SFT selectionne"}
-                  </div>
+          {/* Interactive Scrub Slider */}
+          <div className="space-y-1">
+            <Slider
+              value={[playbackIndex]}
+              min={0}
+              max={points.length - 1}
+              step={1}
+              onValueChange={(val) => seekToPoint(val[0] || 0)}
+              className="py-1 [&>span:first-child]:h-2 [&>span:first-child]:bg-white/15 [&_[role=slider]]:h-4 [&_[role=slider]]:w-4 [&_[role=slider]]:bg-cyan-400 [&_[role=slider]]:border-2 [&_[role=slider]]:border-white"
+            />
+            <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+              <span>Départ: {points[0] ? new Date(points[0].timestamp).toLocaleTimeString() : ""}</span>
+              <span className="text-cyan-400 font-bold">Étape {playbackIndex + 1} / {points.length}</span>
+              <span>Arrivée: {points[points.length - 1] ? new Date(points[points.length - 1].timestamp).toLocaleTimeString() : ""}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2026 VERTICAL ACTION DOCK (Frosted Glass VisionOS style on the right) */}
+      <div className="absolute right-3 top-1/2 -translate-y-1/2 z-[1000] flex flex-col items-center gap-2">
+        {/* Zoom In */}
+        <button
+          type="button"
+          onClick={() => mapRef.current?.zoomIn()}
+          className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/25 dark:bg-black/20 dark:hover:bg-black/40 backdrop-blur-2xl border border-white/30 text-white shadow-[0_8px_32px_rgba(0,0,0,0.25)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center font-bold"
+          title="Zoomer +"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+
+        {/* Zoom Out */}
+        <button
+          type="button"
+          onClick={() => mapRef.current?.zoomOut()}
+          className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/25 dark:bg-black/20 dark:hover:bg-black/40 backdrop-blur-2xl border border-white/30 text-white shadow-[0_8px_32px_rgba(0,0,0,0.25)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center font-bold"
+          title="Dézoomer -"
+        >
+          <Minus className="h-4 w-4" />
+        </button>
+
+        {/* Center Active Vehicle / Point */}
+        <button
+          type="button"
+          onClick={centerOnActive}
+          className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/25 dark:bg-black/20 dark:hover:bg-black/40 backdrop-blur-2xl border border-white/30 text-cyan-400 shadow-[0_8px_32px_rgba(0,0,0,0.25)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center"
+          title="Centrer sur le véhicule ou le point"
+        >
+          <LocateFixed className="h-4 w-4" />
+        </button>
+
+        {/* Layers Switcher Modal Trigger */}
+        <button
+          type="button"
+          onClick={() => setLayersModalOpen(true)}
+          className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/25 dark:bg-black/20 dark:hover:bg-black/40 backdrop-blur-2xl border border-white/30 text-emerald-400 shadow-[0_8px_32px_rgba(0,0,0,0.25)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center"
+          title="Fonds de carte Google Maps"
+        >
+          <Layers className="h-4 w-4" />
+        </button>
+
+        {/* Fit to Route */}
+        <button
+          type="button"
+          onClick={fitToRoute}
+          disabled={points.length < 2}
+          className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/25 dark:bg-black/20 dark:hover:bg-black/40 backdrop-blur-2xl border border-white/30 text-slate-100 shadow-[0_8px_32px_rgba(0,0,0,0.25)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center disabled:opacity-40"
+          title="Ajuster la vue sur le trajet"
+        >
+          <Focus className="h-4 w-4" />
+        </button>
+
+        {/* Mode Direct Live Toggle */}
+        <button
+          type="button"
+          onClick={() => {
+            if (liveMode) stopLive();
+            else void startLive();
+          }}
+          className={`h-10 w-10 rounded-full backdrop-blur-2xl border shadow-[0_8px_32px_rgba(0,0,0,0.25)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center ${
+            liveMode
+              ? "bg-emerald-500 text-slate-950 border-emerald-400 shadow-emerald-500/40 animate-pulse"
+              : "bg-white/10 hover:bg-white/25 border-white/30 text-white"
+          }`}
+          title={liveMode ? "Désactiver le Mode Direct Live" : "Activer le Mode Direct Live (~8s)"}
+        >
+          <Radio className="h-4 w-4" />
+        </button>
+
+        {/* Auto-follow Toggle */}
+        <button
+          type="button"
+          onClick={() => {
+            setFollow(!follow);
+            toast.info(follow ? "Suivi caméra désactivé" : "Suivi caméra activé");
+          }}
+          className={`h-10 w-10 rounded-full backdrop-blur-2xl border shadow-[0_8px_32px_rgba(0,0,0,0.25)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center ${
+            follow
+              ? "bg-cyan-500/30 text-cyan-300 border-cyan-400/50"
+              : "bg-white/10 hover:bg-white/25 border-white/30 text-slate-400"
+          }`}
+          title={follow ? "Suivi caméra automatique actif" : "Suivi caméra manuel"}
+        >
+          <Navigation className="h-4 w-4" />
+        </button>
+
+        {/* Geofencing Quick Trigger */}
+        <button
+          type="button"
+          onClick={() => {
+            setGeofenceEnabled(!geofenceEnabled);
+            if (!geofenceEnabled) {
+              setDeckOpen(true);
+              setActiveDeckTab("geofence");
+            }
+          }}
+          className={`h-10 w-10 rounded-full backdrop-blur-2xl border shadow-[0_8px_32px_rgba(0,0,0,0.25)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center ${
+            geofenceEnabled
+              ? "bg-rose-500/30 text-rose-300 border-rose-400/50 shadow-rose-500/30"
+              : "bg-white/10 hover:bg-white/25 border-white/30 text-white"
+          }`}
+          title="Paramètres de géofence"
+        >
+          <ShieldAlert className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* FLOATING BOTTOM TRIGGER: FLOTTE & TRACKING DECK */}
+      <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-[990]">
+        <button
+          type="button"
+          onClick={() => setDeckOpen(true)}
+          className="group px-5 py-2.5 rounded-full bg-slate-900/60 dark:bg-slate-950/70 hover:bg-slate-900/85 dark:hover:bg-slate-950/90 backdrop-blur-2xl border border-white/25 hover:border-cyan-400/50 text-white shadow-[0_12px_40px_rgba(0,0,0,0.6)] hover:shadow-cyan-500/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-2.5 font-bold text-xs"
+        >
+          <span className="h-6 w-6 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center">
+            <Car className="h-3.5 w-3.5" />
+          </span>
+          <span className="tracking-wide">
+            {selectedDevice ? `${selectedDevice.plate || selectedDevice.name}` : `Flotte & Trajet (${gpsDevices.length})`}
+          </span>
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">
+            Contrôles
+          </span>
+        </button>
+      </div>
+
+      {/* 2026 FLOATING VISIONOS CARD MODAL: GOOGLE MAPS LAYERS */}
+      {layersModalOpen && (
+        <div className="fixed inset-0 z-[1600] flex items-center justify-center p-3 sm:p-5 pointer-events-none">
+          <div
+            onClick={() => setLayersModalOpen(false)}
+            className="absolute inset-0 bg-black/50 backdrop-blur-xs pointer-events-auto transition-opacity"
+          />
+
+          <div className="relative pointer-events-auto w-full max-w-[500px] max-h-[85vh] bg-slate-900/95 dark:bg-slate-950/98 backdrop-blur-3xl border border-white/20 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.85)] rounded-[2.5rem] overflow-hidden flex flex-col text-slate-100 ring-1 ring-white/10 animate-in zoom-in-95 duration-200">
+            <div className="p-4 sm:p-5 border-b border-white/10 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="h-10 w-10 rounded-2xl bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center text-cyan-400">
+                  <Layers className="h-5 w-5" />
+                </span>
+                <div>
+                  <h3 className="text-base font-black tracking-tight text-white">Cartographie & Google Maps</h3>
+                  <p className="text-xs text-slate-400 font-medium">Sélectionnez le fond de carte de suivi</p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Button size="sm" variant="outline" onClick={loadHistory} disabled={!selectedDevice}>
-                    Charger
-                  </Button>
-                  <Button size="sm" onClick={togglePlayback} disabled={!canPlay} variant={isPlaying ? "destructive" : "default"}>
-                    {isPlaying ? <Pause className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}
-                    {isPlaying ? "Pause" : "Lecture"}
-                  </Button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLayersModalOpen(false)}
+                className="h-8 w-8 rounded-full text-slate-400 hover:text-white hover:bg-white/10 flex items-center justify-center transition"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 sft-fleet-scroll">
+              <div className="space-y-2">
+                <div className="text-[11px] font-black uppercase tracking-wider text-cyan-400 px-1">
+                  Google Maps Officiel (Maroc)
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {Object.entries(tileCatalog)
+                    .filter(([_, meta]) => meta.isGoogle)
+                    .map(([key, meta]) => {
+                      const isActive = mapTheme === key;
+                      return (
+                        <div
+                          key={key}
+                          onClick={() => {
+                            setMapTheme(key as MapTheme);
+                            toast.success(`Fond changé: ${meta.label}`);
+                            setLayersModalOpen(false);
+                          }}
+                          className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                            isActive
+                              ? "bg-cyan-500/20 border-cyan-400 shadow-lg shadow-cyan-500/20 ring-1 ring-cyan-400"
+                              : "bg-white/[0.04] border-white/10 hover:bg-white/[0.08]"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-extrabold text-xs text-white">{meta.label}</span>
+                            {meta.badge && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-white/10 text-cyan-300">
+                                {meta.badge}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-300 line-clamp-1">{meta.description}</p>
+                          <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[9px] text-slate-400">
+                            <span>Zoom: {meta.maxZoom}x</span>
+                            {isActive ? (
+                              <span className="text-cyan-400 font-black flex items-center gap-0.5">
+                                <CheckCircle2 className="h-3 w-3" /> Actif
+                              </span>
+                            ) : (
+                              <span>Choisir →</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
 
               <div className="space-y-2">
-                <div className="text-xs font-medium">Véhicule (SFT uniquement)</div>
-                <div className="grid gap-2">
-                  <div className="relative">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher par nom, plaque, IMEI..." className="pl-8" />
-                  </div>
-                  <Select value={vehicleId} onValueChange={(v) => setVehicleId(v)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionner un véhicule SFT" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filteredDevices.length ? (
-                        filteredDevices.map((d) => (
-                          <SelectItem key={d.id} value={d.id}>
-                            {(d.name || d.plate || d.imei) + (d.plate ? ` — ${d.plate}` : "")}
-                          </SelectItem>
-                        ))
-                      ) : (
-                        <SelectItem value="__empty" disabled>
-                          Aucun vehicule - cliquez sur Synchroniser
-                        </SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="text-muted-foreground truncate">
-                      {gpsDevices.length} véhicule(s) SFT
-                    </div>
-                    {selectedDevice ? <Badge variant="secondary">Lie</Badge> : <Badge variant="secondary">—</Badge>}
-                  </div>
+                <div className="text-[11px] font-black uppercase tracking-wider text-slate-400 px-1">
+                  Autres Styles
                 </div>
-              </div>
-
-              <Separator />
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-2">
-                  <div className="text-xs font-medium">Date debut</div>
-                  <DatePicker value={fromDate} onChange={setFromDate} placeholder="Date début" />
-                </div>
-                <div className="space-y-2">
-                  <div className="text-xs font-medium">Date fin</div>
-                  <DatePicker value={toDate} onChange={setToDate} placeholder="Date fin" />
-                </div>
-              </div>
-
-              <div className="rounded-2xl border bg-muted/40 p-3 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-semibold">Trajet vidéo (Traceur)</div>
-                  <Button size="sm" variant="outline" onClick={replay} disabled={!canPlay}>
-                    Rejouer
-                  </Button>
-                </div>
-                <div className="space-y-2">
-                  <div className="text-xs text-muted-foreground">Vitesse</div>
-                  <Slider value={[playSpeedMs]} min={80} max={600} step={20} onValueChange={(v) => setPlaySpeedMs(v[0] || 160)} />
-                  <div className="text-xs text-muted-foreground">{playSpeedMs} ms / étape</div>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border bg-muted/40 p-3 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-semibold">Mode temps reel</div>
-                  <Switch
-                    checked={liveMode}
-                    onCheckedChange={(v) => {
-                      if (v) void startLive();
-                      else stopLive();
-                    }}
-                  />
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Ajoute automatiquement la dernière position SFT (toutes les ~8s) au trajet.
-                </div>
-              </div>
-
-              <div className="rounded-2xl border bg-muted/40 p-3 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-semibold inline-flex items-center gap-2">
-                    <ShieldAlert className="h-4 w-4" />
-                    Geofencing
-                  </div>
-                  <Switch checked={geofenceEnabled} onCheckedChange={(v) => setGeofenceEnabled(v)} />
-                </div>
-                <div className="space-y-2">
-                  <div className="text-xs text-muted-foreground">Rayon: {geofenceRadiusM} m</div>
-                  <Slider value={[geofenceRadiusM]} min={100} max={3000} step={50} onValueChange={(v) => setGeofenceRadiusM(v[0] || 300)} />
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button size="sm" variant="outline" onClick={setGeofenceAtCenter} disabled={!geofenceEnabled}>
-                      Centre carte
-                    </Button>
-                    <Button size="sm" variant={drawGeofence ? "default" : "outline"} onClick={() => setDrawGeofence((v) => !v)} disabled={!geofenceEnabled}>
-                      {drawGeofence ? "Cliquez sur la carte..." : "Cliquer sur la carte"}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border bg-muted/40 p-3 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-semibold">Exporter</div>
-                  <div className="flex items-center gap-1">
-                    <Button size="sm" variant="outline" onClick={() => handleExport("gpx")} disabled={!points.length}>
-                      <Download className="mr-1 h-3.5 w-3.5" /> GPX
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => handleExport("csv")} disabled={!points.length}>
-                      <Download className="mr-1 h-3.5 w-3.5" /> CSV
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => handleExport("txt")} disabled={!points.length}>
-                      <FileText className="mr-1 h-3.5 w-3.5" /> Rapport
-                    </Button>
-                  </div>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Inclut arrêts détectés et statistiques de trajet.
-                </div>
-              </div>
-
-              <Sheet>
-                <SheetTrigger asChild>
-                  <Button variant="outline" className="w-full" disabled={!selectedDevice}>
-                    Détails
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="right" className="w-full sm:max-w-lg">
-                  <SheetHeader>
-                    <SheetTitle>Details du suivi</SheetTitle>
-                  </SheetHeader>
-                  <div className="mt-4 space-y-4">
-                    <div className="rounded-2xl border p-4 space-y-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="font-semibold truncate">{selectedDevice?.name || deviceLabel}</div>
-                          <div className="text-sm text-muted-foreground truncate">{selectedDevice?.plate || "—"}</div>
-                        </div>
-                        <Badge variant="secondary">{points.length} pts</Badge>
-                      </div>
-                      <Separator />
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div className="space-y-1">
-                          <div className="text-xs text-muted-foreground">Distance</div>
-                          <div className="font-medium">{stats.distanceKm} km</div>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="text-xs text-muted-foreground">Durée</div>
-                          <div className="font-medium">{stats.durationMin} min</div>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="text-xs text-muted-foreground">Vitesse moy.</div>
-                          <div className="font-medium">{stats.avgSpeed} km/h</div>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="text-xs text-muted-foreground">Vitesse max</div>
-                          <div className="font-medium">{stats.maxSpeed} km/h</div>
-                        </div>
-                      </div>
-                      {typeof selectedDevice?.fuelLevel === "number" ? (
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>Carburant</span>
-                            <span>{Math.round(selectedDevice.fuelLevel)}%</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {Object.entries(tileCatalog)
+                    .filter(([_, meta]) => !meta.isGoogle)
+                    .map(([key, meta]) => {
+                      const isActive = mapTheme === key;
+                      return (
+                        <div
+                          key={key}
+                          onClick={() => {
+                            setMapTheme(key as MapTheme);
+                            toast.success(`Fond changé: ${meta.label}`);
+                            setLayersModalOpen(false);
+                          }}
+                          className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                            isActive
+                              ? "bg-cyan-500/20 border-cyan-400 shadow-lg shadow-cyan-500/20 ring-1 ring-cyan-400"
+                              : "bg-white/[0.04] border-white/10 hover:bg-white/[0.08]"
+                          }`}
+                        >
+                          <div className="font-extrabold text-xs text-white">{meta.label}</div>
+                          <p className="text-[10px] text-slate-300 line-clamp-1">{meta.description}</p>
+                          <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[9px] text-slate-400">
+                            <span>Zoom: {meta.maxZoom}x</span>
+                            {isActive && <CheckCircle2 className="h-3 w-3 text-cyan-400" />}
                           </div>
-                          <Progress value={clamp(selectedDevice.fuelLevel, 0, 100)} />
                         </div>
-                      ) : null}
-                    </div>
-
-                    <div className="rounded-2xl border p-4">
-                      <div className="font-semibold text-sm mb-2">Arrêts détectés</div>
-                      {detectedStops.length ? (
-                        <ScrollArea className="h-32 pr-3">
-                          <div className="space-y-2">
-                            {detectedStops.map((s, idx) => (
-                              <div key={`${idx}-${s.from}`} className="rounded-xl border bg-background/60 px-3 py-2 text-xs">
-                                <div className="flex items-center justify-between">
-                                  <span className="font-medium">#{idx + 1} — {s.durationMin} min</span>
-                                  <span className="text-muted-foreground">{s.lat.toFixed(4)}, {s.lng.toFixed(4)}</span>
-                                </div>
-                                <div className="text-muted-foreground mt-0.5">{new Date(s.from).toLocaleTimeString()} → {new Date(s.to).toLocaleTimeString()}</div>
-                              </div>
-                            ))}
-                          </div>
-                        </ScrollArea>
-                      ) : (
-                        <div className="text-sm text-muted-foreground">Aucun arrêt détecté.</div>
-                      )}
-                    </div>
-
-                    <div className="rounded-2xl border p-4">
-                      <div className="font-semibold text-sm mb-2">Points (dernier → premier)</div>
-                      {points.length ? (
-                        <ScrollArea className="h-72 pr-3">
-                          <div className="space-y-2">
-                            {points
-                              .slice()
-                              .reverse()
-                              .map((p) => (
-                                <div key={`${p.timestamp}-${p.lat}-${p.lng}`} className="rounded-xl border bg-background/60 px-3 py-2">
-                                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                    <span>{new Date(p.timestamp).toLocaleTimeString()}</span>
-                                    <span>{Math.round(p.speed || 0)} km/h</span>
-                                  </div>
-                                  <div className="text-xs mt-1">{p.lat.toFixed(5)}, {p.lng.toFixed(5)}</div>
-                                </div>
-                              ))}
-                          </div>
-                        </ScrollArea>
-                      ) : (
-                        <div className="text-sm text-muted-foreground">Aucun trajet chargé.</div>
-                      )}
-                    </div>
-                  </div>
-                </SheetContent>
-              </Sheet>
+                      );
+                    })}
+                </div>
+              </div>
             </div>
           </div>
-          ) : null}
-        </CardContent>
-      </Card>
+        </div>
+      )}
+
+      {/* 2026 CENTERED FLOATING VISIONOS CARD MODAL: FLOTTE & TRACKING CONTROLS */}
+      {deckOpen && (
+        <div className="fixed inset-0 z-[1500] flex items-center justify-center p-3 sm:p-5 pointer-events-none">
+          <div
+            onClick={() => setDeckOpen(false)}
+            className="absolute inset-0 bg-black/50 backdrop-blur-xs pointer-events-auto transition-opacity"
+          />
+
+          <div className="relative pointer-events-auto w-full max-w-[560px] h-[84vh] max-h-[680px] min-h-[440px] bg-slate-900/95 dark:bg-slate-950/98 backdrop-blur-3xl border border-white/20 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.85)] rounded-[2.5rem] overflow-hidden flex flex-col text-slate-100 ring-1 ring-white/10 animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-white/10 space-y-3 shrink-0 bg-white/[0.02]">
+              <div className="w-12 h-1 rounded-full bg-white/20 mx-auto -mt-1 mb-2" />
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="h-10 w-10 rounded-2xl bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center text-cyan-400 shadow-inner">
+                    <Car className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <h2 className="text-base font-black tracking-tight text-white flex items-center gap-2">
+                      <span>Tracking & Trajets SFT</span>
+                      <span className="px-2 py-0.5 rounded-full text-xs font-black bg-cyan-500/25 text-cyan-300 border border-cyan-400/40">
+                        {fleetStats.total} balises
+                      </span>
+                    </h2>
+                    <p className="text-[11px] text-slate-400 font-medium">
+                      Véhicule actif : {selectedDevice ? (selectedDevice.plate || selectedDevice.name) : "Aucun"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={syncGps}
+                    disabled={syncing}
+                    className="h-8 px-2.5 rounded-xl bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white text-xs font-bold"
+                    title="Synchroniser SFT"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 mr-1 ${syncing ? "animate-spin text-cyan-400" : ""}`} />
+                    Sync
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setDeckOpen(false)}
+                    className="rounded-full h-8 w-8 text-slate-400 hover:text-white hover:bg-white/10 flex items-center justify-center transition"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Navigation Tabs (VisionOS style capsule tabs) */}
+              <div className="grid grid-cols-4 gap-1 p-1 bg-white/5 rounded-2xl border border-white/10 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setActiveDeckTab("vehicules")}
+                  className={`py-1.5 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                    activeDeckTab === "vehicules"
+                      ? "bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/20"
+                      : "text-slate-300 hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  <Car className="h-3.5 w-3.5" /> Flotte
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveDeckTab("trajet")}
+                  className={`py-1.5 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                    activeDeckTab === "trajet"
+                      ? "bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/20"
+                      : "text-slate-300 hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  <Route className="h-3.5 w-3.5" /> Trajets
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveDeckTab("geofence")}
+                  className={`py-1.5 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                    activeDeckTab === "geofence"
+                      ? "bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/20"
+                      : "text-slate-300 hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  <ShieldAlert className="h-3.5 w-3.5" /> Géofence
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveDeckTab("rapport")}
+                  className={`py-1.5 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                    activeDeckTab === "rapport"
+                      ? "bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/20"
+                      : "text-slate-300 hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  <FileText className="h-3.5 w-3.5" /> Télémétrie
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body Container with custom scrollbar */}
+            <div className="flex-1 min-h-0 relative overflow-hidden flex flex-col">
+              <style>{`
+                .sft-fleet-scroll {
+                  scrollbar-width: thin !important;
+                  scrollbar-color: #06b6d4 rgba(255, 255, 255, 0.12) !important;
+                }
+                .sft-fleet-scroll::-webkit-scrollbar {
+                  width: 9px !important;
+                  display: block !important;
+                }
+                .sft-fleet-scroll::-webkit-scrollbar-track {
+                  background: rgba(255, 255, 255, 0.08) !important;
+                  border-radius: 9999px !important;
+                  margin: 6px 0 !important;
+                }
+                .sft-fleet-scroll::-webkit-scrollbar-thumb {
+                  background: #06b6d4 !important;
+                  border-radius: 9999px !important;
+                  border: 2px solid rgba(15, 23, 42, 0.9) !important;
+                  box-shadow: 0 0 10px rgba(6, 182, 212, 0.6) !important;
+                }
+                .sft-fleet-scroll::-webkit-scrollbar-thumb:hover {
+                  background: #22d3ee !important;
+                }
+              `}</style>
+
+              {/* TAB 1: FLOTTE / VÉHICULES */}
+              {activeDeckTab === "vehicules" && (
+                <div className="flex-1 min-h-0 overflow-y-scroll sft-fleet-scroll p-3 sm:p-4 space-y-3 pb-16">
+                  {/* Search input inside modal */}
+                  <div className="relative w-full">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                    <input
+                      type="text"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Rechercher nom, plaque, IMEI..."
+                      className="w-full h-9 pl-9 pr-8 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder:text-slate-400 focus:outline-hidden focus:border-cyan-400/60 transition"
+                    />
+                    {search && (
+                      <button
+                        onClick={() => setSearch("")}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-white"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Status Pills */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
+                    <button
+                      onClick={() => setFilter("all")}
+                      className={`px-3 py-1 rounded-full text-[11px] font-bold transition ${
+                        filter === "all" ? "bg-cyan-500 text-slate-950" : "bg-white/5 text-slate-300 hover:bg-white/10"
+                      }`}
+                    >
+                      Tous ({fleetStats.total})
+                    </button>
+                    <button
+                      onClick={() => setFilter("moving")}
+                      className={`px-3 py-1 rounded-full text-[11px] font-bold transition flex items-center gap-1 ${
+                        filter === "moving" ? "bg-emerald-500 text-slate-950" : "bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25"
+                      }`}
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      Mouvement ({fleetStats.moving})
+                    </button>
+                    <button
+                      onClick={() => setFilter("online")}
+                      className={`px-3 py-1 rounded-full text-[11px] font-bold transition flex items-center gap-1 ${
+                        filter === "online" ? "bg-amber-500 text-slate-950" : "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
+                      }`}
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                      Arrêt ({fleetStats.online})
+                    </button>
+                    <button
+                      onClick={() => setFilter("offline")}
+                      className={`px-3 py-1 rounded-full text-[11px] font-bold transition flex items-center gap-1 ${
+                        filter === "offline" ? "bg-rose-500 text-white" : "bg-rose-500/15 text-rose-300 hover:bg-rose-500/25"
+                      }`}
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
+                      Hors ligne ({fleetStats.offline})
+                    </button>
+                  </div>
+
+                  {/* Vehicle Cards List */}
+                  <div className="space-y-2.5">
+                    {filteredDevices.map((item) => {
+                      const isSelected = item.id === vehicleId;
+                      const isMoving = item.online && item.speed > 1;
+                      const isOnline = item.online && item.speed <= 1;
+                      const statusColor = isMoving ? "#10b981" : isOnline ? "#f59e0b" : "#f43f5e";
+                      const statusLabel = isMoving ? "En mouvement" : isOnline ? "Arrêt" : "Hors ligne";
+
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => {
+                            setVehicleId(item.id);
+                            if (Number.isFinite(item.lat) && Number.isFinite(item.lng)) {
+                              mapRef.current?.flyTo([item.lat, item.lng], 16, { duration: 0.5 });
+                            }
+                          }}
+                          className={`relative overflow-hidden rounded-2xl border p-3.5 transition-all cursor-pointer ${
+                            isSelected
+                              ? "border-cyan-400/80 bg-cyan-500/15 shadow-lg shadow-cyan-500/10 ring-1 ring-cyan-400/50"
+                              : "border-white/10 bg-white/[0.04] hover:bg-white/[0.08] hover:border-white/20 text-white"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className="h-2 w-2 rounded-full shrink-0"
+                                  style={{ backgroundColor: statusColor }}
+                                />
+                                <span className="font-extrabold text-sm text-white truncate">
+                                  {item.plate || item.name}
+                                </span>
+                                {item.plate && (
+                                  <span className="text-[11px] text-slate-300 font-semibold truncate hidden sm:inline">
+                                    {item.name}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-300 font-mono mt-0.5">
+                                IMEI: {item.imei || item.id}
+                              </div>
+                            </div>
+
+                            <span
+                              className="text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0"
+                              style={{
+                                color: statusColor,
+                                borderColor: `${statusColor}40`,
+                                backgroundColor: `${statusColor}15`
+                              }}
+                            >
+                              {statusLabel}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2 mt-3 pt-2.5 border-t border-white/5 text-[11px]">
+                            <div>
+                              <span className="text-[10px] text-slate-300 block">Vitesse</span>
+                              <span className="font-bold text-white font-mono">{Math.round(item.speed)} km/h</span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-slate-300 block">Carburant</span>
+                              <span className="font-bold text-amber-400 font-mono">
+                                {typeof item.fuelLevel === "number" ? `${Math.round(item.fuelLevel)}%` : "—"}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-slate-300 block">Mise à jour</span>
+                              <span className="font-semibold text-slate-200">
+                                {item.lastUpdate ? formatAgo(new Date(item.lastUpdate).getTime()) : "—"}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 flex items-center justify-between gap-2">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setVehicleId(item.id);
+                                setActiveDeckTab("trajet");
+                                void loadHistory(item.id);
+                              }}
+                              className="flex-1 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-400/40 text-xs font-bold transition flex items-center justify-center gap-1.5"
+                            >
+                              <Route className="h-3.5 w-3.5" />
+                              <span>Charger le Trajet</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setVehicleId(item.id);
+                                if (Number.isFinite(item.lat) && Number.isFinite(item.lng)) {
+                                  mapRef.current?.flyTo([item.lat, item.lng], 16, { duration: 0.5 });
+                                }
+                                setDeckOpen(false);
+                              }}
+                              className="h-8 w-8 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition"
+                              title="Voir sur la carte"
+                            >
+                              <LocateFixed className="h-4 w-4 text-cyan-400" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {!filteredDevices.length && (
+                      <div className="text-center py-16 text-slate-400 space-y-2">
+                        <Car className="h-8 w-8 mx-auto opacity-30" />
+                        <p className="font-bold text-xs">Aucun véhicule trouvé</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: RELECTURE TRAJET (Filters & Controls) */}
+              {activeDeckTab === "trajet" && (
+                <div className="flex-1 min-h-0 overflow-y-scroll sft-fleet-scroll p-3 sm:p-4 space-y-4 pb-16">
+                  {/* Selected Vehicle Card */}
+                  <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 space-y-2">
+                    <div className="text-[11px] font-black uppercase text-cyan-400 tracking-wider">
+                      Véhicule Cible
+                    </div>
+                    <select
+                      value={vehicleId}
+                      onChange={(e) => setVehicleId(e.target.value)}
+                      className="w-full h-10 rounded-xl bg-slate-900 border border-white/20 px-3 text-xs font-bold text-white focus:outline-hidden"
+                    >
+                      <option value="">Sélectionnez un véhicule SFT...</option>
+                      {gpsDevices.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.plate || d.name} ({d.name || d.id})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Date Range Presets */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-black uppercase text-slate-300 tracking-wider">
+                      Période d'analyse
+                    </label>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {[
+                        { key: "1h", label: "1 Heure" },
+                        { key: "today", label: "Aujourd'hui" },
+                        { key: "24h", label: "24 Heures" },
+                        { key: "7d", label: "7 Jours" }
+                      ].map((p) => (
+                        <button
+                          key={p.key}
+                          type="button"
+                          onClick={() => applyDatePreset(p.key as any)}
+                          className={`py-1.5 rounded-xl text-xs font-bold transition border ${
+                            datePreset === p.key
+                              ? "bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-md shadow-cyan-500/20"
+                              : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:text-white"
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Date Pickers */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-slate-400 font-semibold">Date début</span>
+                      <DatePicker value={fromDate} onChange={(d) => { setFromDate(d); setDatePreset("custom"); }} />
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-slate-400 font-semibold">Date fin</span>
+                      <DatePicker value={toDate} onChange={(d) => { setToDate(d); setDatePreset("custom"); }} />
+                    </div>
+                  </div>
+
+                  {/* Load History Button */}
+                  <Button
+                    onClick={() => void loadHistory()}
+                    disabled={!selectedDevice || loadingHistory}
+                    className="w-full h-11 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2"
+                  >
+                    <Route className={`h-4 w-4 ${loadingHistory ? "animate-spin" : ""}`} />
+                    <span>{loadingHistory ? "Analyse du trajet..." : "Charger & Tracer l'Historique"}</span>
+                  </Button>
+
+                  {/* Playback Configuration Box */}
+                  <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black uppercase text-slate-300">Vidéo Trajectory Player</span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={togglePlayback}
+                          disabled={points.length < 2}
+                          className="px-3 py-1 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-black transition disabled:opacity-40 flex items-center gap-1"
+                        >
+                          {isPlaying ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="h-3.5 w-3.5 fill-current" />}
+                          <span>{isPlaying ? "Pause" : "Lecture"}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={replay}
+                          disabled={points.length < 2}
+                          className="px-2.5 py-1 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition disabled:opacity-40"
+                          title="Rejouer"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 font-semibold">
+                        <span>Vitesse d'animation</span>
+                        <span className="text-cyan-400 font-mono">{playSpeedMs} ms / étape</span>
+                      </div>
+                      <Slider
+                        value={[playSpeedMs]}
+                        min={80}
+                        max={600}
+                        step={20}
+                        onValueChange={(v) => setPlaySpeedMs(v[0] || 160)}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                      <span className="text-xs text-slate-300 font-semibold">Suivi automatique de la caméra</span>
+                      <Switch checked={follow} onCheckedChange={(v) => setFollow(v)} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: GEOFENCING & SÉCURITÉ */}
+              {activeDeckTab === "geofence" && (
+                <div className="flex-1 min-h-0 overflow-y-scroll sft-fleet-scroll p-3 sm:p-4 space-y-4 pb-16">
+                  {/* Status Banner */}
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-rose-500/15 via-rose-500/5 to-transparent border border-rose-500/30 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="h-10 w-10 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0 border border-rose-500/30">
+                        <ShieldAlert className="h-5 w-5" />
+                      </span>
+                      <div>
+                        <div className="font-black text-sm text-white">Geofencing & Périmètre</div>
+                        <div className="text-[11px] text-slate-300">
+                          Surveillance d'entrée et de sortie en temps réel
+                        </div>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={geofenceEnabled}
+                      onCheckedChange={(v) => {
+                        setGeofenceEnabled(v);
+                        if (v && !geofenceCircleRef.current) setGeofenceAtCenter();
+                      }}
+                    />
+                  </div>
+
+                  {/* Radius Slider */}
+                  <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-300">Rayon de la zone</span>
+                      <span className="font-mono font-black text-rose-400">{geofenceRadiusM} mètres</span>
+                    </div>
+                    <Slider
+                      value={[geofenceRadiusM]}
+                      min={100}
+                      max={3000}
+                      step={50}
+                      onValueChange={(v) => setGeofenceRadiusM(v[0] || 400)}
+                      disabled={!geofenceEnabled}
+                    />
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="space-y-2">
+                    <div className="text-[11px] font-black uppercase text-slate-400 tracking-wider">
+                      Positionner la zone
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={setGeofenceOnVehicle}
+                        disabled={!geofenceEnabled || !selectedDevice}
+                        className="rounded-xl h-10 text-xs font-bold bg-white/5 hover:bg-white/10 text-white border-white/15"
+                      >
+                        <Car className="h-3.5 w-3.5 mr-1.5 text-cyan-400" />
+                        Sur le véhicule
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={setGeofenceAtCenter}
+                        disabled={!geofenceEnabled}
+                        className="rounded-xl h-10 text-xs font-bold bg-white/5 hover:bg-white/10 text-white border-white/15"
+                      >
+                        <Target className="h-3.5 w-3.5 mr-1.5 text-rose-400" />
+                        Centre de la carte
+                      </Button>
+                    </div>
+
+                    <Button
+                      variant={drawGeofence ? "default" : "outline"}
+                      onClick={() => {
+                        setDrawGeofence(!drawGeofence);
+                        if (!drawGeofence) {
+                          toast.info("Cliquez n'importe où sur la carte pour définir la zone");
+                          setDeckOpen(false);
+                        }
+                      }}
+                      disabled={!geofenceEnabled}
+                      className={`w-full h-10 rounded-xl text-xs font-bold transition ${
+                        drawGeofence
+                          ? "bg-rose-500 text-white font-black animate-pulse"
+                          : "bg-white/5 hover:bg-white/10 text-white border-white/15"
+                      }`}
+                    >
+                      <MapPin className="h-3.5 w-3.5 mr-1.5" />
+                      {drawGeofence ? "Mode actif : Cliquez sur la carte" : "Définir par clic sur la carte"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 4: RAPPORT & TÉLÉMÉTRIE */}
+              {activeDeckTab === "rapport" && (
+                <div className="flex-1 min-h-0 overflow-y-scroll sft-fleet-scroll p-3 sm:p-4 space-y-4 pb-16">
+                  {/* Telemetry Metric Cards Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div className="p-3 rounded-2xl bg-white/[0.04] border border-white/10 text-center">
+                      <span className="text-[10px] text-slate-400 font-bold block uppercase">Distance</span>
+                      <span className="text-base font-black text-cyan-400 font-mono">{stats.distanceKm} km</span>
+                    </div>
+                    <div className="p-3 rounded-2xl bg-white/[0.04] border border-white/10 text-center">
+                      <span className="text-[10px] text-slate-400 font-bold block uppercase">Durée</span>
+                      <span className="text-base font-black text-white font-mono">{stats.durationMin} min</span>
+                    </div>
+                    <div className="p-3 rounded-2xl bg-white/[0.04] border border-white/10 text-center">
+                      <span className="text-[10px] text-slate-400 font-bold block uppercase">Vitesse Moy.</span>
+                      <span className="text-base font-black text-emerald-400 font-mono">{stats.avgSpeed} km/h</span>
+                    </div>
+                    <div className="p-3 rounded-2xl bg-white/[0.04] border border-white/10 text-center">
+                      <span className="text-[10px] text-slate-400 font-bold block uppercase">Vitesse Max</span>
+                      <span className="text-base font-black text-amber-400 font-mono">{stats.maxSpeed} km/h</span>
+                    </div>
+                  </div>
+
+                  {/* Fuel & Battery telemetry if selected */}
+                  {selectedDevice && (
+                    <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 space-y-3">
+                      <div className="text-[11px] font-black uppercase text-slate-300 tracking-wider">
+                        Capteurs Balise & Énergie
+                      </div>
+                      <div className="space-y-2">
+                        {typeof selectedDevice.fuelLevel === "number" && (
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-xs font-bold text-white">
+                              <span className="flex items-center gap-1.5 text-amber-400">
+                                <Fuel className="h-4 w-4" /> Niveau de carburant
+                              </span>
+                              <span>{Math.round(selectedDevice.fuelLevel)}%</span>
+                            </div>
+                            <Progress value={clamp(selectedDevice.fuelLevel, 0, 100)} className="h-2 bg-white/10 [&>div]:bg-amber-400" />
+                          </div>
+                        )}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs font-bold text-white">
+                            <span className="flex items-center gap-1.5 text-emerald-400">
+                              <Battery className="h-4 w-4" /> Tension Batterie
+                            </span>
+                            <span>{selectedDevice.battery}%</span>
+                          </div>
+                          <Progress value={clamp(selectedDevice.battery, 0, 100)} className="h-2 bg-white/10 [&>div]:bg-emerald-400" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Detected Stops Table */}
+                  <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black uppercase text-slate-300">Arrêts Détectés ({detectedStops.length})</span>
+                      <span className="text-[10px] text-slate-400">&gt; 2 min de stationnement</span>
+                    </div>
+                    {detectedStops.length > 0 ? (
+                      <div className="space-y-1.5 max-h-40 overflow-y-auto sft-fleet-scroll pr-1">
+                        {detectedStops.map((s, idx) => (
+                          <div
+                            key={`${idx}-${s.from}`}
+                            className="p-2 rounded-xl bg-white/5 border border-white/5 flex items-center justify-between text-[11px]"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="h-6 w-6 rounded-lg bg-amber-500/20 text-amber-400 font-black flex items-center justify-center shrink-0">
+                                #{idx + 1}
+                              </span>
+                              <div>
+                                <span className="font-bold text-white">{s.durationMin} minutes</span>
+                                <span className="text-slate-400 block text-[10px]">
+                                  {new Date(s.from).toLocaleTimeString()} → {new Date(s.to).toLocaleTimeString()}
+                                </span>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                mapRef.current?.flyTo([s.lat, s.lng], 17, { duration: 0.5 });
+                                setDeckOpen(false);
+                              }}
+                              className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-cyan-300 font-bold text-[10px]"
+                            >
+                              Voir
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-slate-400 py-3 text-center">Aucun arrêt prolongé détecté</div>
+                    )}
+                  </div>
+
+                  {/* External Google Maps & Street View Links */}
+                  {selectedDevice && Number.isFinite(selectedDevice.lat) && Number.isFinite(selectedDevice.lng) && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          window.open(
+                            `https://www.google.com/maps/search/?api=1&query=${selectedDevice.lat},${selectedDevice.lng}`,
+                            "_blank"
+                          );
+                        }}
+                        className="rounded-2xl h-10 text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/15 flex items-center justify-center transition-all"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5 mr-1 text-blue-400" />
+                        Google Maps ↗
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          window.open(
+                            `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${selectedDevice.lat},${selectedDevice.lng}`,
+                            "_blank"
+                          );
+                        }}
+                        className="rounded-2xl h-10 text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/15 flex items-center justify-center transition-all"
+                      >
+                        <Navigation className="h-3.5 w-3.5 mr-1 text-emerald-400" />
+                        Street View ↗
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Export Action Buttons */}
+                  <div className="space-y-2">
+                    <div className="text-[11px] font-black uppercase text-slate-400 tracking-wider">
+                      Exporter le Trajet
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => handleExport("gpx")}
+                        disabled={!points.length}
+                        className="rounded-2xl h-10 text-xs font-bold bg-white/10 hover:bg-white/20 text-white border-white/15"
+                      >
+                        <Download className="mr-1.5 h-3.5 w-3.5 text-cyan-400" /> GPX
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => handleExport("csv")}
+                        disabled={!points.length}
+                        className="rounded-2xl h-10 text-xs font-bold bg-white/10 hover:bg-white/20 text-white border-white/15"
+                      >
+                        <Download className="mr-1.5 h-3.5 w-3.5 text-emerald-400" /> CSV
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => handleExport("txt")}
+                        disabled={!points.length}
+                        className="rounded-2xl h-10 text-xs font-bold bg-white/10 hover:bg-white/20 text-white border-white/15"
+                      >
+                        <FileText className="mr-1.5 h-3.5 w-3.5 text-purple-400" /> Rapport
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Modal Bottom Quick Scroll & Fleet Status Bar */}
+              <div className="shrink-0 px-4 py-2 bg-slate-950/85 border-t border-white/10 flex items-center justify-between text-[11px] font-bold text-slate-300">
+                <span className="flex items-center gap-1.5 text-slate-300">
+                  <Car className="h-3.5 w-3.5 text-cyan-400" />
+                  <span>{filteredDevices.length} véhicules SFT</span>
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const el = document.querySelector('.sft-fleet-scroll');
+                      if (el) el.scrollBy({ top: -240, behavior: 'smooth' });
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white transition flex items-center gap-1 text-[10px] font-bold cursor-pointer"
+                    title="Défiler vers le haut"
+                  >
+                    <ChevronUp className="h-3 w-3" /> Haut
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const el = document.querySelector('.sft-fleet-scroll');
+                      if (el) el.scrollBy({ top: 240, behavior: 'smooth' });
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-cyan-500/25 hover:bg-cyan-500/35 text-cyan-300 border border-cyan-400/30 transition flex items-center gap-1 text-[10px] font-bold cursor-pointer"
+                    title="Défiler vers le bas"
+                  >
+                    <ChevronDown className="h-3 w-3" /> Bas
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
