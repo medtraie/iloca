@@ -54,7 +54,12 @@ import {
   AlertCircle,
   Copy,
   ExternalLink,
-  ChevronLeft
+  ChevronLeft,
+  ChevronUp,
+  ChevronDown,
+  X,
+  Plus,
+  Minus
 } from "lucide-react";
 
 const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyANl_xzJcEYaItw6TNeqTJ-CRHeuYjLjp8";
@@ -428,7 +433,7 @@ export default function FleetMap() {
   const [filter, setFilter] = useState<"all" | "online" | "moving" | "offline">("all");
   const [selectedId, setSelectedId] = useState<string>("");
   const [mapTheme, setMapTheme] = useState<MapTheme>("google_hybrid");
-  const [deckOpen, setDeckOpen] = useState(true);
+  const [deckOpen, setDeckOpen] = useState(false);
   const [activeDeckTab, setActiveDeckTab] = useState<"flotte" | "tableau" | "trajet" | "capteurs">("flotte");
   const [followSelected, setFollowSelected] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -882,8 +887,6 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
       zoomControl: false
     });
 
-    L.control.zoom({ position: "bottomright" }).addTo(map);
-
     const theme = tileCatalog[mapTheme];
     const tile = L.tileLayer(theme.url, {
       attribution: theme.attribution,
@@ -1305,17 +1308,6 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
           >
             <Focus className="h-4 w-4" />
           </Button>
-
-          {/* Deck Toggle Button */}
-          <Button
-            size="sm"
-            variant={deckOpen ? "default" : "outline"}
-            onClick={() => setDeckOpen(!deckOpen)}
-            className="rounded-3xl h-10 px-3.5 bg-background/85 dark:bg-slate-950/85 backdrop-blur-2xl border border-white/10 dark:border-white/5 shadow-2xl font-bold text-xs"
-          >
-            {deckOpen ? <PanelRightClose className="h-4 w-4 mr-1.5" /> : <PanelRightOpen className="h-4 w-4 mr-1.5" />}
-            <span className="hidden sm:inline">{deckOpen ? "Masquer" : "Flotte"}</span>
-          </Button>
         </div>
       </div>
 
@@ -1437,55 +1429,260 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
         </div>
       )}
 
-      {/* RIGHT SIDE GLASS TELEMETRY DECK (Collapsible) */}
+      {/* 2026 FLOATING TRANSLUCENT BOTTOM "PARC / FLOTTE" BUTTON (Inspired by Reference Image) */}
       <div
-        className={`absolute top-0 right-0 bottom-0 z-[1000] w-full sm:w-[450px] bg-card/85 dark:bg-slate-950/85 backdrop-blur-2xl border-l border-white/10 dark:border-white/5 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${
-          deckOpen ? "translate-x-0" : "translate-x-full"
+        className={`absolute left-1/2 -translate-x-1/2 z-[1000] pointer-events-auto transition-all duration-300 ${
+          routePoints.length >= 2 ? "bottom-24" : "bottom-6"
         }`}
       >
-        {/* Deck Header & Tabs */}
-        <div className="p-4 border-b border-border/50 space-y-3 shrink-0 pt-16 sm:pt-4">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <h2 className="text-base font-black tracking-tight text-foreground flex items-center gap-2">
-                <Radio className="h-4 w-4 text-primary animate-pulse" />
-                Flotte & Télémétrie 2026
-              </h2>
-              <p className="text-[11px] text-muted-foreground font-semibold">
-                Moyenne: {stats.avgSpeed} km/h • Distance: {stats.totalDistanceToday} km
-              </p>
-            </div>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => setDeckOpen(false)}
-              className="rounded-full h-8 w-8 text-muted-foreground"
+        <button
+          type="button"
+          onClick={() => setDeckOpen(!deckOpen)}
+          className="group relative flex items-center gap-2.5 sm:gap-3 px-5 sm:px-6 py-2.5 sm:py-3 rounded-full bg-slate-900/60 hover:bg-slate-900/80 dark:bg-slate-950/65 dark:hover:bg-slate-950/85 backdrop-blur-xl border border-white/20 hover:border-emerald-400/50 shadow-[0_15px_35px_rgba(0,0,0,0.35)] text-white font-black text-xs sm:text-sm tracking-wide transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer ring-1 ring-white/10"
+        >
+          <span className="flex items-center justify-center h-6 w-6 sm:h-7 sm:w-7 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-400/30 group-hover:bg-emerald-500/30 transition-colors">
+            <Car className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          </span>
+          <span className="font-extrabold text-slate-100 tracking-tight">Parc</span>
+          <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-500/30 text-emerald-300 border border-emerald-400/40 shadow-xs">
+            {stats.total}
+          </span>
+          {deckOpen ? (
+            <ChevronDown className="h-4 w-4 text-slate-300 transition-transform group-hover:translate-y-0.5" />
+          ) : (
+            <ChevronUp className="h-4 w-4 text-slate-300 transition-transform group-hover:-translate-y-0.5" />
+          )}
+        </button>
+      </div>
+
+      {/* 2026 FLOATING RIGHT ACTION DOCK (Inspired by Reference Image) */}
+      <div className="absolute right-4 top-1/2 -translate-y-1/2 z-[1000] flex flex-col items-center gap-2 pointer-events-auto">
+        {/* Zoom In */}
+        <button
+          type="button"
+          onClick={() => mapRef.current?.zoomIn()}
+          className="h-10 w-10 rounded-full bg-slate-900/60 dark:bg-slate-950/70 backdrop-blur-xl border border-white/20 text-white shadow-xl hover:bg-slate-900/90 hover:scale-110 active:scale-95 transition-all flex items-center justify-center font-bold"
+          title="Zoomer +"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+
+        {/* Zoom Out */}
+        <button
+          type="button"
+          onClick={() => mapRef.current?.zoomOut()}
+          className="h-10 w-10 rounded-full bg-slate-900/60 dark:bg-slate-950/70 backdrop-blur-xl border border-white/20 text-white shadow-xl hover:bg-slate-900/90 hover:scale-110 active:scale-95 transition-all flex items-center justify-center font-bold"
+          title="Dézoomer -"
+        >
+          <Minus className="h-4 w-4" />
+        </button>
+
+        {/* Radar / Locate */}
+        <button
+          type="button"
+          onClick={() => {
+            if (selectedItem) {
+              focusSelected(16);
+            } else if (visibleItems.length) {
+              setSelectedId(visibleItems[0].id);
+              focusSelected(15);
+            }
+          }}
+          className="h-10 w-10 rounded-full bg-slate-900/60 dark:bg-slate-950/70 backdrop-blur-xl border border-white/20 text-white shadow-xl hover:bg-slate-900/90 hover:scale-110 active:scale-95 transition-all flex items-center justify-center text-emerald-400"
+          title="Localiser véhicule actif"
+        >
+          <Radio className="h-4 w-4 animate-pulse" />
+        </button>
+
+        {/* Layers Switcher Popover */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="h-10 w-10 rounded-full bg-slate-900/60 dark:bg-slate-950/70 backdrop-blur-xl border border-white/20 text-white shadow-xl hover:bg-slate-900/90 hover:scale-110 active:scale-95 transition-all flex items-center justify-center text-primary"
+              title="Changer de carte"
             >
-              <PanelRightClose className="h-4 w-4" />
-            </Button>
-          </div>
+              <Layers className="h-4 w-4" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="z-[3000] w-64 rounded-2xl border border-white/10 backdrop-blur-2xl bg-card/95 p-1.5 shadow-2xl max-h-[85vh] overflow-y-auto pointer-events-auto">
+            <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-wider text-primary px-2 py-1 flex items-center justify-between">
+              <span>Google Maps (gl=MA • hl=fr)</span>
+              <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold">Officiel</span>
+            </DropdownMenuLabel>
+            {Object.entries(tileCatalog)
+              .filter(([_, meta]) => meta.isGoogle)
+              .map(([key, meta]) => (
+                <DropdownMenuItem
+                  key={key}
+                  onSelect={() => setMapTheme(key as MapTheme)}
+                  onClick={() => setMapTheme(key as MapTheme)}
+                  className={`rounded-xl cursor-pointer py-2 px-3 text-xs flex flex-col items-start gap-0.5 ${
+                    mapTheme === key ? "bg-primary/10 text-primary font-black" : "font-semibold"
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="flex items-center gap-1.5">
+                      {meta.label}
+                      {mapTheme === key && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
+                    </span>
+                    {meta.badge && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-muted text-muted-foreground">
+                        {meta.badge}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground font-normal">{meta.description}</span>
+                </DropdownMenuItem>
+              ))}
 
-          {/* Navigation Tabs */}
-          <Tabs value={activeDeckTab} onValueChange={(v) => setActiveDeckTab(v as any)} className="w-full">
-            <TabsList className="w-full grid grid-cols-4 h-9 bg-muted/40 p-1 rounded-2xl border border-border/40">
-              <TabsTrigger value="flotte" className="rounded-xl font-bold text-[11px]">
-                Flotte
-              </TabsTrigger>
-              <TabsTrigger value="tableau" className="rounded-xl font-bold text-[11px]">
-                Grille
-              </TabsTrigger>
-              <TabsTrigger value="trajet" className="rounded-xl font-bold text-[11px]">
-                Trajets
-              </TabsTrigger>
-              <TabsTrigger value="capteurs" className="rounded-xl font-bold text-[11px]">
-                Diagnostic
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
+            <DropdownMenuSeparator className="my-1.5" />
 
-        {/* Deck Scrollable Body */}
-        <div className="flex-1 overflow-hidden">
+            <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-wider text-muted-foreground px-2 py-1">
+              Autres Thèmes
+            </DropdownMenuLabel>
+            {Object.entries(tileCatalog)
+              .filter(([_, meta]) => !meta.isGoogle)
+              .map(([key, meta]) => (
+                <DropdownMenuItem
+                  key={key}
+                  onSelect={() => setMapTheme(key as MapTheme)}
+                  onClick={() => setMapTheme(key as MapTheme)}
+                  className={`rounded-xl cursor-pointer py-2 px-3 text-xs flex flex-col items-start gap-0.5 ${
+                    mapTheme === key ? "bg-primary/10 text-primary font-black" : "font-semibold"
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    {meta.label}
+                    {mapTheme === key && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground font-normal">{meta.description}</span>
+                </DropdownMenuItem>
+              ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Global Fleet Fit */}
+        <button
+          type="button"
+          onClick={fitToVisible}
+          className="h-10 w-10 rounded-full bg-slate-900/60 dark:bg-slate-950/70 backdrop-blur-xl border border-white/20 text-white shadow-xl hover:bg-slate-900/90 hover:scale-110 active:scale-95 transition-all flex items-center justify-center text-slate-200"
+          title="Ajuster vue sur tous les véhicules"
+        >
+          <Focus className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* 2026 FLOATING COMPACT FLEET MODAL (Centered 2026 VisionOS Card) */}
+      {deckOpen && (
+        <div className="fixed inset-0 z-[1500] flex items-center justify-center p-3 sm:p-5 pointer-events-none">
+          {/* Subtle backdrop blur */}
+          <div
+            onClick={() => setDeckOpen(false)}
+            className="absolute inset-0 bg-black/45 backdrop-blur-xs pointer-events-auto transition-opacity animate-in fade-in duration-200"
+          />
+
+          {/* Centered Floating Glass Card */}
+          <div className="relative pointer-events-auto w-full max-w-[540px] max-h-[82vh] sm:max-h-[640px] bg-slate-900/92 dark:bg-slate-950/95 backdrop-blur-3xl border border-white/20 dark:border-white/15 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.85)] rounded-[2.5rem] overflow-hidden flex flex-col text-slate-100 ring-1 ring-white/10 animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-white/10 space-y-3 shrink-0 bg-white/[0.02]">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="h-10 w-10 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-400 shadow-inner">
+                    <Car className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <h2 className="text-base font-black tracking-tight text-white flex items-center gap-2">
+                      <span>Flotte & Parc SFT</span>
+                      <span className="px-2 py-0.5 rounded-full text-xs font-black bg-emerald-500/25 text-emerald-300 border border-emerald-400/40">
+                        {stats.total} balises
+                      </span>
+                    </h2>
+                    <p className="text-[11px] text-slate-400 font-semibold">
+                      Vitesse moy : {stats.avgSpeed} km/h • Aujourd'hui : {stats.totalDistanceToday} km
+                    </p>
+                  </div>
+                </div>
+
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setDeckOpen(false)}
+                  className="rounded-full h-8 w-8 text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                  title="Fermer"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Quick Status Filter Pills inside Modal */}
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 w-full">
+                <button
+                  onClick={() => setFilter("all")}
+                  className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                    filter === "all"
+                      ? "bg-primary text-primary-foreground shadow-xs scale-105"
+                      : "bg-white/5 text-slate-300 hover:bg-white/10"
+                  }`}
+                >
+                  Tous <span className="ml-1 opacity-75">{stats.total}</span>
+                </button>
+                <button
+                  onClick={() => setFilter("moving")}
+                  className={`px-3 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    filter === "moving"
+                      ? "bg-emerald-600 text-white shadow-xs scale-105"
+                      : "bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
+                  }`}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  Mouvement <span className="ml-0.5 opacity-80">{stats.moving}</span>
+                </button>
+                <button
+                  onClick={() => setFilter("online")}
+                  className={`px-3 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    filter === "online"
+                      ? "bg-amber-600 text-white shadow-xs scale-105"
+                      : "bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
+                  }`}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                  Arrêt <span className="ml-0.5 opacity-80">{stats.online}</span>
+                </button>
+                <button
+                  onClick={() => setFilter("offline")}
+                  className={`px-3 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    filter === "offline"
+                      ? "bg-rose-600 text-white shadow-xs scale-105"
+                      : "bg-rose-500/10 text-rose-300 hover:bg-rose-500/20"
+                  }`}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
+                  Hors ligne <span className="ml-0.5 opacity-80">{stats.offline}</span>
+                </button>
+              </div>
+
+              {/* Navigation Tabs */}
+              <Tabs value={activeDeckTab} onValueChange={(v) => setActiveDeckTab(v as any)} className="w-full pt-1">
+                <TabsList className="w-full grid grid-cols-4 h-9 bg-white/5 p-1 rounded-2xl border border-white/10">
+                  <TabsTrigger value="flotte" className="rounded-xl font-bold text-[11px] data-[state=active]:bg-primary data-[state=active]:text-white">
+                    Flotte
+                  </TabsTrigger>
+                  <TabsTrigger value="tableau" className="rounded-xl font-bold text-[11px] data-[state=active]:bg-primary data-[state=active]:text-white">
+                    Grille
+                  </TabsTrigger>
+                  <TabsTrigger value="trajet" className="rounded-xl font-bold text-[11px] data-[state=active]:bg-primary data-[state=active]:text-white">
+                    Trajets
+                  </TabsTrigger>
+                  <TabsTrigger value="capteurs" className="rounded-xl font-bold text-[11px] data-[state=active]:bg-primary data-[state=active]:text-white">
+                    Diagnostic
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+
+            {/* Deck Scrollable Body */}
+            <div className="flex-1 overflow-hidden">
           {/* TAB 1: FLOTTE (Interactive Vehicle Cards) */}
           {activeDeckTab === "flotte" && (
             <ScrollArea className="h-full p-3 sm:p-4">
@@ -2054,5 +2251,7 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
         </div>
       </div>
     </div>
+  )}
+</div>
   );
 }
