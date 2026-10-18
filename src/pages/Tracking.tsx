@@ -393,26 +393,68 @@ function buildStopMarker(durationMin: number, idx: number) {
   return L.divIcon({ className: "custom-stop-marker", html, iconSize: [100, 36], iconAnchor: [50, 36] });
 }
 
-function buildPlaybackTraceMarker(speed = 0) {
+const TRACER_COLORS = [
+  { id: "cyan", label: "Cyan", value: "#06b6d4" },
+  { id: "emerald", label: "Émeraude", value: "#10b981" },
+  { id: "blue", label: "Bleu Royal", value: "#3b82f6" },
+  { id: "violet", label: "Violet Néon", value: "#8b5cf6" },
+  { id: "amber", label: "Or Solaire", value: "#f59e0b" },
+  { id: "rose", label: "Rose Laser", value: "#f43f5e" },
+  { id: "white", label: "Blanc Pur", value: "#ffffff" }
+];
+
+function buildPlaybackTraceMarker(opts: {
+  color: string;
+  size: number;
+  speed: number;
+  label?: string;
+  glow: boolean;
+}) {
+  const { color, size, speed, label, glow } = opts;
+  const innerSize = Math.max(18, Math.round(size * 0.72));
+  const svgSize = Math.max(11, Math.round(size * 0.42));
+  const glowShadow = glow ? `0 0 ${Math.round(size * 0.6)}px ${color}, 0 6px 16px rgba(0,0,0,0.55)` : `0 4px 12px rgba(0,0,0,0.45)`;
+
   const html = `
-    <div style="position:relative; width:34px; height:34px; display:flex; align-items:center; justify-content:center; transform:translate(-50%, -50%);">
-      <div style="position:absolute; inset:-6px; border-radius:9999px; background:rgba(56,189,248,0.4); animation: ping 1.2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+    <div style="position:relative; display:flex; flex-direction:column; align-items:center; transform:translate(-50%, -50%); pointer-events:none;">
+      <div style="position:relative; width:${size}px; height:${size}px; display:flex; align-items:center; justify-content:center;">
+        ${
+          glow
+            ? `<div style="position:absolute; inset:-6px; border-radius:9999px; background:${color}; opacity:0.35; animation: ping 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>`
+            : ""
+        }
+        <div style="
+          width:${innerSize}px;
+          height:${innerSize}px;
+          border-radius:9999px;
+          background:linear-gradient(135deg, ${color} 0%, #0f172a 100%);
+          border:2.5px solid #ffffff;
+          box-shadow:${glowShadow};
+          display:flex;
+          align-items:center;
+          justify-content:center;
+        ">
+          <svg width="${svgSize}" height="${svgSize}" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+          </svg>
+        </div>
+      </div>
       <div style="
-        width:24px;
-        height:24px;
+        margin-top:2px;
+        background:rgba(15, 23, 42, 0.92);
+        border:1px solid ${color};
+        padding:1px 6px;
         border-radius:9999px;
-        background:linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
-        border:3px solid #ffffff;
-        box-shadow:0 0 16px #38bdf8, 0 6px 12px rgba(0,0,0,0.5);
-        display:flex;
-        align-items:center;
-        justify-content:center;
+        color:#ffffff;
+        font:900 9px/1.2 system-ui;
+        white-space:nowrap;
+        box-shadow:0 3px 10px rgba(0,0,0,0.5);
       ">
-        <div style="width:8px; height:8px; border-radius:9999px; background:#ffffff;"></div>
+        ${label ? `${label.slice(0, 12)} • ` : ""}${Math.round(speed || 0)} km/h
       </div>
     </div>
   `;
-  return L.divIcon({ className: "custom-trace-marker", html, iconSize: [34, 34], iconAnchor: [17, 17] });
+  return L.divIcon({ className: "custom-trace-marker", html, iconSize: [size, size], iconAnchor: [0, 0] });
 }
 
 const downloadBlob = (filename: string, content: string, mime: string) => {
@@ -448,7 +490,7 @@ ${trkpts}
 </gpx>`;
 };
 
-const toCsv = (deviceLabel: string, points: HistoryPoint[]) => {
+const toCsv = (_deviceLabel: string, points: HistoryPoint[]) => {
   const header = "timestamp,lat,lng,speed_kmh,iso_time";
   const rows = points.map(
     (p) => `${p.timestamp},${p.lat.toFixed(6)},${p.lng.toFixed(6)},${Math.round(Number(p.speed || 0))},${new Date(p.timestamp).toISOString()}`
@@ -488,6 +530,7 @@ export default function Tracking() {
   const mapRef = useRef<L.Map | null>(null);
   const tileRef = useRef<L.TileLayer | null>(null);
   const overlayLayerRef = useRef<L.LayerGroup | null>(null);
+  const routeGlowLineRef = useRef<L.Polyline | null>(null);
   const routeLineRef = useRef<L.Polyline | null>(null);
   const traceLineRef = useRef<L.Polyline | null>(null);
   const traceMarkerRef = useRef<L.Marker | null>(null);
@@ -501,6 +544,7 @@ export default function Tracking() {
   const liveTimerRef = useRef<number | null>(null);
   const playbackIndexRef = useRef(0);
   const geofenceInsideRef = useRef<boolean | null>(null);
+  const drawGeofenceRef = useRef(false);
 
   // States
   const [vehicleId, setVehicleId] = useState("");
@@ -513,6 +557,7 @@ export default function Tracking() {
   const [datePreset, setDatePreset] = useState<"1h" | "today" | "24h" | "7d" | "custom">("24h");
   const [mapTheme, setMapTheme] = useState<MapTheme>("google_roadmap");
   const [layersModalOpen, setLayersModalOpen] = useState(false);
+  const [tracerModalOpen, setTracerModalOpen] = useState(false);
   const [deckOpen, setDeckOpen] = useState(false);
   const [activeDeckTab, setActiveDeckTab] = useState<"vehicules" | "trajet" | "geofence" | "rapport">("vehicules");
   const [follow, setFollow] = useState(true);
@@ -526,16 +571,38 @@ export default function Tracking() {
   const [drawGeofence, setDrawGeofence] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
+  // Traceur Customization states (persisted in localStorage)
+  const [tracerColor, setTracerColor] = useState<string>(() => localStorage.getItem("sft_tracer_color") || "#06b6d4");
+  const [tracerWeight, setTracerWeight] = useState<number>(() => Number(localStorage.getItem("sft_tracer_weight")) || 5);
+  const [tracerSize, setTracerSize] = useState<number>(() => Number(localStorage.getItem("sft_tracer_size")) || 38);
+  const [tracerGlow, setTracerGlow] = useState<boolean>(() => localStorage.getItem("sft_tracer_glow") !== "false");
+
+  useEffect(() => {
+    localStorage.setItem("sft_tracer_color", tracerColor);
+    localStorage.setItem("sft_tracer_weight", String(tracerWeight));
+    localStorage.setItem("sft_tracer_size", String(tracerSize));
+    localStorage.setItem("sft_tracer_glow", String(tracerGlow));
+  }, [tracerColor, tracerWeight, tracerSize, tracerGlow]);
+
+  useEffect(() => {
+    drawGeofenceRef.current = drawGeofence;
+  }, [drawGeofence]);
+
   // Auto fetch devices from hook
   const { data: vehiclesFromGps = [] } = useGPSwoxVehiclesOnly(60000);
 
   useEffect(() => {
-    if (vehiclesFromGps.length) setGpsDevices(vehiclesFromGps);
-  }, [vehiclesFromGps]);
+    if (vehiclesFromGps.length) {
+      setGpsDevices(vehiclesFromGps);
+      if (!vehicleId) {
+        setVehicleId(String(vehiclesFromGps[0].id));
+      }
+    }
+  }, [vehiclesFromGps, vehicleId]);
 
   const selectedDevice = useMemo(() => {
-    if (!vehicleId) return null;
-    return gpsDevices.find((d) => String(d.id) === String(vehicleId)) || null;
+    if (!vehicleId) return gpsDevices[0] || null;
+    return gpsDevices.find((d) => String(d.id) === String(vehicleId)) || gpsDevices[0] || null;
   }, [vehicleId, gpsDevices]);
 
   const deviceLabel = useMemo(() => {
@@ -628,13 +695,13 @@ export default function Tracking() {
     }
   };
 
-  // Ensure map is initialized
+  // Ensure map is initialized once
   const ensureMap = useCallback(() => {
     if (!mapContainerRef.current || mapRef.current) return;
-    const center: L.LatLngExpression = [31.7917, -7.0926];
+    const center: L.LatLngExpression = [33.5731, -7.5898];
     const map = L.map(mapContainerRef.current, {
       center,
-      zoom: 6,
+      zoom: 11,
       zoomControl: false,
       attributionControl: false
     });
@@ -654,12 +721,12 @@ export default function Tracking() {
     overlayLayerRef.current = overlay;
 
     map.on("click", (e) => {
-      if (!drawGeofence) return;
+      if (!drawGeofenceRef.current) return;
       setGeofenceCircle({ lat: e.latlng.lat, lng: e.latlng.lng });
       toast.success("Zone géofence définie sur la carte");
       setDrawGeofence(false);
     });
-  }, [mapTheme, drawGeofence]);
+  }, []);
 
   // Switch Google Maps & Other Themes
   const setTileTheme = (theme: MapTheme) => {
@@ -680,6 +747,10 @@ export default function Tracking() {
 
   // Clear Overlays
   const clearOverlays = () => {
+    if (routeGlowLineRef.current) {
+      routeGlowLineRef.current.remove();
+      routeGlowLineRef.current = null;
+    }
     if (routeLineRef.current) {
       routeLineRef.current.remove();
       routeLineRef.current = null;
@@ -725,11 +796,12 @@ export default function Tracking() {
     setLiveMode(false);
   };
 
-  const fitToRoute = () => {
+  const fitToRoute = (targetPts?: HistoryPoint[]) => {
     const map = mapRef.current;
-    if (!map || points.length < 2) return;
-    const coords = points.map((p) => [p.lat, p.lng] as [number, number]);
-    map.fitBounds(L.latLngBounds(coords), { padding: [40, 40], maxZoom: 17 });
+    const list = targetPts || points;
+    if (!map || list.length < 2) return;
+    const coords = list.map((p) => [p.lat, p.lng] as [number, number]);
+    map.fitBounds(L.latLngBounds(coords), { padding: [45, 45], maxZoom: 16 });
   };
 
   const centerOnActive = () => {
@@ -743,54 +815,90 @@ export default function Tracking() {
     }
   };
 
-  // Draw Route Polylines and Pins
-  const drawRoute = (input: HistoryPoint[]) => {
-    const map = mapRef.current;
-    const overlay = overlayLayerRef.current;
-    if (!map || !overlay) return;
+  // Draw Route Polylines, Custom Traceur Beacon, and Pins
+  const drawRoute = useCallback(
+    (input: HistoryPoint[], fitBounds = true) => {
+      const map = mapRef.current;
+      const overlay = overlayLayerRef.current;
+      if (!map || !overlay) return;
 
-    clearOverlays();
-    if (input.length < 2) return;
-    const coords = input.map((p) => [p.lat, p.lng] as [number, number]);
+      clearOverlays();
+      if (input.length < 2) return;
+      const coords = input.map((p) => [p.lat, p.lng] as [number, number]);
 
-    // Neon Glow Cyan/Emerald Route Line
-    routeLineRef.current = L.polyline(coords, {
-      color: "#06b6d4",
-      weight: 5,
-      opacity: 0.88,
-      lineCap: "round",
-      lineJoin: "round"
-    }).addTo(overlay);
+      if (tracerGlow) {
+        routeGlowLineRef.current = L.polyline(coords, {
+          color: tracerColor,
+          weight: tracerWeight * 2.4,
+          opacity: 0.28,
+          lineCap: "round",
+          lineJoin: "round"
+        }).addTo(overlay);
+      }
 
-    startMarkerRef.current = L.marker(coords[0], {
-      icon: buildFlagMarker("start"),
-      zIndexOffset: 800
-    }).addTo(overlay);
-
-    endMarkerRef.current = L.marker(coords[coords.length - 1], {
-      icon: buildFlagMarker("end"),
-      zIndexOffset: 900
-    }).addTo(overlay);
-
-    const stops = detectStops(input);
-    stops.forEach((s, idx) => {
-      const m = L.marker([s.lat, s.lng], {
-        icon: buildStopMarker(s.durationMin, idx + 1),
-        zIndexOffset: 750
+      // Main Customizable Route Line
+      routeLineRef.current = L.polyline(coords, {
+        color: tracerColor,
+        weight: tracerWeight,
+        opacity: 0.94,
+        lineCap: "round",
+        lineJoin: "round"
       }).addTo(overlay);
-      m.bindPopup(`
-        <div style="font-family:system-ui; padding:4px 6px;">
-          <div style="font-weight:900; font-size:12px; color:#f59e0b; margin-bottom:4px;">Arrêt #${idx + 1} (${s.durationMin} min)</div>
-          <div style="font-size:11px; color:#64748b;">De: <b>${new Date(s.from).toLocaleTimeString()}</b></div>
-          <div style="font-size:11px; color:#64748b;">À: <b>${new Date(s.to).toLocaleTimeString()}</b></div>
-          <div style="font-size:10px; color:#94a3b8; margin-top:3px; font-family:monospace;">${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}</div>
-        </div>
-      `);
-      stopMarkersRef.current.push(m);
-    });
 
-    fitToRoute();
-  };
+      startMarkerRef.current = L.marker(coords[0], {
+        icon: buildFlagMarker("start"),
+        zIndexOffset: 800
+      }).addTo(overlay);
+
+      endMarkerRef.current = L.marker(coords[coords.length - 1], {
+        icon: buildFlagMarker("end"),
+        zIndexOffset: 900
+      }).addTo(overlay);
+
+      // Always show the Custom Traceur Marker at active playback point
+      const curIdx = clamp(playbackIndexRef.current, 0, input.length - 1);
+      const curPt = input[curIdx] || input[input.length - 1];
+      traceMarkerRef.current = L.marker([curPt.lat, curPt.lng], {
+        icon: buildPlaybackTraceMarker({
+          color: tracerColor,
+          size: tracerSize,
+          speed: curPt.speed || 0,
+          label: deviceLabel,
+          glow: tracerGlow
+        }),
+        zIndexOffset: 1350
+      }).addTo(overlay);
+
+      const stops = detectStops(input);
+      stops.forEach((s, idx) => {
+        const m = L.marker([s.lat, s.lng], {
+          icon: buildStopMarker(s.durationMin, idx + 1),
+          zIndexOffset: 750
+        }).addTo(overlay);
+        m.bindPopup(`
+          <div style="font-family:system-ui; padding:4px 6px;">
+            <div style="font-weight:900; font-size:12px; color:#f59e0b; margin-bottom:4px;">Arrêt #${idx + 1} (${s.durationMin} min)</div>
+            <div style="font-size:11px; color:#64748b;">De: <b>${new Date(s.from).toLocaleTimeString()}</b></div>
+            <div style="font-size:11px; color:#64748b;">À: <b>${new Date(s.to).toLocaleTimeString()}</b></div>
+            <div style="font-size:10px; color:#94a3b8; margin-top:3px; font-family:monospace;">${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}</div>
+          </div>
+        `);
+        stopMarkersRef.current.push(m);
+      });
+
+      if (fitBounds) {
+        fitToRoute(input);
+      }
+    },
+    [tracerColor, tracerWeight, tracerSize, tracerGlow, deviceLabel]
+  );
+
+  // Dynamically re-render route & traceur when user customizes color/size/glow
+  useEffect(() => {
+    if (points.length >= 2) {
+      drawRoute(points, false);
+    }
+  }, [tracerColor, tracerWeight, tracerSize, tracerGlow, points, drawRoute]);
 
   // Geofence Circle Overlay
   const setGeofenceCircle = (center: { lat: number; lng: number }) => {
@@ -886,8 +994,8 @@ export default function Tracking() {
       }).addTo(overlay);
 
       marker.on("click", () => {
-        setVehicleId(device.id);
-        mapRef.current?.flyTo([device.lat, device.lng], 16, { duration: 0.6 });
+        setVehicleId(String(device.id));
+        void loadHistory(String(device.id), false);
       });
 
       marker.bindPopup(`
@@ -909,16 +1017,115 @@ export default function Tracking() {
     });
   };
 
+  // Start playback on a given array of points
+  const startPlaybackWithPoints = (ptsToPlay: HistoryPoint[]) => {
+    ensureMap();
+    const map = mapRef.current;
+    const overlay = overlayLayerRef.current;
+    const activePts = ptsToPlay.length >= 2 ? ptsToPlay : points;
+    if (!map || !overlay || activePts.length < 2) return;
+
+    stopLive();
+    stopPlayback();
+    setIsPlaying(true);
+    setDeckOpen(false);
+
+    if (playbackIndexRef.current >= activePts.length - 1) {
+      playbackIndexRef.current = 0;
+      setPlaybackIndex(0);
+    }
+
+    const start = activePts[playbackIndexRef.current];
+    const startIcon = buildPlaybackTraceMarker({
+      color: tracerColor,
+      size: tracerSize,
+      speed: start.speed || 0,
+      label: deviceLabel,
+      glow: tracerGlow
+    });
+
+    if (!traceMarkerRef.current) {
+      traceMarkerRef.current = L.marker([start.lat, start.lng], {
+        icon: startIcon,
+        zIndexOffset: 1350
+      }).addTo(overlay);
+    } else {
+      traceMarkerRef.current.setLatLng([start.lat, start.lng]);
+      traceMarkerRef.current.setIcon(startIcon);
+      traceMarkerRef.current.addTo(overlay);
+    }
+
+    if (!traceLineRef.current) {
+      traceLineRef.current = L.polyline([[start.lat, start.lng]], {
+        color: "#ffffff",
+        weight: Math.max(3, tracerWeight - 1),
+        opacity: 0.95,
+        lineCap: "round"
+      }).addTo(overlay);
+    } else {
+      traceLineRef.current.setLatLngs([[start.lat, start.lng]]);
+      traceLineRef.current.addTo(overlay);
+    }
+
+    map.panTo([start.lat, start.lng], { animate: true, duration: 0.3 });
+
+    if (playbackTimerRef.current) clearInterval(playbackTimerRef.current);
+    playbackTimerRef.current = window.setInterval(() => {
+      if (playbackIndexRef.current >= activePts.length - 1) {
+        stopPlayback();
+        toast.success("Lecture vidéo terminée");
+        return;
+      }
+      playbackIndexRef.current += 1;
+      const curIdx = playbackIndexRef.current;
+      setPlaybackIndex(curIdx);
+      const p = activePts[curIdx];
+      const latlng: [number, number] = [p.lat, p.lng];
+      const stepIcon = buildPlaybackTraceMarker({
+        color: tracerColor,
+        size: tracerSize,
+        speed: p.speed || 0,
+        label: deviceLabel,
+        glow: tracerGlow
+      });
+      if (traceMarkerRef.current) {
+        traceMarkerRef.current.setLatLng(latlng);
+        traceMarkerRef.current.setIcon(stepIcon);
+      }
+      if (traceLineRef.current) {
+        const nextCoords = activePts.slice(0, curIdx + 1).map((x) => [x.lat, x.lng] as [number, number]);
+        traceLineRef.current.setLatLngs(nextCoords);
+      }
+      if (follow) map.panTo(latlng, { animate: true, duration: 0.25 });
+
+      if (geofenceEnabled && geofenceCircleRef.current) {
+        const center = geofenceCircleRef.current.getLatLng();
+        const inside = center.distanceTo(L.latLng(latlng)) <= geofenceRadiusM;
+        if (geofenceInsideRef.current === null) {
+          geofenceInsideRef.current = inside;
+        } else if (geofenceInsideRef.current !== inside) {
+          geofenceInsideRef.current = inside;
+          toast(inside ? "🛡️ Entrée dans la zone géofence" : "⚠️ Sortie de la zone géofence", {
+            description: deviceLabel
+          });
+        }
+      }
+    }, clamp(playSpeedMs, 60, 600));
+  };
+
   // Load Device Trip History
-  const loadHistory = async (targetId?: string) => {
+  const loadHistory = async (targetId?: string, autoPlayAfterLoad = false) => {
     ensureMap();
     stopPlayback();
     stopLive();
 
-    const devId = targetId || selectedDevice?.id;
+    const devId = targetId || selectedDevice?.id || gpsDevices[0]?.id;
     if (!devId) {
       toast.error("Choisissez un véhicule SFT");
       return;
+    }
+    if (String(devId) !== String(vehicleId)) {
+      setVehicleId(String(devId));
     }
 
     const targetDev = gpsDevices.find((d) => String(d.id) === String(devId)) || selectedDevice;
@@ -926,7 +1133,7 @@ export default function Tracking() {
     try {
       setLoadingHistory(true);
       const { fromIso, toIso } = toIsoRange(fromDate, toDate);
-      const history = await gpswoxService.getDeviceHistory(devId, fromIso, toIso, targetDev);
+      const history = await gpswoxService.getDeviceHistory(String(devId), fromIso, toIso, targetDev);
       const normalized: HistoryPoint[] = (history || [])
         .filter((p: any) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
         .map((p: any) => ({
@@ -954,10 +1161,15 @@ export default function Tracking() {
         return;
       }
 
-      drawRoute(normalized);
+      drawRoute(normalized, true);
+      setDeckOpen(false);
       toast.success(`Trajet chargé avec succès (${normalized.length} points)`, {
         description: `Distance: ${computeRouteStats(normalized).distanceKm} km • Arrêts: ${detectStops(normalized).length}`
       });
+
+      if (autoPlayAfterLoad) {
+        setTimeout(() => startPlaybackWithPoints(normalized), 150);
+      }
     } catch (err: any) {
       console.error("Tracking loadHistory error:", err);
       toast.error("Impossible de récupérer l'historique GPS", {
@@ -1000,20 +1212,29 @@ export default function Tracking() {
     const p = points[index];
     const latlng: [number, number] = [p.lat, p.lng];
 
+    const stepIcon = buildPlaybackTraceMarker({
+      color: tracerColor,
+      size: tracerSize,
+      speed: p.speed || 0,
+      label: deviceLabel,
+      glow: tracerGlow
+    });
+
     if (!traceMarkerRef.current) {
       traceMarkerRef.current = L.marker(latlng, {
-        icon: buildPlaybackTraceMarker(p.speed || 0),
-        zIndexOffset: 1100
+        icon: stepIcon,
+        zIndexOffset: 1350
       }).addTo(overlay);
     } else {
       traceMarkerRef.current.setLatLng(latlng);
+      traceMarkerRef.current.setIcon(stepIcon);
       traceMarkerRef.current.addTo(overlay);
     }
 
     if (!traceLineRef.current) {
       traceLineRef.current = L.polyline([latlng], {
         color: "#ffffff",
-        weight: 6,
+        weight: Math.max(3, tracerWeight - 1),
         opacity: 0.95,
         lineCap: "round"
       }).addTo(overlay);
@@ -1028,94 +1249,28 @@ export default function Tracking() {
   // Toggle Video Playback
   const togglePlayback = () => {
     ensureMap();
-    const map = mapRef.current;
-    const overlay = overlayLayerRef.current;
-    if (!map || !overlay) return;
-    if (points.length < 2) {
-      toast.error("Aucun trajet à lire");
-      return;
-    }
-
     if (isPlaying) {
       stopPlayback();
       return;
     }
-
-    stopLive();
-    setIsPlaying(true);
-
-    if (playbackIndexRef.current >= points.length - 1) {
-      playbackIndexRef.current = 0;
-      setPlaybackIndex(0);
+    if (points.length < 2) {
+      void loadHistory(selectedDevice?.id, true);
+      return;
     }
-
-    const start = points[playbackIndexRef.current];
-
-    if (!traceMarkerRef.current) {
-      traceMarkerRef.current = L.marker([start.lat, start.lng], {
-        icon: buildPlaybackTraceMarker(start.speed || 0),
-        zIndexOffset: 1100
-      }).addTo(overlay);
-    } else {
-      traceMarkerRef.current.setLatLng([start.lat, start.lng]);
-      traceMarkerRef.current.addTo(overlay);
-    }
-
-    if (!traceLineRef.current) {
-      traceLineRef.current = L.polyline([[start.lat, start.lng]], {
-        color: "#ffffff",
-        weight: 6,
-        opacity: 0.95,
-        lineCap: "round"
-      }).addTo(overlay);
-    } else {
-      traceLineRef.current.setLatLngs([[start.lat, start.lng]]);
-      traceLineRef.current.addTo(overlay);
-    }
-
-    map.panTo([start.lat, start.lng], { animate: true, duration: 0.3 });
-
-    if (playbackTimerRef.current) clearInterval(playbackTimerRef.current);
-    playbackTimerRef.current = window.setInterval(() => {
-      if (playbackIndexRef.current >= points.length - 1) {
-        stopPlayback();
-        toast.success("Lecture terminée");
-        return;
-      }
-      playbackIndexRef.current += 1;
-      const curIdx = playbackIndexRef.current;
-      setPlaybackIndex(curIdx);
-      const p = points[curIdx];
-      const latlng: [number, number] = [p.lat, p.lng];
-      if (traceMarkerRef.current) traceMarkerRef.current.setLatLng(latlng);
-      if (traceLineRef.current) {
-        const nextCoords = points.slice(0, curIdx + 1).map((x) => [x.lat, x.lng] as [number, number]);
-        traceLineRef.current.setLatLngs(nextCoords);
-      }
-      if (follow) map.panTo(latlng, { animate: true, duration: 0.25 });
-
-      if (geofenceEnabled && geofenceCircleRef.current) {
-        const center = geofenceCircleRef.current.getLatLng();
-        const inside = center.distanceTo(L.latLng(latlng)) <= geofenceRadiusM;
-        if (geofenceInsideRef.current === null) {
-          geofenceInsideRef.current = inside;
-        } else if (geofenceInsideRef.current !== inside) {
-          geofenceInsideRef.current = inside;
-          toast(inside ? "🛡️ Entrée dans la zone géofence" : "⚠️ Sortie de la zone géofence", {
-            description: deviceLabel
-          });
-        }
-      }
-    }, clamp(playSpeedMs, 80, 600));
+    startPlaybackWithPoints(points);
   };
 
   const replay = () => {
     playbackIndexRef.current = 0;
     setPlaybackIndex(0);
     stopPlayback();
-    clearOverlays();
-    drawRoute(points);
-    togglePlayback();
+    if (points.length >= 2) {
+      clearOverlays();
+      drawRoute(points, false);
+      startPlaybackWithPoints(points);
+    } else {
+      void loadHistory(selectedDevice?.id, true);
+    }
   };
 
   // Real-time Live Tracking Mode (polls every 8s)
@@ -1151,7 +1306,7 @@ export default function Tracking() {
             return prev;
           }
           const updated = [...prev, next];
-          drawRoute(updated);
+          drawRoute(updated, false);
           if (follow && mapRef.current) {
             mapRef.current.panTo([next.lat, next.lng], { animate: true, duration: 0.25 });
           }
@@ -1176,6 +1331,7 @@ export default function Tracking() {
       }
       tileRef.current = null;
       overlayLayerRef.current = null;
+      routeGlowLineRef.current = null;
       routeLineRef.current = null;
       traceLineRef.current = null;
       traceMarkerRef.current = null;
@@ -1200,25 +1356,21 @@ export default function Tracking() {
 
   useEffect(() => {
     ensureMap();
-    if (points.length) return;
     drawVehicleMarkers(filteredDevices);
-  }, [filteredDevices, selectedDevice?.id, points.length, ensureMap]);
+  }, [filteredDevices, selectedDevice?.id, ensureMap]);
 
-  useEffect(() => {
-    stopPlayback();
-    stopLive();
-    setPoints([]);
-    clearOverlays();
-    drawVehicleMarkers(filteredDevices);
-    playbackIndexRef.current = 0;
-    setPlaybackIndex(0);
-    geofenceInsideRef.current = null;
-  }, [vehicleId]);
-
+  // Automatically populate live trajectory when selectedDevice changes
   useEffect(() => {
     if (!selectedDevice) return;
-    if (
-      !points.length &&
+    stopPlayback();
+    stopLive();
+    const instantPts = gpswoxService.parseDevicePositions(selectedDevice);
+    if (instantPts.length >= 2) {
+      setPoints(instantPts);
+      playbackIndexRef.current = 0;
+      setPlaybackIndex(0);
+      drawRoute(instantPts, true);
+    } else if (
       mapRef.current &&
       Number.isFinite(selectedDevice.lat) &&
       Number.isFinite(selectedDevice.lng) &&
@@ -1319,10 +1471,17 @@ export default function Tracking() {
 
       {/* FLOATING BOTTOM REPLAY SCRUBBER HUD (Appears when route is loaded) */}
       {points.length >= 2 && (
-        <div className="absolute bottom-5 left-3 right-3 sm:left-1/2 sm:-translate-x-1/2 sm:w-[680px] z-[1000] bg-slate-950/90 backdrop-blur-3xl border border-cyan-500/30 rounded-3xl p-3 sm:p-4 shadow-2xl space-y-2.5 text-white animate-in slide-in-from-bottom-5 duration-200">
+        <div className="absolute bottom-5 left-3 right-3 sm:left-1/2 sm:-translate-x-1/2 sm:w-[700px] z-[1000] bg-slate-950/90 backdrop-blur-3xl border border-cyan-500/30 rounded-3xl p-3 sm:p-4 shadow-2xl space-y-2.5 text-white animate-in slide-in-from-bottom-5 duration-200">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
-              <span className="p-2 rounded-2xl bg-cyan-500/20 text-cyan-400 shrink-0 border border-cyan-400/30">
+              <span
+                className="p-2 rounded-2xl shrink-0 border"
+                style={{
+                  backgroundColor: `${tracerColor}25`,
+                  color: tracerColor,
+                  borderColor: `${tracerColor}55`
+                }}
+              >
                 <Route className="h-4 w-4" />
               </span>
               <div className="min-w-0">
@@ -1341,7 +1500,7 @@ export default function Tracking() {
             {/* Current Speed Tachometer Badge */}
             <div className="flex items-center gap-2 shrink-0">
               <div className="text-right">
-                <div className="text-base font-black text-cyan-400 font-mono leading-none">
+                <div className="text-base font-black font-mono leading-none" style={{ color: tracerColor }}>
                   {Math.round(activePlaybackPoint?.speed || 0)} <span className="text-[10px] text-slate-300">km/h</span>
                 </div>
                 <div className="text-[10px] text-slate-400 font-mono">
@@ -1353,7 +1512,8 @@ export default function Tracking() {
               <button
                 type="button"
                 onClick={togglePlayback}
-                className="h-10 w-10 rounded-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black shadow-lg shadow-cyan-500/30 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+                className="h-10 w-10 rounded-full text-slate-950 font-black shadow-lg flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+                style={{ backgroundColor: tracerColor, boxShadow: `0 8px 20px ${tracerColor}55` }}
                 title={isPlaying ? "Pause" : "Lecture vidéo"}
               >
                 {isPlaying ? <Pause className="h-4 w-4 fill-current" /> : <Play className="h-4 w-4 fill-current ml-0.5" />}
@@ -1366,6 +1526,18 @@ export default function Tracking() {
                 title="Rejouer depuis le début"
               >
                 <RotateCcw className="h-4 w-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTracerModalOpen(true)}
+                className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center transition-all"
+                title="Personnaliser le Traceur (Couleur & Taille)"
+              >
+                <span
+                  className="h-3.5 w-3.5 rounded-full border border-white"
+                  style={{ backgroundColor: tracerColor, boxShadow: `0 0 8px ${tracerColor}` }}
+                />
               </button>
             </div>
           </div>
@@ -1382,7 +1554,7 @@ export default function Tracking() {
             />
             <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
               <span>Départ: {points[0] ? new Date(points[0].timestamp).toLocaleTimeString() : ""}</span>
-              <span className="text-cyan-400 font-bold">Étape {playbackIndex + 1} / {points.length}</span>
+              <span className="font-bold" style={{ color: tracerColor }}>Étape {playbackIndex + 1} / {points.length}</span>
               <span>Arrivée: {points[points.length - 1] ? new Date(points[points.length - 1].timestamp).toLocaleTimeString() : ""}</span>
             </div>
           </div>
@@ -1434,12 +1606,25 @@ export default function Tracking() {
         {/* Fit to Route */}
         <button
           type="button"
-          onClick={fitToRoute}
+          onClick={() => fitToRoute()}
           disabled={points.length < 2}
           className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/25 dark:bg-black/20 dark:hover:bg-black/40 backdrop-blur-2xl border border-white/30 text-slate-100 shadow-[0_8px_32px_rgba(0,0,0,0.25)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center disabled:opacity-40"
           title="Ajuster la vue sur le trajet"
         >
           <Focus className="h-4 w-4" />
+        </button>
+
+        {/* Traceur Style Customization Trigger */}
+        <button
+          type="button"
+          onClick={() => setTracerModalOpen(true)}
+          className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/25 dark:bg-black/20 dark:hover:bg-black/40 backdrop-blur-2xl border border-white/30 text-white shadow-[0_8px_32px_rgba(0,0,0,0.25)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center"
+          title="Personnaliser le Traceur (Couleur & Taille)"
+        >
+          <span
+            className="h-4 w-4 rounded-full border-2 border-white shadow-sm"
+            style={{ backgroundColor: tracerColor, boxShadow: `0 0 12px ${tracerColor}` }}
+          />
         </button>
 
         {/* Mode Direct Live Toggle */}
@@ -1627,6 +1812,170 @@ export default function Tracking() {
                     })}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2026 FLOATING VISIONOS CARD MODAL: CUSTOMISATION DU TRACEUR (Couleur & Taille) */}
+      {tracerModalOpen && (
+        <div className="fixed inset-0 z-[1650] flex items-center justify-center p-3 sm:p-5 pointer-events-none">
+          <div
+            onClick={() => setTracerModalOpen(false)}
+            className="absolute inset-0 bg-black/50 backdrop-blur-xs pointer-events-auto transition-opacity"
+          />
+
+          <div className="relative pointer-events-auto w-full max-w-[440px] bg-slate-900/95 dark:bg-slate-950/98 backdrop-blur-3xl border border-white/20 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.85)] rounded-[2.5rem] overflow-hidden flex flex-col text-slate-100 ring-1 ring-white/10 animate-in zoom-in-95 duration-200">
+            <div className="p-4 sm:p-5 border-b border-white/10 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span
+                  className="h-10 w-10 rounded-2xl border flex items-center justify-center"
+                  style={{
+                    backgroundColor: `${tracerColor}25`,
+                    borderColor: `${tracerColor}60`,
+                    color: tracerColor
+                  }}
+                >
+                  <Route className="h-5 w-5" />
+                </span>
+                <div>
+                  <h3 className="text-base font-black tracking-tight text-white">Personnalisation du Traceur</h3>
+                  <p className="text-xs text-slate-400 font-medium">Couleur, taille du traceur et épaisseur de ligne</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTracerModalOpen(false)}
+                className="h-8 w-8 rounded-full text-slate-400 hover:text-white hover:bg-white/10 flex items-center justify-center transition"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-5 space-y-5">
+              {/* Live Preview Box */}
+              <div className="p-4 rounded-2xl bg-slate-950/90 border border-white/10 flex items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">Aperçu en direct</div>
+                  <div className="text-xs font-bold text-white">
+                    Taille icône: <span style={{ color: tracerColor }}>{tracerSize}px</span> • Ligne:{" "}
+                    <span style={{ color: tracerColor }}>{tracerWeight}px</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-14 rounded-full transition-all"
+                    style={{
+                      height: `${tracerWeight}px`,
+                      backgroundColor: tracerColor,
+                      boxShadow: tracerGlow ? `0 0 12px ${tracerColor}` : "none"
+                    }}
+                  />
+                  <div
+                    className="rounded-full flex items-center justify-center border-2 border-white transition-all"
+                    style={{
+                      width: `${Math.min(44, tracerSize)}px`,
+                      height: `${Math.min(44, tracerSize)}px`,
+                      backgroundColor: tracerColor,
+                      boxShadow: tracerGlow ? `0 0 18px ${tracerColor}` : "none"
+                    }}
+                  >
+                    <Navigation className="h-3.5 w-3.5 text-slate-950 fill-current" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Color Presets + Custom Picker */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-300">
+                    Couleur du Traceur
+                  </label>
+                  <input
+                    type="color"
+                    value={tracerColor}
+                    onChange={(e) => setTracerColor(e.target.value)}
+                    className="h-7 w-10 rounded-lg cursor-pointer bg-transparent border border-white/20"
+                    title="Choisir une couleur personnalisée"
+                  />
+                </div>
+                <div className="grid grid-cols-7 gap-2">
+                  {TRACER_COLORS.map((c) => {
+                    const active = tracerColor.toLowerCase() === c.value.toLowerCase();
+                    return (
+                      <button
+                        key={c.value}
+                        type="button"
+                        onClick={() => setTracerColor(c.value)}
+                        className={`h-9 rounded-xl border-2 transition-all flex items-center justify-center ${
+                          active ? "border-white scale-110 shadow-lg" : "border-white/15 opacity-80 hover:opacity-100"
+                        }`}
+                        style={{
+                          backgroundColor: c.value,
+                          boxShadow: active ? `0 0 14px ${c.value}` : "none"
+                        }}
+                        title={c.label}
+                      >
+                        {active && <CheckCircle2 className="h-4 w-4 text-slate-950" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Tracer Icon Size Slider */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-300">Taille du marqueur Traceur</span>
+                  <span className="font-mono font-black" style={{ color: tracerColor }}>
+                    {tracerSize} px
+                  </span>
+                </div>
+                <Slider
+                  value={[tracerSize]}
+                  min={22}
+                  max={56}
+                  step={2}
+                  onValueChange={(v) => setTracerSize(v[0] || 36)}
+                />
+              </div>
+
+              {/* Line Thickness Slider */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-300">Épaisseur du tracé GPS</span>
+                  <span className="font-mono font-black" style={{ color: tracerColor }}>
+                    {tracerWeight} px
+                  </span>
+                </div>
+                <Slider
+                  value={[tracerWeight]}
+                  min={2}
+                  max={12}
+                  step={1}
+                  onValueChange={(v) => setTracerWeight(v[0] || 5)}
+                />
+              </div>
+
+              {/* Glow Toggle */}
+              <div className="flex items-center justify-between pt-2 border-t border-white/10">
+                <div>
+                  <div className="text-xs font-bold text-white">Effet Néon Lumineux (Glow 2026)</div>
+                  <div className="text-[10px] text-slate-400">Halo lumineux autour du traceur et de la ligne</div>
+                </div>
+                <Switch checked={tracerGlow} onCheckedChange={setTracerGlow} />
+              </div>
+
+              <Button
+                onClick={() => {
+                  setTracerModalOpen(false);
+                  toast.success("Style du traceur appliqué !");
+                }}
+                className="w-full h-10 rounded-2xl font-black text-xs text-slate-950"
+                style={{ backgroundColor: tracerColor }}
+              >
+                Appliquer sur la carte
+              </Button>
             </div>
           </div>
         </div>
@@ -2024,7 +2373,7 @@ export default function Tracking() {
                         <button
                           type="button"
                           onClick={togglePlayback}
-                          disabled={points.length < 2}
+                          disabled={!selectedDevice || loadingHistory}
                           className="px-3 py-1 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-black transition disabled:opacity-40 flex items-center gap-1"
                         >
                           {isPlaying ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="h-3.5 w-3.5 fill-current" />}
@@ -2033,7 +2382,7 @@ export default function Tracking() {
                         <button
                           type="button"
                           onClick={replay}
-                          disabled={points.length < 2}
+                          disabled={!selectedDevice || loadingHistory}
                           className="px-2.5 py-1 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition disabled:opacity-40"
                           title="Rejouer"
                         >
@@ -2059,6 +2408,68 @@ export default function Tracking() {
                     <div className="flex items-center justify-between pt-2 border-t border-white/5">
                       <span className="text-xs text-slate-300 font-semibold">Suivi automatique de la caméra</span>
                       <Switch checked={follow} onCheckedChange={(v) => setFollow(v)} />
+                    </div>
+                  </div>
+
+                  {/* Traceur Customization Box (Couleur & Taille) */}
+                  <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black uppercase text-cyan-400">
+                        Personnalisation Traceur (Couleur & Taille)
+                      </span>
+                      <span
+                        className="h-4 w-4 rounded-full border border-white"
+                        style={{ backgroundColor: tracerColor, boxShadow: `0 0 10px ${tracerColor}` }}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-7 gap-1.5">
+                      {TRACER_COLORS.map((c) => {
+                        const active = tracerColor.toLowerCase() === c.value.toLowerCase();
+                        return (
+                          <button
+                            key={c.value}
+                            type="button"
+                            onClick={() => setTracerColor(c.value)}
+                            className={`h-7 rounded-lg border transition-all flex items-center justify-center ${
+                              active ? "border-white scale-105 shadow-md" : "border-white/15 opacity-75 hover:opacity-100"
+                            }`}
+                            style={{ backgroundColor: c.value }}
+                            title={c.label}
+                          >
+                            {active && <CheckCircle2 className="h-3.5 w-3.5 text-slate-950" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] text-slate-300 font-bold">
+                          <span>Taille Traceur</span>
+                          <span style={{ color: tracerColor }}>{tracerSize}px</span>
+                        </div>
+                        <Slider
+                          value={[tracerSize]}
+                          min={22}
+                          max={56}
+                          step={2}
+                          onValueChange={(v) => setTracerSize(v[0] || 36)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] text-slate-300 font-bold">
+                          <span>Épaisseur Ligne</span>
+                          <span style={{ color: tracerColor }}>{tracerWeight}px</span>
+                        </div>
+                        <Slider
+                          value={[tracerWeight]}
+                          min={2}
+                          max={12}
+                          step={1}
+                          onValueChange={(v) => setTracerWeight(v[0] || 5)}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>

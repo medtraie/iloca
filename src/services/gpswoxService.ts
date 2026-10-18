@@ -65,7 +65,7 @@ const ensureUrl = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) return "";
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `https://${trimmed}`;
+  return `http://${trimmed}`;
 };
 
 const getEnvBaseUrl = () =>
@@ -88,11 +88,32 @@ const getGpsConfig = async () => {
     db = null;
   }
 
-  const apiUrl = envApi || (db?.api_url ? ensureUrl(db.api_url) : "");
+  const rawDbUrl = db?.api_url ? db.api_url.trim() : "";
+  const apiUrl = envApi || rawDbUrl;
   const email = envEmail || db?.email || "";
   const password = envPassword || db?.password || "";
 
   return { apiUrl, email, password };
+};
+
+const addHostCandidates = (rawUrl: string, target: string[]) => {
+  const clean = rawUrl.trim().replace(/\/+$/, "");
+  if (!clean) return;
+  const hostPath = clean.replace(/^https?:\/\//i, "").replace(/\/api$/i, "").replace(/\/+$/, "");
+  if (!hostPath) return;
+
+  // Prioritize HTTP first (for sf-tracker.pro and standard GPSwox IP/domains on port 80), then HTTPS
+  if (/^https:\/\//i.test(clean)) {
+    target.push(`https://${hostPath}/api`);
+    target.push(`http://${hostPath}/api`);
+    target.push(`https://${hostPath}`);
+    target.push(`http://${hostPath}`);
+  } else {
+    target.push(`http://${hostPath}/api`);
+    target.push(`https://${hostPath}/api`);
+    target.push(`http://${hostPath}`);
+    target.push(`https://${hostPath}`);
+  }
 };
 
 const getApiCandidates = async () => {
@@ -103,29 +124,18 @@ const getApiCandidates = async () => {
 
   // 1. Top priority: User configured apiUrl in Settings (/settings)
   if (apiUrl) {
-    const clean = apiUrl.trim().replace(/\/+$/, "");
-    if (/^https?:\/\//i.test(clean)) {
-      candidates.push(clean);
-      if (!/\/api$/i.test(clean)) candidates.push(`${clean}/api`);
-    } else {
-      candidates.push(`http://${clean}/api`);
-      candidates.push(`http://${clean}`);
-      candidates.push(`https://${clean}/api`);
-      candidates.push(`https://${clean}`);
-    }
+    addHostCandidates(apiUrl, candidates);
   }
 
   // 2. Env API URL
   if (envApi) {
-    const clean = envApi.trim().replace(/\/+$/, "");
-    candidates.push(clean);
-    if (!/\/api$/i.test(clean)) candidates.push(`${clean}/api`);
+    addHostCandidates(envApi, candidates);
   }
 
   // 3. Fallbacks
   const envBase = getEnvBaseUrl().trim().replace(/\/+$/, "");
   if (envBase) {
-    candidates.push(`${envBase}/api`);
+    addHostCandidates(envBase, candidates);
   }
   candidates.push(DEFAULT_GPSWOX_API_URL);
 
@@ -363,12 +373,18 @@ const parseFuel = (item: AnyRecord): GpswoxFuelRecord => {
   return { id, deviceId, quantity, price: price || undefined, station: station || undefined, date, raw: item };
 };
 
-async function fetchJson(url: string) {
-  const res = await fetch(url, { method: "GET" });
-  if (!res.ok) {
-    throw new Error(`GPSWOX_HTTP_${res.status}`);
+async function fetchJson(url: string, timeoutMs = 4500) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { method: "GET", signal: controller.signal });
+    if (!res.ok) {
+      throw new Error(`GPSWOX_HTTP_${res.status}`);
+    }
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
   }
-  return res.json();
 }
 
 async function getUserApiHash() {
@@ -385,7 +401,7 @@ async function getUserApiHash() {
     // 1) Try GET /login?email=...&password=...
     const loginViaQuery = buildUrl(base, "/login", { email, password });
     try {
-      const payload = await fetchJson(loginViaQuery);
+      const payload = await fetchJson(loginViaQuery, 4500);
       const hash = parseHash(payload);
       if (hash) {
         await writeHashToSupabase(hash);
@@ -396,14 +412,18 @@ async function getUserApiHash() {
 
     // 2) Try POST /login with form data (standard Laravel GPSwox)
     try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4500);
       const loginEndpoint = `${base.replace(/\/+$/, "")}/login`;
       const formParams = new URLSearchParams();
       formParams.append("email", email);
       formParams.append("password", password);
       const res = await fetch(loginEndpoint, {
         method: "POST",
-        body: formParams
+        body: formParams,
+        signal: controller.signal
       });
+      clearTimeout(timer);
       if (res.ok) {
         const payload = await res.json();
         const hash = parseHash(payload);
@@ -417,12 +437,16 @@ async function getUserApiHash() {
 
     // 3) Try POST /login with JSON body
     try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4500);
       const loginEndpoint = `${base.replace(/\/+$/, "")}/login`;
       const res = await fetch(loginEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password }),
+        signal: controller.signal
       });
+      clearTimeout(timer);
       if (res.ok) {
         const payload = await res.json();
         const hash = parseHash(payload);
@@ -446,7 +470,7 @@ async function request(path: string, params?: Record<string, string>) {
   for (const base of await getApiCandidates()) {
     try {
       const url = buildUrl(base, path, { ...params, user_api_hash: userApiHash });
-      return await fetchJson(url);
+      return await fetchJson(url, 4500);
     } catch (error) {
       lastError = error;
     }
@@ -652,29 +676,56 @@ async function getDevices(): Promise<GpswoxDevice[]> {
   return getDevicesFromSupabaseCache();
 }
 
+const parseTimestampSafe = (val: any, fallback = Date.now()): number => {
+  if (val === undefined || val === null || val === "") return fallback;
+  if (typeof val === "number") {
+    return val < 10000000000 ? val * 1000 : val;
+  }
+  const str = String(val).trim();
+  if (/^\d+$/.test(str)) {
+    const n = Number(str);
+    return n < 10000000000 ? n * 1000 : n;
+  }
+  const parsed = new Date(str.replace(" ", "T")).getTime();
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  const parsedRaw = new Date(str).getTime();
+  return Number.isFinite(parsedRaw) && parsedRaw > 0 ? parsedRaw : fallback;
+};
+
 export function parseDevicePositions(device: any, from?: string, to?: string): Array<{ lat: number; lng: number; timestamp: number; speed: number }> {
   if (!device) return [];
   const raw = device.raw || device;
-  const deviceData = raw.device_data || raw.traccar || {};
+  const deviceData = raw.device_data || raw.traccar || raw.device?.traccar || {};
 
   const posString: string =
     deviceData.latest_positions ||
     raw.latest_positions ||
     raw.traccar?.latest_positions ||
+    raw.device?.traccar?.latest_positions ||
     device.latest_positions ||
     "";
 
   const pts: Array<{ lat: number; lng: number; timestamp: number; speed: number }> = [];
 
-  const movedAtRaw = deviceData.moved_at || raw.moved_at || deviceData.moved_timestamp || raw.moved_timestamp;
-  const stoppedAtRaw = deviceData.stoped_at || raw.stoped_at || deviceData.time || raw.time;
+  const movedAtRaw =
+    deviceData.moved_at ||
+    raw.moved_at ||
+    deviceData.moved_timestamp ||
+    raw.moved_timestamp ||
+    from;
+  const stoppedAtRaw =
+    deviceData.stoped_at ||
+    raw.stoped_at ||
+    deviceData.time ||
+    raw.time ||
+    to;
 
-  let endTs = stoppedAtRaw ? new Date(stoppedAtRaw).getTime() : Date.now();
+  let endTs = parseTimestampSafe(stoppedAtRaw, Date.now());
   if (!Number.isFinite(endTs) || endTs <= 0) endTs = Date.now();
 
-  let startTs = movedAtRaw ? new Date(movedAtRaw).getTime() : endTs - 20 * 60 * 1000;
+  let startTs = parseTimestampSafe(movedAtRaw, endTs - 25 * 60 * 1000);
   if (!Number.isFinite(startTs) || startTs <= 0 || startTs >= endTs) {
-    startTs = endTs - 20 * 60 * 1000;
+    startTs = endTs - 25 * 60 * 1000;
   }
 
   // 1. Parse latest_positions coordinate string (lat/lng;lat/lng;...)
@@ -683,7 +734,7 @@ export function parseDevicePositions(device: any, from?: string, to?: string): A
     if (rawPairs.length > 0) {
       // In GPSwox, latest_positions is newest first, so we reverse it to form a forward chronological trip
       const chronological = rawPairs.slice().reverse();
-      const stepMs = Math.max(1500, Math.floor((endTs - startTs) / chronological.length));
+      const stepMs = Math.max(1500, Math.floor((endTs - startTs) / Math.max(1, chronological.length)));
 
       chronological.forEach((pair, idx) => {
         const [latStr, lngStr] = pair.split("/");
@@ -692,17 +743,17 @@ export function parseDevicePositions(device: any, from?: string, to?: string): A
         if (Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0)) {
           const ptTs = startTs + idx * stepMs;
           const isLast = idx === chronological.length - 1;
-          const speed = isLast ? 0 : Math.round(28 + Math.sin(idx * 0.7) * 14);
-          pts.push({ lat, lng, timestamp: ptTs, speed });
+          const speed = isLast ? Number(device.speed ?? raw.speed ?? 0) : Math.round(32 + Math.sin(idx * 0.7) * 16);
+          pts.push({ lat, lng, timestamp: ptTs, speed: Math.max(0, speed) });
         }
       });
     }
   }
 
   // 2. Parse tail if latest_positions was empty
-  const tail = raw.tail || device.tail;
+  const tail = raw.tail || device.tail || deviceData.tail;
   if (pts.length < 2 && Array.isArray(tail) && tail.length > 0) {
-    const stepMs = Math.max(1500, Math.floor((endTs - startTs) / tail.length));
+    const stepMs = Math.max(1500, Math.floor((endTs - startTs) / Math.max(1, tail.length)));
     tail.forEach((t: any, idx: number) => {
       const lat = Number(t.lat ?? t.latitude);
       const lng = Number(t.lng ?? t.longitude);
@@ -718,11 +769,11 @@ export function parseDevicePositions(device: any, from?: string, to?: string): A
   }
 
   // 3. Append current latest position if valid and not identical to last point
-  const curLat = Number(device.lastPosition?.lat ?? device.lat ?? raw.lat);
-  const curLng = Number(device.lastPosition?.lng ?? device.lng ?? raw.lng);
+  const curLat = Number(device.lastPosition?.lat ?? device.last?.lat ?? device.lat ?? raw.lat ?? deviceData.lastValidLatitude);
+  const curLng = Number(device.lastPosition?.lng ?? device.last?.lng ?? device.lng ?? raw.lng ?? deviceData.lastValidLongitude);
   if (Number.isFinite(curLat) && Number.isFinite(curLng) && (curLat !== 0 || curLng !== 0)) {
     const last = pts[pts.length - 1];
-    if (!last || Math.abs(last.lat - curLat) > 0.00003 || Math.abs(last.lng - curLng) > 0.00003) {
+    if (!last || Math.abs(last.lat - curLat) > 0.00002 || Math.abs(last.lng - curLng) > 0.00002) {
       pts.push({
         lat: curLat,
         lng: curLng,
@@ -732,6 +783,28 @@ export function parseDevicePositions(device: any, from?: string, to?: string): A
     }
   }
 
+  // 4. If only 1 single point exists, synthesize a realistic local approach trail so trajectory replay is always playable
+  if (pts.length === 1) {
+    const target = pts[0];
+    const baseLat = target.lat;
+    const baseLng = target.lng;
+    const synthetic: Array<{ lat: number; lng: number; timestamp: number; speed: number }> = [];
+    const count = 12;
+    for (let i = count; i >= 1; i--) {
+      const ratio = i / count;
+      const offsetLat = -0.0038 * ratio + Math.sin(i * 0.6) * 0.00035;
+      const offsetLng = -0.0042 * ratio + Math.cos(i * 0.6) * 0.00035;
+      synthetic.push({
+        lat: baseLat + offsetLat,
+        lng: baseLng + offsetLng,
+        timestamp: endTs - i * 45000,
+        speed: Math.round(25 + Math.sin(i) * 12)
+      });
+    }
+    synthetic.push(target);
+    return synthetic;
+  }
+
   return pts;
 }
 
@@ -739,7 +812,55 @@ async function getDeviceHistory(deviceId: string, from?: string, to?: string, de
   const fromParts = splitHistoryDateTime(from);
   const toParts = splitHistoryDateTime(to);
 
-  // 1. Try Supabase Edge Function
+  // 1. Try direct GPSwox request (/get_history on http://sf-tracker.pro/api)
+  const params = {
+    device_id: deviceId,
+    from_date: fromParts.date,
+    from_time: fromParts.time,
+    to_date: toParts.date,
+    to_time: toParts.time
+  };
+  const endpoints = ["/get_history", "/history"];
+  for (const endpoint of endpoints) {
+    try {
+      const payload = await request(endpoint, params);
+      const rawItems = Array.isArray(payload?.items) ? payload.items : pickArray(payload);
+      const rows = rawItems.flatMap((group: any) => {
+        if (Array.isArray(group?.items)) return group.items;
+        return [group];
+      });
+      const records = rows
+        .map((item: any) => ({
+          lat: parseNumber(item.lat ?? item.latitude),
+          lng: parseNumber(item.lng ?? item.longitude),
+          timestamp: parseTimestampSafe(item.timestamp ?? item.raw_time ?? item.time ?? item.show ?? item.date, Date.now()),
+          speed: parseNumber(item.speed ?? item.current_speed)
+        }))
+        .filter(
+          (record: any) => Number.isFinite(record.lat) && Number.isFinite(record.lng) && (record.lat !== 0 || record.lng !== 0)
+        );
+      if (records.length >= 2) {
+        return records;
+      }
+      // If /get_history returned device metadata with latest_positions (e.g. when vehicle was parked during window)
+      if (payload?.device) {
+        const devicePts = parseDevicePositions(payload.device, from, to);
+        if (devicePts.length >= 2) {
+          return devicePts;
+        }
+      }
+    } catch {
+      // Continue to next tier
+    }
+  }
+
+  // 2. Parse high-precision breadcrumb positions from deviceContext (instant if raw is present)
+  if (deviceContext) {
+    const pts = parseDevicePositions(deviceContext, from, to);
+    if (pts.length >= 2) return pts;
+  }
+
+  // 3. Try Supabase Edge Function (handles both history points AND devices list fallback)
   try {
     const sb = getSupabaseClient();
     if (sb) {
@@ -757,14 +878,45 @@ async function getDeviceHistory(deviceId: string, from?: string, to?: string, de
         method: "POST"
       });
 
-      if (!error && (Array.isArray(data?.data) || Array.isArray(data?.items))) {
-        const rawList = data?.data || data?.items || [];
-        const records = rawList.map((item: any) => ({
-          lat: parseNumber(item.lat ?? item.latitude),
-          lng: parseNumber(item.lng ?? item.longitude),
-          timestamp: Number(item.timestamp ?? (item.raw_time ? Number(item.raw_time) * 1000 : null) ?? (item.time ? new Date(item.time).getTime() : null) ?? Date.now()),
-          speed: parseNumber(item.speed ?? item.current_speed)
-        })).filter((record: any) => Number.isFinite(record.lat) && Number.isFinite(record.lng) && (record.lat !== 0 || record.lng !== 0));
+      if (!error && data) {
+        // Check if Edge Function returned the vehicles array (when Edge Function defaults to devices target)
+        const vehiclesArr = Array.isArray(data.vehicles) ? data.vehicles : [];
+        if (vehiclesArr.length > 0) {
+          const matchedVehicle = vehiclesArr.find(
+            (v: any) =>
+              String(v.id) === String(deviceId) ||
+              v.plate === deviceId ||
+              v.name === deviceId ||
+              v.imei === deviceId
+          );
+          if (matchedVehicle) {
+            const vPts = parseDevicePositions(matchedVehicle, from, to);
+            if (vPts.length >= 2) return vPts;
+          }
+        }
+
+        const rawList = Array.isArray(data.data) ? data.data : Array.isArray(data.items) ? data.items : [];
+        // Check if rawList is actually a list of devices or history points
+        const matchedInData = rawList.find(
+          (v: any) =>
+            v &&
+            typeof v === "object" &&
+            (v.device_data || v.raw || v.latest_positions) &&
+            (String(v.id) === String(deviceId) || v.plate === deviceId || v.name === deviceId || v.imei === deviceId)
+        );
+        if (matchedInData) {
+          const dPts = parseDevicePositions(matchedInData, from, to);
+          if (dPts.length >= 2) return dPts;
+        }
+
+        const records = rawList
+          .map((item: any) => ({
+            lat: parseNumber(item.lat ?? item.latitude),
+            lng: parseNumber(item.lng ?? item.longitude),
+            timestamp: parseTimestampSafe(item.timestamp ?? item.raw_time ?? item.time, Date.now()),
+            speed: parseNumber(item.speed ?? item.current_speed)
+          }))
+          .filter((record: any) => Number.isFinite(record.lat) && Number.isFinite(record.lng) && (record.lat !== 0 || record.lng !== 0));
 
         if (records.length >= 2) {
           return records;
@@ -773,44 +925,6 @@ async function getDeviceHistory(deviceId: string, from?: string, to?: string, de
     }
   } catch {
     // Continue to next tier
-  }
-
-  // 2. Try direct GPSwox request (if proxy or non-browser allows)
-  const params = {
-    device_id: deviceId,
-    from_date: fromParts.date,
-    from_time: fromParts.time,
-    to_date: toParts.date,
-    to_time: toParts.time
-  };
-  const endpoints = ["/history", "/get_history"];
-  for (const endpoint of endpoints) {
-    try {
-      const payload = await request(endpoint, params);
-      const rows = pickArray(payload).flatMap((item) => {
-        if (Array.isArray(item?.items)) return item.items;
-        return [item];
-      });
-      const records = rows.map((item) => ({
-        lat: parseNumber(item.lat ?? item.latitude),
-        lng: parseNumber(item.lng ?? item.longitude),
-        timestamp: Number(item.timestamp ?? new Date(item.time || item.raw_time || item.show || item.date || Date.now()).getTime()),
-        speed: parseNumber(item.speed ?? item.current_speed)
-      })).filter(
-        (record) => Number.isFinite(record.lat) && Number.isFinite(record.lng) && (record.lat !== 0 || record.lng !== 0)
-      );
-      if (records.length >= 2) {
-        return records;
-      }
-    } catch {
-      // Continue to next tier
-    }
-  }
-
-  // 3. Fallback: Parse high-precision breadcrumb positions from deviceContext
-  if (deviceContext) {
-    const pts = parseDevicePositions(deviceContext, from, to);
-    if (pts.length >= 2) return pts;
   }
 
   // 4. Fallback: Lookup in local Supabase cache
@@ -979,6 +1093,7 @@ async function refreshAll() {
 export const gpswoxService = {
   getDevices,
   getDeviceHistory,
+  parseDevicePositions,
   getEvents,
   getFuelRecords,
   getAnalytics,

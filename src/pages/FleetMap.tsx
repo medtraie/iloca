@@ -457,12 +457,83 @@ function buildStopMarker(durationMin: number) {
   });
 }
 
+const TRACER_COLORS = [
+  { id: "cyan", label: "Cyan", value: "#06b6d4" },
+  { id: "emerald", label: "Émeraude", value: "#10b981" },
+  { id: "blue", label: "Bleu Royal", value: "#3b82f6" },
+  { id: "violet", label: "Violet Néon", value: "#8b5cf6" },
+  { id: "amber", label: "Or Solaire", value: "#f59e0b" },
+  { id: "rose", label: "Rose Laser", value: "#f43f5e" },
+  { id: "white", label: "Blanc Pur", value: "#ffffff" }
+];
+
+function buildCustomTraceurMarker(opts: {
+  color: string;
+  size: number;
+  speed: number;
+  label: string;
+  glow: boolean;
+}) {
+  const { color, size, speed, label, glow } = opts;
+  const innerSize = Math.max(18, Math.round(size * 0.72));
+  const svgSize = Math.max(11, Math.round(size * 0.42));
+  const glowShadow = glow ? `0 0 ${Math.round(size * 0.6)}px ${color}, 0 6px 16px rgba(0,0,0,0.55)` : `0 4px 12px rgba(0,0,0,0.45)`;
+
+  const html = `
+    <div style="position:relative; display:flex; flex-direction:column; align-items:center; transform:translate(-50%, -50%); pointer-events:none;">
+      <div style="position:relative; width:${size}px; height:${size}px; display:flex; align-items:center; justify-content:center;">
+        ${
+          glow
+            ? `<div style="position:absolute; inset:-6px; border-radius:9999px; background:${color}; opacity:0.35; animation: ping 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>`
+            : ""
+        }
+        <div style="
+          width:${innerSize}px;
+          height:${innerSize}px;
+          border-radius:9999px;
+          background:linear-gradient(135deg, ${color} 0%, #0f172a 100%);
+          border:2.5px solid #ffffff;
+          box-shadow:${glowShadow};
+          display:flex;
+          align-items:center;
+          justify-content:center;
+        ">
+          <svg width="${svgSize}" height="${svgSize}" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+          </svg>
+        </div>
+      </div>
+      <div style="
+        margin-top:2px;
+        background:rgba(15, 23, 42, 0.92);
+        border:1px solid ${color};
+        padding:1px 6px;
+        border-radius:9999px;
+        color:#ffffff;
+        font:900 9px/1.2 system-ui;
+        white-space:nowrap;
+        box-shadow:0 3px 10px rgba(0,0,0,0.5);
+      ">
+        ${label ? `${label.slice(0, 12)} • ` : ""}${Math.round(speed || 0)} km/h
+      </div>
+    </div>
+  `;
+
+  return L.divIcon({
+    className: "custom-sft-traceur-marker",
+    html,
+    iconSize: [size, size],
+    iconAnchor: [0, 0]
+  });
+}
+
 export default function FleetMap() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const tileRef = useRef<L.TileLayer | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
   const overlayLayerRef = useRef<L.LayerGroup | null>(null);
+  const routeGlowLineRef = useRef<L.Polyline | null>(null);
   const routeLineRef = useRef<L.Polyline | null>(null);
   const traceLineRef = useRef<L.Polyline | null>(null);
   const traceMarkerRef = useRef<L.Marker | null>(null);
@@ -470,6 +541,7 @@ export default function FleetMap() {
   const endMarkerRef = useRef<L.Marker | null>(null);
   const stopMarkersRef = useRef<L.Marker[]>([]);
   const playbackTimerRef = useRef<number | null>(null);
+  const playbackIndexRef = useRef<number>(0);
   const autoFitDoneRef = useRef(false);
 
   // Core UI states
@@ -479,10 +551,24 @@ export default function FleetMap() {
   const [mapTheme, setMapTheme] = useState<MapTheme>("google_hybrid");
   const [deckOpen, setDeckOpen] = useState(false);
   const [layersModalOpen, setLayersModalOpen] = useState(false);
+  const [tracerModalOpen, setTracerModalOpen] = useState(false);
   const [activeDeckTab, setActiveDeckTab] = useState<"flotte" | "tableau" | "trajet" | "capteurs">("flotte");
-  const [followSelected, setFollowSelected] = useState(false);
+  const [followSelected, setFollowSelected] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+
+  // Traceur Customization states (persisted in localStorage)
+  const [tracerColor, setTracerColor] = useState<string>(() => localStorage.getItem("sft_tracer_color") || "#06b6d4");
+  const [tracerWeight, setTracerWeight] = useState<number>(() => Number(localStorage.getItem("sft_tracer_weight")) || 5);
+  const [tracerSize, setTracerSize] = useState<number>(() => Number(localStorage.getItem("sft_tracer_size")) || 38);
+  const [tracerGlow, setTracerGlow] = useState<boolean>(() => localStorage.getItem("sft_tracer_glow") !== "false");
+
+  useEffect(() => {
+    localStorage.setItem("sft_tracer_color", tracerColor);
+    localStorage.setItem("sft_tracer_weight", String(tracerWeight));
+    localStorage.setItem("sft_tracer_size", String(tracerSize));
+    localStorage.setItem("sft_tracer_glow", String(tracerGlow));
+  }, [tracerColor, tracerWeight, tracerSize, tracerGlow]);
 
   // Tracking & Replay states
   const [datePreset, setDatePreset] = useState<DatePreset>("today");
@@ -497,7 +583,7 @@ export default function FleetMap() {
   // GPS Data hook
   const { data: vehicles = [], error, refetch, isFetching } = useGPSwoxVehicles(30000);
 
-  // Normalized fleet items
+  // Normalized fleet items (including raw payload for instant traceur & history extraction)
   const items = useMemo(() => {
     return vehicles.map((v) => {
       const label = v.name || `${v.brand || ""} ${v.model || ""}`.trim() || v.raw?.name || "Véhicule";
@@ -527,10 +613,18 @@ export default function FleetMap() {
         driver: v.driver || "Non assigné",
         brand: v.brand,
         model: v.model,
-        imei: v.imei
+        imei: v.imei,
+        raw: v.raw
       };
     });
   }, [vehicles]);
+
+  // Auto-select first vehicle when loaded
+  useEffect(() => {
+    if (!selectedId && items.length > 0) {
+      setSelectedId(items[0].id);
+    }
+  }, [items, selectedId]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -604,6 +698,10 @@ export default function FleetMap() {
 
   // Clear tracking route overlays
   const clearRouteOverlays = () => {
+    if (routeGlowLineRef.current) {
+      routeGlowLineRef.current.remove();
+      routeGlowLineRef.current = null;
+    }
     if (routeLineRef.current) {
       routeLineRef.current.remove();
       routeLineRef.current = null;
@@ -637,66 +735,130 @@ export default function FleetMap() {
     setIsPlaying(false);
   };
 
-  // Draw Route Polyline, Flags, Stops
-  const renderRouteOnMap = (pts: HistoryPoint[]) => {
-    const map = mapRef.current;
-    const overlay = overlayLayerRef.current;
-    if (!map || !overlay) return;
+  // Draw Route Polyline, Custom Traceur Beacon, Flags, Stops
+  const renderRouteOnMap = useCallback(
+    (pts: HistoryPoint[], fitBounds = true) => {
+      const map = mapRef.current;
+      const overlay = overlayLayerRef.current;
+      if (!map || !overlay) return;
 
-    clearRouteOverlays();
-    if (pts.length < 2) return;
+      clearRouteOverlays();
+      if (pts.length < 2) return;
 
-    const coords = pts.map((p) => [p.lat, p.lng] as [number, number]);
+      const coords = pts.map((p) => [p.lat, p.lng] as [number, number]);
 
-    // High tech glowing polyline
-    routeLineRef.current = L.polyline(coords, {
-      color: "#0ea5e9",
-      weight: 5,
-      opacity: 0.9,
-      lineCap: "round",
-      lineJoin: "round"
-    }).addTo(overlay);
+      // Outer neon glow polyline if enabled
+      if (tracerGlow) {
+        routeGlowLineRef.current = L.polyline(coords, {
+          color: tracerColor,
+          weight: tracerWeight * 2.4,
+          opacity: 0.28,
+          lineCap: "round",
+          lineJoin: "round"
+        }).addTo(overlay);
+      }
 
-    // Flags A and B
-    startMarkerRef.current = L.marker(coords[0], {
-      icon: buildFlagMarker("start"),
-      zIndexOffset: 800
-    }).addTo(overlay);
-
-    endMarkerRef.current = L.marker(coords[coords.length - 1], {
-      icon: buildFlagMarker("end"),
-      zIndexOffset: 850
-    }).addTo(overlay);
-
-    // Stops
-    const stops = detectStops(pts);
-    stops.forEach((s) => {
-      const sm = L.marker([s.lat, s.lng], {
-        icon: buildStopMarker(s.durationMin),
-        zIndexOffset: 750
+      // Main customizable Traceur polyline
+      routeLineRef.current = L.polyline(coords, {
+        color: tracerColor,
+        weight: tracerWeight,
+        opacity: 0.95,
+        lineCap: "round",
+        lineJoin: "round"
       }).addTo(overlay);
 
-      sm.bindPopup(`
-        <div style="font-family:sans-serif; min-width:180px; padding:4px;">
-          <div style="font-weight:900; color:#ef4444; font-size:12px; margin-bottom:2px;">ARRÊT DÉTECTÉ</div>
-          <div style="font-size:13px; font-weight:700;">Durée : ${s.durationMin} minutes</div>
-          <div style="font-size:11px; color:#64748b; margin-top:4px;">
-            ${new Date(s.from).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} → ${new Date(s.to).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-          </div>
-        </div>
-      `);
-      stopMarkersRef.current.push(sm);
-    });
+      // Flags A and B
+      startMarkerRef.current = L.marker(coords[0], {
+        icon: buildFlagMarker("start"),
+        zIndexOffset: 800
+      }).addTo(overlay);
 
-    // Fit map bounds to route
-    map.fitBounds(L.latLngBounds(coords), { padding: [50, 50], maxZoom: 16 });
-  };
+      endMarkerRef.current = L.marker(coords[coords.length - 1], {
+        icon: buildFlagMarker("end"),
+        zIndexOffset: 850
+      }).addTo(overlay);
+
+      // Place initial/active Traceur marker so user always sees the Traceur on map
+      const activeIdx = clamp(playbackIndexRef.current, 0, pts.length - 1);
+      const activePt = pts[activeIdx] || pts[pts.length - 1];
+      traceMarkerRef.current = L.marker([activePt.lat, activePt.lng], {
+        icon: buildCustomTraceurMarker({
+          color: tracerColor,
+          size: tracerSize,
+          speed: activePt.speed || 0,
+          label: selectedItem?.label || "Traceur",
+          glow: tracerGlow
+        }),
+        zIndexOffset: 1350
+      }).addTo(overlay);
+
+      // Stops
+      const stops = detectStops(pts);
+      stops.forEach((s) => {
+        const sm = L.marker([s.lat, s.lng], {
+          icon: buildStopMarker(s.durationMin),
+          zIndexOffset: 750
+        }).addTo(overlay);
+
+        sm.bindPopup(`
+          <div style="font-family:sans-serif; min-width:180px; padding:4px;">
+            <div style="font-weight:900; color:#ef4444; font-size:12px; margin-bottom:2px;">ARRÊT DÉTECTÉ</div>
+            <div style="font-size:13px; font-weight:700;">Durée : ${s.durationMin} minutes</div>
+            <div style="font-size:11px; color:#64748b; margin-top:4px;">
+              ${new Date(s.from).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} → ${new Date(s.to).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </div>
+          </div>
+        `);
+        stopMarkersRef.current.push(sm);
+      });
+
+      if (fitBounds) {
+        map.fitBounds(L.latLngBounds(coords), { padding: [50, 50], maxZoom: 16 });
+      }
+    },
+    [tracerColor, tracerWeight, tracerSize, tracerGlow, selectedItem?.label]
+  );
+
+  // Dynamically update Traceur appearance when user changes color, weight, size, or glow
+  useEffect(() => {
+    if (routePoints.length >= 2) {
+      renderRouteOnMap(routePoints, false);
+    }
+  }, [tracerColor, tracerWeight, tracerSize, tracerGlow, routePoints, renderRouteOnMap]);
+
+  // Automatic Live Traceur when following/selecting a vehicle (Suivi)
+  const activateVehicleSuiviAndTracer = useCallback(
+    (targetId: string, zoomToRoute = true) => {
+      const target = items.find((i) => String(i.id) === String(targetId));
+      if (!target) return;
+      setSelectedId(target.id);
+      setFollowSelected(true);
+      const instantPts = gpswoxService.parseDevicePositions(target);
+      if (instantPts.length >= 2) {
+        playbackIndexRef.current = instantPts.length - 1;
+        setPlaybackIndex(instantPts.length - 1);
+        setRoutePoints(instantPts);
+        renderRouteOnMap(instantPts, zoomToRoute);
+      } else if (target.last && mapRef.current) {
+        mapRef.current.flyTo([target.last.lat, target.last.lng], 16, { duration: 0.7 });
+      }
+    },
+    [items, renderRouteOnMap]
+  );
 
   // Load Historical Route for selected vehicle
-  const loadVehicleHistory = async (deviceId: string) => {
-    if (!deviceId) return;
+  const loadVehicleHistory = async (deviceId: string, autoPlayAfterLoad = false) => {
+    const targetDeviceId = deviceId || selectedId || items[0]?.id;
+    if (!targetDeviceId) {
+      toast.error("Veuillez sélectionner un véhicule");
+      return;
+    }
+    if (targetDeviceId !== selectedId) {
+      setSelectedId(targetDeviceId);
+    }
     setIsLoadingRoute(true);
     stopPlayback();
+    playbackIndexRef.current = 0;
     setPlaybackIndex(0);
 
     try {
@@ -718,8 +880,8 @@ export default function FleetMap() {
         toIso = (customTo || new Date()).toISOString();
       }
 
-      const targetItem = visibleItems.find((i) => String(i.id) === String(deviceId)) || selectedItem;
-      const res = await gpswoxService.getDeviceHistory(deviceId, fromIso, toIso, targetItem);
+      const targetItem = items.find((i) => String(i.id) === String(targetDeviceId)) || selectedItem;
+      const res = await gpswoxService.getDeviceHistory(targetDeviceId, fromIso, toIso, targetItem);
       const normalized: HistoryPoint[] = (res || [])
         .filter((p: any) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
         .map((p: any) => ({
@@ -733,10 +895,14 @@ export default function FleetMap() {
       setRoutePoints(normalized);
 
       if (normalized.length >= 2) {
-        renderRouteOnMap(normalized);
-        toast.success(`Trajet chargé (${normalized.length} points)`, {
+        renderRouteOnMap(normalized, true);
+        setDeckOpen(false);
+        toast.success(`Trajet & Traceur activés (${normalized.length} points)`, {
           description: `Distance: ${computeRouteStats(normalized).distanceKm} km`
         });
+        if (autoPlayAfterLoad) {
+          setTimeout(() => startRoutePlayback(normalized), 150);
+        }
       } else {
         clearRouteOverlays();
         toast.error("Aucun trajet enregistré sur ce créneau horaire.");
@@ -750,68 +916,68 @@ export default function FleetMap() {
     }
   };
 
-  // Playback Control
-  const togglePlay = () => {
-    if (routePoints.length < 2) {
-      toast.error("Veuillez d'abord charger un trajet");
-      return;
-    }
+  // Start playback on a given array of points
+  const startRoutePlayback = (ptsToPlay: HistoryPoint[]) => {
+    const activePts = ptsToPlay.length >= 2 ? ptsToPlay : routePoints;
+    if (activePts.length < 2) return;
 
-    if (isPlaying) {
-      stopPlayback();
-      return;
-    }
-
+    stopPlayback();
     setIsPlaying(true);
+    setDeckOpen(false);
     const map = mapRef.current;
     const overlay = overlayLayerRef.current;
     if (!map || !overlay) return;
 
-    let currentIndex = playbackIndex;
-    if (currentIndex >= routePoints.length - 1) {
-      currentIndex = 0;
+    if (playbackIndexRef.current >= activePts.length - 1) {
+      playbackIndexRef.current = 0;
       setPlaybackIndex(0);
     }
 
-    const baseInterval = Math.max(40, 200 / playSpeedMultiplier);
+    const baseInterval = Math.max(40, Math.round(180 / playSpeedMultiplier));
 
     playbackTimerRef.current = window.setInterval(() => {
-      currentIndex += 1;
-      if (currentIndex >= routePoints.length) {
+      playbackIndexRef.current += 1;
+      const currentIndex = playbackIndexRef.current;
+      if (currentIndex >= activePts.length) {
         stopPlayback();
+        toast.success("Lecture du trajet terminée");
         return;
       }
 
       setPlaybackIndex(currentIndex);
-      const currentPoint = routePoints[currentIndex];
+      const currentPoint = activePts[currentIndex];
       const currentLatLng: [number, number] = [currentPoint.lat, currentPoint.lng];
 
       // Trace line update
       if (!traceLineRef.current) {
-        traceLineRef.current = L.polyline(routePoints.slice(0, currentIndex + 1).map((p) => [p.lat, p.lng]), {
-          color: "#ffffff",
-          weight: 4,
-          opacity: 0.95
-        }).addTo(overlay);
+        traceLineRef.current = L.polyline(
+          activePts.slice(0, currentIndex + 1).map((p) => [p.lat, p.lng]),
+          {
+            color: "#ffffff",
+            weight: Math.max(3, tracerWeight - 1),
+            opacity: 0.95
+          }
+        ).addTo(overlay);
       } else {
-        traceLineRef.current.setLatLngs(routePoints.slice(0, currentIndex + 1).map((p) => [p.lat, p.lng]));
+        traceLineRef.current.setLatLngs(activePts.slice(0, currentIndex + 1).map((p) => [p.lat, p.lng]));
       }
 
-      // Moving Marker update
+      // Moving Custom Traceur Marker update
+      const icon = buildCustomTraceurMarker({
+        color: tracerColor,
+        size: tracerSize,
+        speed: currentPoint.speed || 0,
+        label: selectedItem?.label || "Traceur",
+        glow: tracerGlow
+      });
       if (!traceMarkerRef.current) {
         traceMarkerRef.current = L.marker(currentLatLng, {
-          icon: buildModernVehicleMarker({
-            status: "moving",
-            statusColor: "#0ea5e9",
-            speed: currentPoint.speed || 0,
-            label: "Traceur",
-            plate: "",
-            selected: true
-          }),
-          zIndexOffset: 1000
+          icon,
+          zIndexOffset: 1350
         }).addTo(overlay);
       } else {
         traceMarkerRef.current.setLatLng(currentLatLng);
+        traceMarkerRef.current.setIcon(icon);
       }
 
       if (followSelected) {
@@ -820,9 +986,28 @@ export default function FleetMap() {
     }, baseInterval);
   };
 
+  // Playback Control
+  const togglePlay = () => {
+    if (isPlaying) {
+      stopPlayback();
+      return;
+    }
+    if (routePoints.length < 2) {
+      const targetId = selectedId || items[0]?.id;
+      if (targetId) {
+        void loadVehicleHistory(targetId, true);
+      } else {
+        toast.error("Veuillez d'abord sélectionner un véhicule");
+      }
+      return;
+    }
+    startRoutePlayback(routePoints);
+  };
+
   // Seek on scrubber
   const handleSeek = (newIndex: number) => {
     const bounded = clamp(newIndex, 0, routePoints.length - 1);
+    playbackIndexRef.current = bounded;
     setPlaybackIndex(bounded);
     const point = routePoints[bounded];
     if (!point) return;
@@ -832,20 +1017,22 @@ export default function FleetMap() {
 
     const currentLatLng: [number, number] = [point.lat, point.lng];
 
+    const icon = buildCustomTraceurMarker({
+      color: tracerColor,
+      size: tracerSize,
+      speed: point.speed || 0,
+      label: selectedItem?.label || "Traceur",
+      glow: tracerGlow
+    });
+
     if (!traceMarkerRef.current) {
       traceMarkerRef.current = L.marker(currentLatLng, {
-        icon: buildModernVehicleMarker({
-          status: "moving",
-          statusColor: "#0ea5e9",
-          speed: point.speed || 0,
-          label: "Traceur",
-          plate: "",
-          selected: true
-        }),
-        zIndexOffset: 1000
+        icon,
+        zIndexOffset: 1350
       }).addTo(overlay);
     } else {
       traceMarkerRef.current.setLatLng(currentLatLng);
+      traceMarkerRef.current.setIcon(icon);
     }
 
     if (traceLineRef.current) {
@@ -1029,7 +1216,7 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
       });
 
       marker.on("click", () => {
-        setSelectedId(item.id);
+        activateVehicleSuiviAndTracer(item.id, false);
         setMobileDetailOpen(true);
       });
 
@@ -1071,7 +1258,7 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
               font-size:10px;
               font-weight:700;
               cursor:pointer;
-            ">Centrer</button>
+            ">Suivi & Traceur</button>
             <button onclick="window.dispatchEvent(new CustomEvent('map-track-vehicle', { detail: '${item.id}' }))" style="
               flex:1;
               background:#0f172a;
@@ -1082,7 +1269,7 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
               font-size:10px;
               font-weight:700;
               cursor:pointer;
-            ">Tracer</button>
+            ">Relecture</button>
           </div>
           <div style="display:flex; gap:4px;">
             <a href="https://www.google.com/maps/search/?api=1&query=${item.last?.lat},${item.last?.lng}" target="_blank" rel="noopener noreferrer" style="
@@ -1132,20 +1319,19 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
       fitToVisible();
       autoFitDoneRef.current = true;
     }
-  }, [selectedId, visibleItems, fitToVisible]);
+  }, [selectedId, visibleItems, fitToVisible, activateVehicleSuiviAndTracer]);
 
   // Window event listeners for Leaflet popups
   useEffect(() => {
     const handleFocusEvent = (e: any) => {
       const id = e.detail;
-      setSelectedId(id);
-      focusSelected(16);
+      activateVehicleSuiviAndTracer(id, true);
+      toast.success("Suivi & Traceur activés sur la carte");
     };
     const handleTrackEvent = (e: any) => {
       const id = e.detail;
       setSelectedId(id);
-      setActiveDeckTab("trajet");
-      loadVehicleHistory(id);
+      void loadVehicleHistory(id, true);
     };
     window.addEventListener("map-focus-vehicle", handleFocusEvent);
     window.addEventListener("map-track-vehicle", handleTrackEvent);
@@ -1153,7 +1339,7 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
       window.removeEventListener("map-focus-vehicle", handleFocusEvent);
       window.removeEventListener("map-track-vehicle", handleTrackEvent);
     };
-  }, [focusSelected]);
+  }, [activateVehicleSuiviAndTracer]);
 
   // Follow Selected Mode
   useEffect(() => {
@@ -1240,30 +1426,52 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
 
       {/* FLOATING BOTTOM REPLAY SCRUBBER (Appears when route is loaded) */}
       {routePoints.length >= 2 && (
-        <div className="absolute bottom-5 left-4 right-4 sm:left-1/2 sm:-translate-x-1/2 sm:w-[620px] z-[1000] bg-background/90 dark:bg-slate-950/90 backdrop-blur-2xl border border-primary/30 rounded-3xl p-3 sm:p-4 shadow-2xl space-y-3">
+        <div className="absolute bottom-5 left-4 right-4 sm:left-1/2 sm:-translate-x-1/2 sm:w-[650px] z-[1000] bg-slate-950/90 backdrop-blur-3xl border border-white/20 rounded-3xl p-3 sm:p-4 shadow-2xl space-y-2.5 text-white">
           <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <span className="p-2 rounded-2xl bg-primary/10 text-primary">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span
+                className="p-2 rounded-2xl border shrink-0"
+                style={{
+                  backgroundColor: `${tracerColor}25`,
+                  borderColor: `${tracerColor}55`,
+                  color: tracerColor
+                }}
+              >
                 <Route className="h-4 w-4" />
               </span>
-              <div>
+              <div className="min-w-0">
                 <div className="text-xs font-black tracking-tight flex items-center gap-1.5">
-                  <span>Relecture Trajet : {selectedItem?.label}</span>
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-primary/40 font-bold">
+                  <span className="truncate">Traceur & Trajet : {selectedItem?.label}</span>
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-white/30 text-white font-bold">
                     {routePoints.length} pts
                   </Badge>
                 </div>
-                <div className="text-[11px] text-muted-foreground font-semibold">
+                <div className="text-[11px] text-slate-300 font-semibold">
                   Distance: {routeStats.distanceKm} km • Arrêts: {detectedStops.length}
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* Customize Traceur Color & Size Button */}
+              <button
+                type="button"
+                onClick={() => setTracerModalOpen(true)}
+                className="h-8 px-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-[11px] font-bold text-white flex items-center gap-1.5 transition"
+                title="Personnaliser couleur et taille du traceur"
+              >
+                <span
+                  className="h-3 w-3 rounded-full border border-white"
+                  style={{ backgroundColor: tracerColor }}
+                />
+                <span className="hidden sm:inline">Traceur</span>
+                <span className="text-[10px] text-slate-300">{tracerWeight}px</span>
+              </button>
+
               {/* Playback speed multiplier */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 px-2 rounded-xl text-xs font-bold border-border/60">
+                  <Button variant="outline" size="sm" className="h-8 px-2 rounded-xl text-xs font-bold border-white/20 bg-white/10 text-white hover:bg-white/20">
                     {playSpeedMultiplier}x
                   </Button>
                 </DropdownMenuTrigger>
@@ -1288,9 +1496,9 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                   clearRouteOverlays();
                   setRoutePoints([]);
                 }}
-                className="h-8 px-2 rounded-xl text-xs text-muted-foreground hover:text-foreground"
+                className="h-8 px-2 rounded-xl text-xs text-slate-300 hover:text-white hover:bg-white/10"
               >
-                ✕ Fermer
+                ✕
               </Button>
             </div>
           </div>
@@ -1304,13 +1512,13 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
               onValueChange={(val) => handleSeek(val[0])}
               className="cursor-pointer"
             />
-            <div className="flex items-center justify-between text-[11px] font-bold text-muted-foreground">
+            <div className="flex items-center justify-between text-[11px] font-bold text-slate-300">
               <span>
                 {routePoints[playbackIndex]
                   ? new Date(routePoints[playbackIndex].timestamp).toLocaleTimeString()
                   : "-"}
               </span>
-              <span className="font-black text-primary">
+              <span className="font-black" style={{ color: tracerColor }}>
                 {routePoints[playbackIndex] ? `${Math.round(routePoints[playbackIndex].speed || 0)} km/h` : "0 km/h"}
               </span>
               <span>
@@ -1326,26 +1534,27 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
             <Button
               size="icon"
               variant="outline"
-              onClick={() => handleSeek(playbackIndex - 10)}
-              className="h-8 w-8 rounded-full border-border/60"
-              title="-10 points"
+              onClick={() => handleSeek(playbackIndex - 5)}
+              className="h-8 w-8 rounded-full border-white/20 bg-white/10 text-white hover:bg-white/20"
+              title="-5 points"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <Button
               size="sm"
               onClick={togglePlay}
-              className="rounded-2xl px-5 h-9 font-black bg-primary text-primary-foreground shadow-md hover:scale-105 transition-transform"
+              style={{ backgroundColor: tracerColor }}
+              className="rounded-2xl px-5 h-9 font-black text-slate-950 shadow-md hover:scale-105 transition-transform"
             >
-              {isPlaying ? <Pause className="h-4 w-4 mr-1.5" /> : <Play className="h-4 w-4 mr-1.5" />}
-              {isPlaying ? "Pause" : "Lire"}
+              {isPlaying ? <Pause className="h-4 w-4 mr-1.5 fill-current" /> : <Play className="h-4 w-4 mr-1.5 fill-current" />}
+              {isPlaying ? "Pause" : "Lire Vidéo"}
             </Button>
             <Button
               size="icon"
               variant="outline"
-              onClick={() => handleSeek(playbackIndex + 10)}
-              className="h-8 w-8 rounded-full border-border/60"
-              title="+10 points"
+              onClick={() => handleSeek(playbackIndex + 5)}
+              className="h-8 w-8 rounded-full border-white/20 bg-white/10 text-white hover:bg-white/20"
+              title="+5 points"
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
@@ -1356,7 +1565,7 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
       {/* 2026 FLOATING TRANSLUCENT BOTTOM "PARC / FLOTTE" BUTTON (Inspired by Reference Image) */}
       <div
         className={`absolute left-1/2 -translate-x-1/2 z-[1000] pointer-events-auto transition-all duration-300 ${
-          routePoints.length >= 2 ? "bottom-24" : "bottom-6"
+          routePoints.length >= 2 ? "bottom-44" : "bottom-6"
         }`}
       >
         <button
@@ -1401,21 +1610,34 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
           <Minus className="h-4 w-4" />
         </button>
 
-        {/* Radar / Locate */}
+        {/* Suivi & Traceur Live Trigger */}
         <button
           type="button"
           onClick={() => {
-            if (selectedItem) {
-              focusSelected(16);
-            } else if (visibleItems.length) {
-              setSelectedId(visibleItems[0].id);
-              focusSelected(15);
+            const targetId = selectedId || visibleItems[0]?.id;
+            if (targetId) {
+              activateVehicleSuiviAndTracer(targetId, true);
+              toast.success("Traceur & Suivi activés sur la carte");
             }
           }}
           className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/25 dark:bg-black/20 dark:hover:bg-black/40 backdrop-blur-2xl border border-white/30 text-emerald-400 shadow-[0_8px_32px_rgba(0,0,0,0.2)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center"
-          title="Localiser véhicule actif"
+          title="Activer Suivi & Traceur du véhicule"
         >
           <Radio className="h-4 w-4 animate-pulse" />
+        </button>
+
+        {/* Traceur Style Customization Trigger (Couleur & Taille) */}
+        <button
+          type="button"
+          onClick={() => setTracerModalOpen(true)}
+          className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/25 dark:bg-black/20 dark:hover:bg-black/40 backdrop-blur-2xl border border-white/30 text-white shadow-[0_8px_32px_rgba(0,0,0,0.2)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center relative"
+          title="Personnaliser le Traceur (Couleur & Taille)"
+        >
+          <SlidersHorizontal className="h-4 w-4" style={{ color: tracerColor }} />
+          <span
+            className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full border border-white"
+            style={{ backgroundColor: tracerColor }}
+          />
         </button>
 
         {/* Layers Switcher Modal Trigger */}
@@ -1438,6 +1660,190 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
           <Focus className="h-4 w-4" />
         </button>
       </div>
+
+      {/* 2026 FLOATING VISIONOS TRACEUR CUSTOMIZATION MODAL (Couleur & Taille) */}
+      {tracerModalOpen && (
+        <div className="fixed inset-0 z-[1650] flex items-center justify-center p-3 sm:p-5 pointer-events-none">
+          <div
+            onClick={() => setTracerModalOpen(false)}
+            className="absolute inset-0 bg-black/50 backdrop-blur-xs pointer-events-auto transition-opacity animate-in fade-in duration-200"
+          />
+          <div className="relative pointer-events-auto w-full max-w-[460px] bg-slate-900/95 dark:bg-slate-950/98 backdrop-blur-3xl border border-white/20 shadow-[0_25px_70px_-15px_rgba(0,0,0,0.85)] rounded-[2.5rem] overflow-hidden flex flex-col text-slate-100 ring-1 ring-white/10 animate-in zoom-in-95 duration-200">
+            <div className="p-4 sm:p-5 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
+              <div className="flex items-center gap-3">
+                <span
+                  className="h-10 w-10 rounded-2xl border flex items-center justify-center shadow-inner"
+                  style={{
+                    backgroundColor: `${tracerColor}25`,
+                    borderColor: `${tracerColor}55`,
+                    color: tracerColor
+                  }}
+                >
+                  <Sparkles className="h-5 w-5" />
+                </span>
+                <div>
+                  <h2 className="text-base font-black tracking-tight text-white">
+                    Style & Design du Traceur
+                  </h2>
+                  <p className="text-[11px] text-slate-400 font-semibold">
+                    Personnalisez la couleur, l'épaisseur et la taille du traceur
+                  </p>
+                </div>
+              </div>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setTracerModalOpen(false)}
+                className="rounded-full h-8 w-8 text-slate-400 hover:text-white hover:bg-white/10"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="p-4 sm:p-5 space-y-4">
+              {/* Color Picker Swatches */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider text-slate-300">
+                  <span>Couleur du Traceur</span>
+                  <span className="font-mono text-[11px]" style={{ color: tracerColor }}>
+                    {tracerColor}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {TRACER_COLORS.map((c) => {
+                    const active = tracerColor.toLowerCase() === c.value.toLowerCase();
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setTracerColor(c.value)}
+                        className={`h-9 px-3 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all ${
+                          active
+                            ? "border-white bg-white/15 text-white scale-105 shadow-lg"
+                            : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
+                        }`}
+                      >
+                        <span
+                          className="h-3.5 w-3.5 rounded-full border border-white/60"
+                          style={{ backgroundColor: c.value, boxShadow: active ? `0 0 10px ${c.value}` : "none" }}
+                        />
+                        <span>{c.label}</span>
+                      </button>
+                    );
+                  })}
+                  <label className="h-9 px-3 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-xs font-bold text-slate-200 flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="color"
+                      value={tracerColor}
+                      onChange={(e) => setTracerColor(e.target.value)}
+                      className="h-5 w-5 rounded cursor-pointer bg-transparent border-0"
+                    />
+                    <span>Autre</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Line Thickness */}
+              <div className="space-y-2 pt-2 border-t border-white/10">
+                <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider text-slate-300">
+                  <span>Épaisseur de la Ligne</span>
+                  <span className="font-mono text-emerald-400">{tracerWeight} px</span>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[
+                    { label: "Fin (3px)", val: 3 },
+                    { label: "Normal (5px)", val: 5 },
+                    { label: "Large (8px)", val: 8 },
+                    { label: "Ultra (11px)", val: 11 }
+                  ].map((opt) => (
+                    <button
+                      key={opt.val}
+                      type="button"
+                      onClick={() => setTracerWeight(opt.val)}
+                      className={`h-8 rounded-xl text-[11px] font-bold border transition ${
+                        tracerWeight === opt.val
+                          ? "bg-white/20 border-white text-white font-black"
+                          : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <Slider
+                  value={[tracerWeight]}
+                  min={2}
+                  max={14}
+                  step={1}
+                  onValueChange={(v) => setTracerWeight(v[0] || 5)}
+                />
+              </div>
+
+              {/* Traceur Icon Size */}
+              <div className="space-y-2 pt-2 border-t border-white/10">
+                <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider text-slate-300">
+                  <span>Taille du Traceur (Icône)</span>
+                  <span className="font-mono text-emerald-400">{tracerSize} px</span>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[
+                    { label: "Petit", val: 28 },
+                    { label: "Moyen", val: 38 },
+                    { label: "Grand", val: 48 },
+                    { label: "XL", val: 58 }
+                  ].map((opt) => (
+                    <button
+                      key={opt.val}
+                      type="button"
+                      onClick={() => setTracerSize(opt.val)}
+                      className={`h-8 rounded-xl text-[11px] font-bold border transition ${
+                        tracerSize === opt.val
+                          ? "bg-white/20 border-white text-white font-black"
+                          : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <Slider
+                  value={[tracerSize]}
+                  min={24}
+                  max={64}
+                  step={2}
+                  onValueChange={(v) => setTracerSize(v[0] || 38)}
+                />
+              </div>
+
+              {/* Glow Toggle */}
+              <div className="flex items-center justify-between pt-2 border-t border-white/10">
+                <div>
+                  <div className="text-xs font-bold text-white">Effet Halo Néon Lumineux</div>
+                  <div className="text-[10px] text-slate-400">Double tracé lumineux haute visibilité</div>
+                </div>
+                <Switch checked={tracerGlow} onCheckedChange={setTracerGlow} />
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const targetId = selectedId || items[0]?.id;
+                    if (targetId) {
+                      activateVehicleSuiviAndTracer(targetId, true);
+                    }
+                    setTracerModalOpen(false);
+                  }}
+                  style={{ backgroundColor: tracerColor }}
+                  className="flex-1 h-10 rounded-2xl font-black text-xs text-slate-950 shadow-lg transition hover:opacity-90"
+                >
+                  Appliquer & Voir Traceur sur la Carte
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 2026 FLOATING VISIONOS MAP LAYERS MODAL (Centered 2026 Card) */}
       {layersModalOpen && (
@@ -1763,8 +2169,7 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                     <div
                       key={item.id}
                       onClick={() => {
-                        setSelectedId(item.id);
-                        focusSelected(16);
+                        activateVehicleSuiviAndTracer(item.id, true);
                         setDeckOpen(false);
                       }}
                       className={`relative overflow-hidden rounded-2xl border p-3.5 transition-all cursor-pointer ${
@@ -1841,27 +2246,25 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setSelectedId(item.id);
-                            focusSelected(16);
+                            activateVehicleSuiviAndTracer(item.id, true);
                             setDeckOpen(false);
                           }}
-                          className="flex-1 rounded-xl h-7 text-[11px] font-bold bg-white/10 hover:bg-emerald-500/30 text-white border border-white/15 flex items-center justify-center gap-1 transition-all"
+                          className="flex-1 rounded-xl h-7 text-[11px] font-bold bg-emerald-500/20 hover:bg-emerald-500/35 text-emerald-300 border border-emerald-400/35 flex items-center justify-center gap-1 transition-all"
                         >
                           <LocateFixed className="h-3 w-3 text-emerald-400" />
-                          Centrer
+                          Suivi & Traceur
                         </button>
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedId(item.id);
-                            setActiveDeckTab("trajet");
-                            loadVehicleHistory(item.id);
+                            void loadVehicleHistory(item.id, true);
                           }}
                           className="flex-1 rounded-xl h-7 text-[11px] font-bold bg-white/10 hover:bg-primary/30 text-white border border-white/15 flex items-center justify-center gap-1 transition-all"
                         >
-                          <Route className="h-3 w-3 text-primary" />
-                          Trajet
+                          <Play className="h-3 w-3 text-primary fill-current" />
+                          Vidéo Trajet
                         </button>
                         <button
                           type="button"
@@ -1938,8 +2341,7 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                         <tr
                           key={item.id}
                           onClick={() => {
-                            setSelectedId(item.id);
-                            focusSelected(16);
+                            activateVehicleSuiviAndTracer(item.id, true);
                             setDeckOpen(false);
                           }}
                           className={`hover:bg-white/5 cursor-pointer transition-colors ${
@@ -1960,12 +2362,11 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setSelectedId(item.id);
-                                focusSelected(16);
+                                activateVehicleSuiviAndTracer(item.id, true);
                                 setDeckOpen(false);
                               }}
                               className="h-7 w-7 rounded-lg bg-white/10 hover:bg-emerald-500/30 text-emerald-400 flex items-center justify-center transition-all inline-flex"
-                              title="Centrer sur la carte"
+                              title="Activer Suivi & Traceur"
                             >
                               <LocateFixed className="h-3.5 w-3.5" />
                             </button>
@@ -1979,7 +2380,7 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
             </div>
           )}
 
-          {/* TAB 3: TRAJETS (Advanced Historical Tracking Hub) */}
+          {/* TAB 3: TRAJETS (Advanced Historical Tracking Hub & Traceur Customization) */}
           {activeDeckTab === "trajet" && (
             <div className="flex-1 min-h-0 overflow-y-scroll sft-fleet-scroll p-3 sm:p-4 space-y-4 pb-16">
               <div className="space-y-4 pb-12">
@@ -1991,11 +2392,13 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                   <select
                     value={selectedId}
                     onChange={(e) => {
-                      setSelectedId(e.target.value);
-                      clearRouteOverlays();
-                      setRoutePoints([]);
+                      const nextId = e.target.value;
+                      setSelectedId(nextId);
+                      if (nextId) {
+                        activateVehicleSuiviAndTracer(nextId, false);
+                      }
                     }}
-                    className="w-full h-10 rounded-2xl bg-white/5 border border-white/15 px-3 text-xs font-bold text-white focus:outline-hidden"
+                    className="w-full h-10 rounded-2xl bg-slate-900 border border-white/20 px-3 text-xs font-bold text-white focus:outline-hidden"
                   >
                     <option value="" className="bg-slate-900 text-white">Sélectionner un véhicule...</option>
                     {items.map((i) => (
@@ -2049,15 +2452,106 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                   </div>
                 )}
 
-                {/* Load Route Button */}
-                <button
-                  onClick={() => loadVehicleHistory(selectedId)}
-                  disabled={!selectedId || isLoadingRoute}
-                  className="w-full rounded-2xl h-11 font-black bg-primary hover:bg-primary/90 text-white shadow-md hover:scale-[1.01] active:scale-95 transition-all flex items-center justify-center disabled:opacity-50"
-                >
-                  <Route className="h-4 w-4 mr-2" />
-                  {isLoadingRoute ? "Chargement du trajet..." : "Charger le trajet sur la carte"}
-                </button>
+                {/* Load Route & Video Player Buttons */}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void loadVehicleHistory(selectedId || items[0]?.id, false)}
+                    disabled={isLoadingRoute}
+                    className="rounded-2xl h-11 font-black text-xs bg-primary hover:bg-primary/90 text-white shadow-md hover:scale-[1.01] active:scale-95 transition-all flex items-center justify-center disabled:opacity-50 px-3"
+                  >
+                    <Route className="h-4 w-4 mr-1.5 shrink-0" />
+                    <span>{isLoadingRoute ? "Chargement..." : "Tracer le Trajet"}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => void loadVehicleHistory(selectedId || items[0]?.id, true)}
+                    disabled={isLoadingRoute}
+                    style={{ backgroundColor: tracerColor }}
+                    className="rounded-2xl h-11 font-black text-xs text-slate-950 shadow-md hover:scale-[1.01] active:scale-95 transition-all flex items-center justify-center disabled:opacity-50 px-3"
+                  >
+                    <Play className="h-4 w-4 mr-1.5 fill-current shrink-0" />
+                    <span>Vidéo Trajectory Player</span>
+                  </button>
+                </div>
+
+                {/* Inline Traceur Customization Box (Couleur & Taille du Traceur) */}
+                <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase text-slate-200 flex items-center gap-1.5">
+                      <Sparkles className="h-3.5 w-3.5" style={{ color: tracerColor }} />
+                      Personnalisation Traceur (Couleur & Taille)
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      {tracerWeight}px • {tracerSize}px
+                    </span>
+                  </div>
+
+                  {/* Color Swatches */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {TRACER_COLORS.map((c) => {
+                      const active = tracerColor.toLowerCase() === c.value.toLowerCase();
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => setTracerColor(c.value)}
+                          className={`h-7 px-2.5 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 transition ${
+                            active
+                              ? "border-white bg-white/15 text-white scale-105"
+                              : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
+                          }`}
+                        >
+                          <span
+                            className="h-3 w-3 rounded-full border border-white/50"
+                            style={{ backgroundColor: c.value }}
+                          />
+                          <span>{c.label}</span>
+                        </button>
+                      );
+                    })}
+                    <label className="h-7 px-2 rounded-xl border border-white/15 bg-white/5 text-[11px] font-bold text-slate-300 flex items-center gap-1 cursor-pointer">
+                      <input
+                        type="color"
+                        value={tracerColor}
+                        onChange={(e) => setTracerColor(e.target.value)}
+                        className="h-4 w-4 rounded cursor-pointer bg-transparent border-0"
+                      />
+                      <span>Couleur</span>
+                    </label>
+                  </div>
+
+                  {/* Thickness & Icon Size Sliders */}
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] font-bold text-slate-300">
+                        <span>Épaisseur ligne</span>
+                        <span style={{ color: tracerColor }}>{tracerWeight} px</span>
+                      </div>
+                      <Slider
+                        value={[tracerWeight]}
+                        min={2}
+                        max={14}
+                        step={1}
+                        onValueChange={(v) => setTracerWeight(v[0] || 5)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] font-bold text-slate-300">
+                        <span>Taille icône traceur</span>
+                        <span style={{ color: tracerColor }}>{tracerSize} px</span>
+                      </div>
+                      <Slider
+                        value={[tracerSize]}
+                        min={24}
+                        max={64}
+                        step={2}
+                        onValueChange={(v) => setTracerSize(v[0] || 38)}
+                      />
+                    </div>
+                  </div>
+                </div>
 
                 {/* Route Analytics Cards */}
                 {routePoints.length >= 2 && (
