@@ -1363,18 +1363,27 @@ export default function Tracking() {
     drawVehicleMarkers(filteredDevices);
   }, [filteredDevices, selectedDevice?.id, ensureMap]);
 
-  // Automatically populate live trajectory when selectedDevice changes
+  // Automatically center or populate live trajectory when selectedDevice changes
   useEffect(() => {
     if (!selectedDevice) return;
     stopPlayback();
     stopLive();
-    const instantPts = gpswoxService.parseDevicePositions(selectedDevice);
-    if (instantPts.length >= 2) {
-      setPoints(instantPts);
-      playbackIndexRef.current = 0;
-      setPlaybackIndex(0);
-      drawRoute(instantPts, true);
-    } else if (
+    const raw = selectedDevice.raw || selectedDevice;
+    const hasTrail =
+      (Array.isArray(raw?.tail) && raw.tail.length >= 2) ||
+      (typeof raw?.latest_positions === "string" && raw.latest_positions.includes(";")) ||
+      (typeof raw?.traccar?.latest_positions === "string" && raw.traccar.latest_positions.includes(";"));
+    if (hasTrail) {
+      const instantPts = gpswoxService.parseDevicePositions(selectedDevice);
+      if (instantPts.length >= 2) {
+        setPoints(instantPts);
+        playbackIndexRef.current = 0;
+        setPlaybackIndex(0);
+        drawRoute(instantPts, true);
+        return;
+      }
+    }
+    if (
       mapRef.current &&
       Number.isFinite(selectedDevice.lat) &&
       Number.isFinite(selectedDevice.lng) &&

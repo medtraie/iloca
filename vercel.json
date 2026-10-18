@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/gpswox-proxy/:path*",
+      "destination": "http://sf-tracker.pro/api/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

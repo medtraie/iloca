@@ -9,6 +9,13 @@ export default defineConfig(({ mode }) => ({
     host: "0.0.0.0",
     port: 8081,
     strictPort: true,
+    proxy: {
+      "/gpswox-proxy": {
+        target: "http://sf-tracker.pro/api",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/gpswox-proxy/, "")
+      }
+    }
   },
   plugins: [
     react(),

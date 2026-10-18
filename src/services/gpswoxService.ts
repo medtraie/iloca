@@ -122,21 +122,27 @@ const getApiCandidates = async () => {
 
   const candidates: string[] = [];
 
-  // 1. Top priority: User configured apiUrl in Settings (/settings)
+  // 1. Same-origin proxy in browser (Vercel rewrite in production / Vite proxy in local dev) - solves Mixed Content & CORS
+  if (typeof window !== "undefined" && window.location?.origin) {
+    candidates.push(`${window.location.origin}/gpswox-proxy`);
+    candidates.push("/gpswox-proxy");
+  }
+
+  // 2. User configured apiUrl in Settings (/settings)
   if (apiUrl) {
     addHostCandidates(apiUrl, candidates);
   }
 
-  // 2. Env API URL
+  // 3. Env API URL
   if (envApi) {
     addHostCandidates(envApi, candidates);
   }
 
-  // 3. Fallbacks
-  const envBase = getEnvBaseUrl().trim().replace(/\/+$/, "");
-  if (envBase) {
-    addHostCandidates(envBase, candidates);
-  }
+  // 4. Default SF Tracker candidates
+  addHostCandidates("http://sf-tracker.pro/api", candidates);
+  addHostCandidates("https://sf-tracker.pro/api", candidates);
+
+  // 5. Fallback
   candidates.push(DEFAULT_GPSWOX_API_URL);
 
   return [...new Set(candidates.filter(Boolean).map((value) => value.replace(/\/+$/, "")))];
@@ -261,9 +267,38 @@ const writeHashToSupabase = async (hash: string) => {
   await supabase.from("app_settings").upsert(payload, { onConflict: "user_id,setting_key" });
 };
 
+const readHashFromStorage = (): string => {
+  if (typeof window === "undefined") return "";
+  try {
+    const hash = localStorage.getItem(USER_HASH_KEY) || "";
+    const ts = Number(localStorage.getItem(USER_HASH_TS_KEY) || 0);
+    if (hash && ts && Date.now() - ts < HASH_TTL_MS) {
+      return hash;
+    }
+  } catch {}
+  return "";
+};
+
+const writeHashToStorage = (hash: string) => {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(USER_HASH_KEY, hash);
+    localStorage.setItem(USER_HASH_TS_KEY, String(Date.now()));
+  } catch {}
+};
+
+const clearHashFromStorage = () => {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(USER_HASH_KEY);
+    localStorage.removeItem(USER_HASH_TS_KEY);
+  } catch {}
+};
+
 const clearHashInSupabase = async () => {
   memoryCachedHash = "";
   memoryCachedHashTs = 0;
+  clearHashFromStorage();
   const supabase = getSupabaseClient();
   if (!supabase) return;
   try {
@@ -276,7 +311,14 @@ const clearHashInSupabase = async () => {
 const buildUrl = (base: string, path: string, params?: Record<string, string>) => {
   const normalizedBase = base.replace(/\/+$/, "");
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
-  const url = new URL(`${normalizedBase}${cleanPath}`);
+  let url: URL;
+  if (/^https?:\/\//i.test(normalizedBase)) {
+    url = new URL(`${normalizedBase}${cleanPath}`);
+  } else if (typeof window !== "undefined" && window.location?.origin) {
+    url = new URL(`${window.location.origin}${normalizedBase}${cleanPath}`);
+  } else {
+    url = new URL(`http://127.0.0.1:8080${normalizedBase}${cleanPath}`);
+  }
   Object.entries(params || {}).forEach(([k, v]) => {
     if (v !== undefined && v !== null && v !== "") {
       url.searchParams.set(k, v);
@@ -400,7 +442,7 @@ const parseFuel = (item: AnyRecord): GpswoxFuelRecord => {
   return { id, deviceId, quantity, price: price || undefined, station: station || undefined, date, raw: item };
 };
 
-async function fetchJson(url: string, timeoutMs = 4500) {
+async function fetchJson(url: string, timeoutMs = 12000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -421,10 +463,17 @@ async function getUserApiHash(forceFresh = false) {
     return memoryCachedHash;
   }
   if (!forceFresh) {
+    const localCached = readHashFromStorage();
+    if (localCached) {
+      memoryCachedHash = localCached;
+      memoryCachedHashTs = Date.now();
+      return localCached;
+    }
     const cached = await readHashFromSupabase();
     if (cached) {
       memoryCachedHash = cached;
       memoryCachedHashTs = Date.now();
+      writeHashToStorage(cached);
       return cached;
     }
   }
@@ -437,11 +486,12 @@ async function getUserApiHash(forceFresh = false) {
     // 1) Try GET /login?email=...&password=...
     const loginViaQuery = buildUrl(base, "/login", { email, password });
     try {
-      const payload = await fetchJson(loginViaQuery, 4500);
+      const payload = await fetchJson(loginViaQuery, 8000);
       const hash = parseHash(payload);
       if (hash) {
         memoryCachedHash = hash;
         memoryCachedHashTs = Date.now();
+        writeHashToStorage(hash);
         await writeHashToSupabase(hash);
         return hash;
       }
@@ -451,8 +501,8 @@ async function getUserApiHash(forceFresh = false) {
     // 2) Try POST /login with form data (standard Laravel GPSwox)
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 4500);
-      const loginEndpoint = `${base.replace(/\/+$/, "")}/login`;
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const loginEndpoint = buildUrl(base, "/login");
       const formParams = new URLSearchParams();
       formParams.append("email", email);
       formParams.append("password", password);
@@ -468,6 +518,7 @@ async function getUserApiHash(forceFresh = false) {
         if (hash) {
           memoryCachedHash = hash;
           memoryCachedHashTs = Date.now();
+          writeHashToStorage(hash);
           await writeHashToSupabase(hash);
           return hash;
         }
@@ -478,8 +529,8 @@ async function getUserApiHash(forceFresh = false) {
     // 3) Try POST /login with JSON body
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 4500);
-      const loginEndpoint = `${base.replace(/\/+$/, "")}/login`;
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const loginEndpoint = buildUrl(base, "/login");
       const res = await fetch(loginEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -493,6 +544,7 @@ async function getUserApiHash(forceFresh = false) {
         if (hash) {
           memoryCachedHash = hash;
           memoryCachedHashTs = Date.now();
+          writeHashToStorage(hash);
           await writeHashToSupabase(hash);
           return hash;
         }
@@ -845,28 +897,7 @@ export function parseDevicePositions(device: any, from?: string, to?: string): A
     }
   }
 
-  // 4. If only 1 single point exists, synthesize a realistic local approach trail so trajectory replay is always playable
-  if (pts.length === 1) {
-    const target = pts[0];
-    const baseLat = target.lat;
-    const baseLng = target.lng;
-    const synthetic: Array<{ lat: number; lng: number; timestamp: number; speed: number }> = [];
-    const count = 12;
-    for (let i = count; i >= 1; i--) {
-      const ratio = i / count;
-      const offsetLat = -0.0038 * ratio + Math.sin(i * 0.6) * 0.00035;
-      const offsetLng = -0.0042 * ratio + Math.cos(i * 0.6) * 0.00035;
-      synthetic.push({
-        lat: baseLat + offsetLat,
-        lng: baseLng + offsetLng,
-        timestamp: endTs - i * 45000,
-        speed: Math.round(25 + Math.sin(i) * 12)
-      });
-    }
-    synthetic.push(target);
-    return synthetic;
-  }
-
+  // 4. Return genuine breadcrumb points (do not synthesize fake points)
   return pts;
 }
 
@@ -874,7 +905,7 @@ async function getDeviceHistory(deviceId: string, from?: string, to?: string, de
   const fromParts = splitHistoryDateTime(from, false);
   const toParts = splitHistoryDateTime(to, true);
 
-  // 1. Try direct GPSwox request (/get_history on http://sf-tracker.pro/api)
+  // 1. Try direct or proxied GPSwox request (/get_history on sf-tracker.pro)
   const params = {
     device_id: deviceId,
     from_date: fromParts.date,
@@ -922,118 +953,29 @@ async function getDeviceHistory(deviceId: string, from?: string, to?: string, de
       if (records.length >= 2) {
         return records;
       }
-      // If /get_history returned device metadata with latest_positions (e.g. when vehicle was parked during window)
+      // If /get_history returned device metadata with latest_positions
       if (payload?.device) {
         const devicePts = parseDevicePositions(payload.device, from, to);
         if (devicePts.length >= 2) {
           return devicePts;
         }
       }
-    } catch {
-      // Continue to next tier
+    } catch (e) {
+      console.warn(`[GPSWOX] Endpoint ${endpoint} failed:`, e);
     }
   }
 
-  // 2. Parse high-precision breadcrumb positions from deviceContext (instant if raw is present)
+  // 2. Parse high-precision breadcrumb positions from deviceContext ONLY if real trail exists
   if (deviceContext) {
-    const pts = parseDevicePositions(deviceContext, from, to);
-    if (pts.length >= 2) return pts;
-  }
-
-  // 3. Try Supabase Edge Function (handles both history points AND devices list fallback)
-  try {
-    const sb = getSupabaseClient();
-    if (sb) {
-      const { data, error } = await sb.functions.invoke("gpswox", {
-        body: {
-          target: "history",
-          device_id: deviceId,
-          from,
-          to,
-          from_date: fromParts.date,
-          from_time: fromParts.time,
-          to_date: toParts.date,
-          to_time: toParts.time
-        },
-        method: "POST"
-      });
-
-      if (!error && data) {
-        // Check if Edge Function returned the vehicles array (when Edge Function defaults to devices target)
-        const vehiclesArr = Array.isArray(data.vehicles) ? data.vehicles : [];
-        if (vehiclesArr.length > 0) {
-          const matchedVehicle = vehiclesArr.find(
-            (v: any) =>
-              String(v.id) === String(deviceId) ||
-              v.plate === deviceId ||
-              v.name === deviceId ||
-              v.imei === deviceId
-          );
-          if (matchedVehicle) {
-            const vPts = parseDevicePositions(matchedVehicle, from, to);
-            if (vPts.length >= 2) return vPts;
-          }
-        }
-
-        const rawList = Array.isArray(data.data) ? data.data : Array.isArray(data.items) ? data.items : [];
-        // Check if rawList is actually a list of devices or history points
-        const matchedInData = rawList.find(
-          (v: any) =>
-            v &&
-            typeof v === "object" &&
-            (v.device_data || v.raw || v.latest_positions) &&
-            (String(v.id) === String(deviceId) || v.plate === deviceId || v.name === deviceId || v.imei === deviceId)
-        );
-        if (matchedInData) {
-          const dPts = parseDevicePositions(matchedInData, from, to);
-          if (dPts.length >= 2) return dPts;
-        }
-
-        const records = rawList
-          .map((item: any) => ({
-            lat: parseNumber(item.lat ?? item.latitude),
-            lng: parseNumber(item.lng ?? item.longitude),
-            timestamp: parseTimestampSafe(item.timestamp ?? item.raw_time ?? item.time, Date.now()),
-            speed: parseNumber(item.speed ?? item.current_speed)
-          }))
-          .filter((record: any) => Number.isFinite(record.lat) && Number.isFinite(record.lng) && (record.lat !== 0 || record.lng !== 0));
-
-        if (records.length >= 2) {
-          return records;
-        }
-      }
-    }
-  } catch {
-    // Continue to next tier
-  }
-
-  // 4. Fallback: Lookup in local Supabase cache
-  try {
-    const devices = await getDevicesFromSupabaseCache();
-    const matched = devices.find(
-      (d) => String(d.id) === String(deviceId) || d.plate === deviceId || d.name === deviceId || d.imei === deviceId
-    );
-    if (matched) {
-      const pts = parseDevicePositions(matched, from, to);
+    const raw = deviceContext.raw || deviceContext;
+    const hasTrail =
+      (Array.isArray(raw?.tail) && raw.tail.length >= 2) ||
+      (typeof raw?.latest_positions === "string" && raw.latest_positions.includes(";")) ||
+      (typeof raw?.traccar?.latest_positions === "string" && raw.traccar.latest_positions.includes(";"));
+    if (hasTrail) {
+      const pts = parseDevicePositions(deviceContext, from, to);
       if (pts.length >= 2) return pts;
     }
-  } catch {
-    // Continue
-  }
-
-  // 5. Fallback: Check trackingRepository
-  try {
-    const localPositions = await trackingRepository.getPositions(deviceId);
-    if (localPositions.length >= 2) {
-      return localPositions.map((p) => ({
-        lat: p.lat,
-        lng: p.lng,
-        timestamp: p.timestamp,
-        speed: p.speed || 0
-      }));
-    }
-  } catch {
-    // Continue
   }
 
   return [];
