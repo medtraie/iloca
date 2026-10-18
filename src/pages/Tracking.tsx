@@ -568,6 +568,7 @@ export default function Tracking() {
   const [playbackIndex, setPlaybackIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playSpeedMs, setPlaySpeedMs] = useState(160);
+  const [showPlayerHud, setShowPlayerHud] = useState(true);
   const [liveMode, setLiveMode] = useState(false);
   const [geofenceEnabled, setGeofenceEnabled] = useState(false);
   const [geofenceRadiusM, setGeofenceRadiusM] = useState(400);
@@ -1030,6 +1031,7 @@ export default function Tracking() {
 
     stopLive();
     stopPlayback();
+    setShowPlayerHud(true);
     setIsPlaying(true);
     setDeckOpen(false);
 
@@ -1166,6 +1168,7 @@ export default function Tracking() {
 
       drawRoute(normalized, true);
       setDeckOpen(false);
+      setShowPlayerHud(true);
       toast.success(`Trajet chargé avec succès (${normalized.length} points)`, {
         description: `Distance: ${computeRouteStats(normalized).distanceKm} km • Arrêts: ${detectStops(normalized).length}`
       });
@@ -1483,7 +1486,7 @@ export default function Tracking() {
       <div ref={mapContainerRef} className="h-full w-full bg-slate-900" />
 
       {/* FLOATING BOTTOM REPLAY SCRUBBER HUD (Appears when route is loaded) */}
-      {points.length >= 2 && (
+      {points.length >= 2 && showPlayerHud && (
         <div className="absolute bottom-5 left-3 right-3 sm:left-1/2 sm:-translate-x-1/2 sm:w-[700px] z-[1000] bg-slate-950/90 backdrop-blur-3xl border border-cyan-500/30 rounded-3xl p-3 sm:p-4 shadow-2xl space-y-2.5 text-white animate-in slide-in-from-bottom-5 duration-200">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -1551,6 +1554,19 @@ export default function Tracking() {
                   className="h-3.5 w-3.5 rounded-full border border-white"
                   style={{ backgroundColor: tracerColor, boxShadow: `0 0 8px ${tracerColor}` }}
                 />
+              </button>
+
+              {/* Exit / Close Video Player Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  stopPlayback();
+                  setShowPlayerHud(false);
+                }}
+                className="h-9 w-9 rounded-full bg-white/10 hover:bg-rose-500/30 border border-white/20 hover:border-rose-400/40 text-slate-300 hover:text-rose-300 flex items-center justify-center transition-all ml-0.5"
+                title="Quitter / Fermer le lecteur vidéo"
+              >
+                <X className="h-4 w-4" />
               </button>
             </div>
           </div>
@@ -1626,6 +1642,18 @@ export default function Tracking() {
         >
           <Focus className="h-4 w-4" />
         </button>
+
+        {/* Reopen Video Player HUD (when closed) */}
+        {points.length >= 2 && !showPlayerHud && (
+          <button
+            type="button"
+            onClick={() => setShowPlayerHud(true)}
+            className="h-10 w-10 rounded-full bg-cyan-500/25 hover:bg-cyan-500/40 border border-cyan-400/50 text-cyan-300 shadow-[0_8px_32px_rgba(0,0,0,0.25)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center animate-pulse"
+            title="Ouvrir le lecteur vidéo"
+          >
+            <Play className="h-4 w-4 fill-current ml-0.5" />
+          </button>
+        )}
 
         {/* Traceur Style Customization Trigger */}
         <button

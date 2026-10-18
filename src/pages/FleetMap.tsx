@@ -396,25 +396,29 @@ function buildModernVehicleMarker(item: {
   });
 }
 
-function buildFlagMarker(type: "start" | "end") {
-  const isStart = type === "start";
+function buildFlagMarker(type: "start" | "end" | "suivi_start") {
+  const isStart = type === "start" || type === "suivi_start";
+  const isSuivi = type === "suivi_start";
   const bg = isStart ? "#10b981" : "#8b5cf6";
-  const label = isStart ? "A" : "B";
+  const label = isSuivi ? "Départ" : isStart ? "A" : "B";
   const html = `
     <div style="position:relative; transform:translate(-50%, -100%); display:flex; flex-direction:column; align-items:center;">
       <div style="
-        width:24px;
+        padding:${isSuivi ? "2px 8px" : "0"};
+        min-width:24px;
         height:24px;
         border-radius:9999px;
         background:${bg};
         color:#ffffff;
         font-weight:900;
-        font-size:11px;
+        font-size:${isSuivi ? "10px" : "11px"};
         display:flex;
         align-items:center;
         justify-content:center;
         border:2px solid #ffffff;
         box-shadow:0 6px 16px rgba(0,0,0,0.35);
+        white-space:nowrap;
+        letter-spacing:0.5px;
       ">${label}</div>
       <div style="width:2px; height:6px; background:${bg};"></div>
     </div>
@@ -422,8 +426,8 @@ function buildFlagMarker(type: "start" | "end") {
   return L.divIcon({
     className: "flag-marker",
     html,
-    iconSize: [24, 30],
-    iconAnchor: [12, 30]
+    iconSize: [isSuivi ? 64 : 24, 30],
+    iconAnchor: [isSuivi ? 32 : 12, 30]
   });
 }
 
@@ -579,9 +583,15 @@ export default function FleetMap() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackIndex, setPlaybackIndex] = useState(0);
   const [playSpeedMultiplier, setPlaySpeedMultiplier] = useState<number>(1);
+  // Live Suivi vs Historical Route states
+  const [routeMode, setRouteMode] = useState<"history" | "suivi" | null>(null);
+  const [suiviActive, setSuiviActive] = useState<boolean>(false);
+  const [showPlayerHud, setShowPlayerHud] = useState<boolean>(true);
+  const suiviPointsRef = useRef<HistoryPoint[]>([]);
+  const suiviStartTimeRef = useRef<number>(0);
 
-  // GPS Data hook
-  const { data: vehicles = [], error, refetch, isFetching } = useGPSwoxVehicles(30000);
+  // GPS Data hook - polls every 6s during active suivi, 30s otherwise
+  const { data: vehicles = [], error, refetch, isFetching } = useGPSwoxVehicles(suiviActive ? 6000 : 30000);
 
   // Normalized fleet items (including raw payload for instant traceur & history extraction)
   const items = useMemo(() => {
@@ -819,32 +829,187 @@ export default function FleetMap() {
     [tracerColor, tracerWeight, tracerSize, tracerGlow, selectedItem?.label]
   );
 
+  // Draw Live Suivi Polyline & Custom Traceur Marker
+  const renderSuiviOnMap = useCallback(
+    (pts: HistoryPoint[], fitBounds = false) => {
+      const map = mapRef.current;
+      const overlay = overlayLayerRef.current;
+      if (!map || !overlay || pts.length === 0) return;
+
+      clearRouteOverlays();
+
+      const coords = pts.map((p) => [p.lat, p.lng] as [number, number]);
+      const currentPt = pts[pts.length - 1];
+
+      // Green "Départ" Flag Marker at the initial point where Suivi was activated
+      startMarkerRef.current = L.marker(coords[0], {
+        icon: buildFlagMarker("suivi_start"),
+        zIndexOffset: 800
+      }).addTo(overlay);
+
+      // Main customizable Traceur Polyline if at least 2 points
+      if (pts.length >= 2) {
+        if (tracerGlow) {
+          routeGlowLineRef.current = L.polyline(coords, {
+            color: tracerColor,
+            weight: tracerWeight * 2.4,
+            opacity: 0.35,
+            lineCap: "round",
+            lineJoin: "round"
+          }).addTo(overlay);
+        }
+
+        routeLineRef.current = L.polyline(coords, {
+          color: tracerColor,
+          weight: tracerWeight,
+          opacity: 0.95,
+          lineCap: "round",
+          lineJoin: "round"
+        }).addTo(overlay);
+      }
+
+      // Traceur marker at latest position
+      traceMarkerRef.current = L.marker([currentPt.lat, currentPt.lng], {
+        icon: buildCustomTraceurMarker({
+          color: tracerColor,
+          size: tracerSize,
+          speed: currentPt.speed || 0,
+          label: selectedItem?.label || "Traceur",
+          glow: tracerGlow
+        }),
+        zIndexOffset: 1350
+      }).addTo(overlay);
+
+      if (fitBounds) {
+        if (pts.length >= 2) {
+          map.fitBounds(L.latLngBounds(coords), { padding: [60, 60], maxZoom: 17 });
+        } else {
+          map.flyTo([currentPt.lat, currentPt.lng], 16, { duration: 0.6 });
+        }
+      }
+    },
+    [tracerColor, tracerWeight, tracerSize, tracerGlow, selectedItem?.label]
+  );
+
   // Dynamically update Traceur appearance when user changes color, weight, size, or glow
   useEffect(() => {
-    if (routePoints.length >= 2) {
+    if (routeMode === "suivi" && suiviPointsRef.current.length > 0) {
+      renderSuiviOnMap(suiviPointsRef.current, false);
+    } else if (routeMode === "history" && routePoints.length >= 2) {
       renderRouteOnMap(routePoints, false);
     }
-  }, [tracerColor, tracerWeight, tracerSize, tracerGlow, routePoints, renderRouteOnMap]);
+  }, [tracerColor, tracerWeight, tracerSize, tracerGlow, routeMode, renderSuiviOnMap, renderRouteOnMap, routePoints]);
 
-  // Automatic Live Traceur when following/selecting a vehicle (Suivi)
+  // Automatic Live Traceur when activating Suivi on a vehicle
   const activateVehicleSuiviAndTracer = useCallback(
     (targetId: string, zoomToRoute = true) => {
       const target = items.find((i) => String(i.id) === String(targetId));
       if (!target) return;
       setSelectedId(target.id);
       setFollowSelected(true);
-      const instantPts = gpswoxService.parseDevicePositions(target);
-      if (instantPts.length >= 2) {
-        playbackIndexRef.current = instantPts.length - 1;
-        setPlaybackIndex(instantPts.length - 1);
-        setRoutePoints(instantPts);
-        renderRouteOnMap(instantPts, zoomToRoute);
-      } else if (target.last && mapRef.current) {
-        mapRef.current.flyTo([target.last.lat, target.last.lng], 16, { duration: 0.7 });
+      setSuiviActive(true);
+      setRouteMode("suivi");
+      setShowPlayerHud(true);
+      stopPlayback();
+
+      if (target.last && Number.isFinite(target.last.lat) && Number.isFinite(target.last.lng)) {
+        const startPt: HistoryPoint = {
+          lat: target.last.lat,
+          lng: target.last.lng,
+          speed: target.speed || 0,
+          timestamp: Date.now()
+        };
+        suiviPointsRef.current = [startPt];
+        suiviStartTimeRef.current = Date.now();
+        setRoutePoints([startPt]);
+        renderSuiviOnMap([startPt], zoomToRoute);
+        toast.success(`Suivi & Traceur activés : ${target.label}`, {
+          description: "Tracé en direct depuis cette position."
+        });
+      } else if (mapRef.current) {
+        toast.info("En attente de la position GPS en direct...");
       }
     },
-    [items, renderRouteOnMap]
+    [items, renderSuiviOnMap]
   );
+
+  // Accumulate vehicle positions live in real-time while Suivi is active
+  useEffect(() => {
+    if (!suiviActive || !selectedId || routeMode !== "suivi") return;
+    const currentVehicle = vehicles.find((v) => String(v.id) === String(selectedId));
+    if (
+      !currentVehicle?.lastPosition ||
+      !Number.isFinite(currentVehicle.lastPosition.lat) ||
+      !Number.isFinite(currentVehicle.lastPosition.lng)
+    ) {
+      return;
+    }
+
+    const curLat = currentVehicle.lastPosition.lat;
+    const curLng = currentVehicle.lastPosition.lng;
+    const curSpeed = currentVehicle.lastPosition.speed || currentVehicle.speed || 0;
+
+    const prevPts = suiviPointsRef.current;
+    if (prevPts.length === 0) {
+      const initialPt: HistoryPoint = {
+        lat: curLat,
+        lng: curLng,
+        speed: curSpeed,
+        timestamp: Date.now()
+      };
+      suiviPointsRef.current = [initialPt];
+      setRoutePoints([initialPt]);
+      renderSuiviOnMap([initialPt], false);
+      return;
+    }
+
+    const lastPt = prevPts[prevPts.length - 1];
+    const distDelta = haversineKm(lastPt, { lat: curLat, lng: curLng });
+
+    // When vehicle moves at least 2 meters (0.002 km)
+    if (distDelta >= 0.002 || (curSpeed > 0 && distDelta >= 0.0005)) {
+      const newPt: HistoryPoint = {
+        lat: curLat,
+        lng: curLng,
+        speed: curSpeed,
+        timestamp: Date.now()
+      };
+      const updatedPts = [...prevPts, newPt];
+      suiviPointsRef.current = updatedPts;
+      setRoutePoints(updatedPts);
+      renderSuiviOnMap(updatedPts, false);
+
+      if (followSelected && mapRef.current) {
+        mapRef.current.panTo([curLat, curLng], { animate: true, duration: 0.8 });
+      }
+    } else {
+      // Vehicle stopped or stationary: update traceur marker with latest telemetry
+      if (traceMarkerRef.current) {
+        traceMarkerRef.current.setLatLng([curLat, curLng]);
+        traceMarkerRef.current.setIcon(
+          buildCustomTraceurMarker({
+            color: tracerColor,
+            size: tracerSize,
+            speed: curSpeed,
+            label: selectedItem?.label || "Traceur",
+            glow: tracerGlow
+          })
+        );
+      }
+    }
+  }, [
+    vehicles,
+    suiviActive,
+    selectedId,
+    routeMode,
+    followSelected,
+    tracerColor,
+    tracerWeight,
+    tracerSize,
+    tracerGlow,
+    selectedItem?.label,
+    renderSuiviOnMap
+  ]);
 
   // Load Historical Route for selected vehicle
   const loadVehicleHistory = async (deviceId: string, autoPlayAfterLoad = false) => {
@@ -856,6 +1021,9 @@ export default function FleetMap() {
     if (targetDeviceId !== selectedId) {
       setSelectedId(targetDeviceId);
     }
+    setSuiviActive(false);
+    setRouteMode("history");
+    setShowPlayerHud(true);
     setIsLoadingRoute(true);
     stopPlayback();
     playbackIndexRef.current = 0;
@@ -903,6 +1071,8 @@ export default function FleetMap() {
       setRoutePoints(normalized);
 
       if (normalized.length >= 2) {
+        setRouteMode("history");
+        setShowPlayerHud(true);
         renderRouteOnMap(normalized, true);
         setDeckOpen(false);
         toast.success(`Trajet & Traceur activés (${normalized.length} points)`, {
@@ -1432,9 +1602,9 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
       {/* FULL-WIDTH LEAFLET MAP CONTAINER */}
       <div ref={mapContainerRef} className="h-full w-full bg-slate-900" />
 
-      {/* FLOATING BOTTOM REPLAY SCRUBBER (Appears when route is loaded) */}
-      {routePoints.length >= 2 && (
-        <div className="absolute bottom-5 left-4 right-4 sm:left-1/2 sm:-translate-x-1/2 sm:w-[650px] z-[1000] bg-slate-950/90 backdrop-blur-3xl border border-white/20 rounded-3xl p-3 sm:p-4 shadow-2xl space-y-2.5 text-white">
+      {/* FLOATING BOTTOM PLAYER HUD (Replay for history OR Real-time HUD for live suivi) */}
+      {showPlayerHud && (routePoints.length >= 2 || (routeMode === "suivi" && routePoints.length >= 1)) && (
+        <div className="absolute bottom-5 left-4 right-4 sm:left-1/2 sm:-translate-x-1/2 sm:w-[680px] z-[1000] bg-slate-950/90 backdrop-blur-3xl border border-white/20 rounded-3xl p-3 sm:p-4 shadow-2xl space-y-2.5 text-white animate-in slide-in-from-bottom-4 duration-200">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
               <span
@@ -1445,17 +1615,34 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                   color: tracerColor
                 }}
               >
-                <Route className="h-4 w-4" />
+                {routeMode === "suivi" ? <Radio className="h-4 w-4 animate-pulse" /> : <Route className="h-4 w-4" />}
               </span>
               <div className="min-w-0">
                 <div className="text-xs font-black tracking-tight flex items-center gap-1.5">
-                  <span className="truncate">Traceur & Trajet : {selectedItem?.label}</span>
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-white/30 text-white font-bold">
-                    {routePoints.length} pts
-                  </Badge>
+                  <span className="truncate">
+                    {routeMode === "suivi" ? `Suivi en Direct : ${selectedItem?.label || "Véhicule"}` : `Traceur & Trajet : ${selectedItem?.label}`}
+                  </span>
+                  {routeMode === "suivi" ? (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-400/50 bg-emerald-500/20 text-emerald-300 font-bold shrink-0 flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
+                      EN DIRECT
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-white/30 text-white font-bold shrink-0">
+                      {routePoints.length} pts
+                    </Badge>
+                  )}
                 </div>
-                <div className="text-[11px] text-slate-300 font-semibold">
-                  Distance: {routeStats.distanceKm} km • Arrêts: {detectedStops.length}
+                <div className="text-[11px] text-slate-300 font-semibold truncate">
+                  {routeMode === "suivi" ? (
+                    <span>
+                      Distance: <strong className="text-white">{routeStats.distanceKm} km</strong> • Vitesse: <strong style={{ color: tracerColor }}>{Math.round(selectedItem?.speed || 0)} km/h</strong> • {routePoints.length} points
+                    </span>
+                  ) : (
+                    <span>
+                      Distance: {routeStats.distanceKm} km • Arrêts: {detectedStops.length} • Vitesse max: {routeStats.maxSpeed} km/h
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -1476,104 +1663,160 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                 <span className="text-[10px] text-slate-300">{tracerWeight}px</span>
               </button>
 
-              {/* Playback speed multiplier */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 px-2 rounded-xl text-xs font-bold border-white/20 bg-white/10 text-white hover:bg-white/20">
-                    {playSpeedMultiplier}x
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="rounded-xl">
-                  {[0.5, 1, 2, 5, 10].map((s) => (
-                    <DropdownMenuItem
-                      key={s}
-                      onClick={() => setPlaySpeedMultiplier(s)}
-                      className="cursor-pointer font-bold text-xs"
-                    >
-                      {s}x Vitesse
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {routeMode === "history" && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-8 px-2 rounded-xl text-xs font-bold border-white/20 bg-white/10 text-white hover:bg-white/20">
+                      {playSpeedMultiplier}x
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="rounded-xl">
+                    {[0.5, 1, 2, 5, 10].map((s) => (
+                      <DropdownMenuItem
+                        key={s}
+                        onClick={() => setPlaySpeedMultiplier(s)}
+                        className="cursor-pointer font-bold text-xs"
+                      >
+                        {s}x Vitesse
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
 
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  stopPlayback();
-                  clearRouteOverlays();
-                  setRoutePoints([]);
-                }}
-                className="h-8 px-2 rounded-xl text-xs text-slate-300 hover:text-white hover:bg-white/10"
-              >
-                ✕
-              </Button>
+              {routeMode === "suivi" ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSuiviActive(false);
+                    setRouteMode(null);
+                    clearRouteOverlays();
+                    setRoutePoints([]);
+                    suiviPointsRef.current = [];
+                    setShowPlayerHud(false);
+                    toast.info("Suivi en direct désactivé");
+                  }}
+                  className="h-8 px-2.5 rounded-xl text-xs bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 hover:text-white border border-rose-400/30 font-bold transition flex items-center gap-1"
+                  title="Arrêter le suivi en direct"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Arrêter</span>
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    stopPlayback();
+                    clearRouteOverlays();
+                    setRoutePoints([]);
+                    setRouteMode(null);
+                    setShowPlayerHud(false);
+                  }}
+                  className="h-8 px-2 rounded-xl text-xs text-slate-300 hover:text-white hover:bg-white/10"
+                  title="Fermer le lecteur"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           </div>
 
-          {/* Interactive Scrubber Slider */}
-          <div className="space-y-1.5 pt-1">
-            <Slider
-              value={[playbackIndex]}
-              max={routePoints.length - 1}
-              step={1}
-              onValueChange={(val) => handleSeek(val[0])}
-              className="cursor-pointer"
-            />
-            <div className="flex items-center justify-between text-[11px] font-bold text-slate-300">
-              <span>
-                {routePoints[playbackIndex]
-                  ? new Date(routePoints[playbackIndex].timestamp).toLocaleTimeString()
-                  : "-"}
-              </span>
-              <span className="font-black" style={{ color: tracerColor }}>
-                {routePoints[playbackIndex] ? `${Math.round(routePoints[playbackIndex].speed || 0)} km/h` : "0 km/h"}
-              </span>
-              <span>
-                {routePoints[routePoints.length - 1]
-                  ? new Date(routePoints[routePoints.length - 1].timestamp).toLocaleTimeString()
-                  : "-"}
-              </span>
+          {/* Body of HUD: Live Suivi vs History Replay */}
+          {routeMode === "suivi" ? (
+            <div className="pt-1.5 pb-0.5 space-y-2">
+              <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 bg-white/[0.04] px-3 py-2 rounded-2xl border border-white/10">
+                <span className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400" />
+                  Départ : {routePoints[0] ? new Date(routePoints[0].timestamp).toLocaleTimeString() : "--:--"}
+                </span>
+                <span className="font-mono text-emerald-300">
+                  Cadence : 6s • {followSelected ? "Centrage auto ACTIF" : "Centrage libre"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedItem?.last) {
+                      mapRef.current?.flyTo([selectedItem.last.lat, selectedItem.last.lng], 17, { duration: 0.6 });
+                      setFollowSelected(true);
+                    }
+                  }}
+                  className="px-2.5 py-1 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/35 border border-cyan-400/40 text-cyan-300 text-[10px] font-black transition"
+                >
+                  Centrer
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <>
+              {/* Interactive Scrubber Slider for History */}
+              <div className="space-y-1.5 pt-1">
+                <Slider
+                  value={[playbackIndex]}
+                  max={Math.max(1, routePoints.length - 1)}
+                  step={1}
+                  onValueChange={(val) => handleSeek(val[0])}
+                  className="cursor-pointer"
+                />
+                <div className="flex items-center justify-between text-[11px] font-bold text-slate-300">
+                  <span>
+                    {routePoints[playbackIndex]
+                      ? new Date(routePoints[playbackIndex].timestamp).toLocaleTimeString()
+                      : "-"}
+                  </span>
+                  <span className="font-black" style={{ color: tracerColor }}>
+                    {routePoints[playbackIndex] ? `${Math.round(routePoints[playbackIndex].speed || 0)} km/h` : "0 km/h"}
+                  </span>
+                  <span>
+                    {routePoints[routePoints.length - 1]
+                      ? new Date(routePoints[routePoints.length - 1].timestamp).toLocaleTimeString()
+                      : "-"}
+                  </span>
+                </div>
+              </div>
 
-          {/* Media Buttons */}
-          <div className="flex items-center justify-center gap-3 pt-1">
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={() => handleSeek(playbackIndex - 5)}
-              className="h-8 w-8 rounded-full border-white/20 bg-white/10 text-white hover:bg-white/20"
-              title="-5 points"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              size="sm"
-              onClick={togglePlay}
-              style={{ backgroundColor: tracerColor }}
-              className="rounded-2xl px-5 h-9 font-black text-slate-950 shadow-md hover:scale-105 transition-transform"
-            >
-              {isPlaying ? <Pause className="h-4 w-4 mr-1.5 fill-current" /> : <Play className="h-4 w-4 mr-1.5 fill-current" />}
-              {isPlaying ? "Pause" : "Lire Vidéo"}
-            </Button>
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={() => handleSeek(playbackIndex + 5)}
-              className="h-8 w-8 rounded-full border-white/20 bg-white/10 text-white hover:bg-white/20"
-              title="+5 points"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+              {/* Media Buttons for History */}
+              <div className="flex items-center justify-center gap-3 pt-1">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={() => handleSeek(playbackIndex - 5)}
+                  className="h-8 w-8 rounded-full border-white/20 bg-white/10 text-white hover:bg-white/20"
+                  title="-5 points"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+
+                <Button
+                  size="sm"
+                  onClick={togglePlay}
+                  style={{ backgroundColor: tracerColor }}
+                  className="rounded-2xl px-5 h-9 font-black text-slate-950 shadow-md hover:scale-105 transition-transform"
+                >
+                  {isPlaying ? <Pause className="h-4 w-4 mr-1.5 fill-current" /> : <Play className="h-4 w-4 mr-1.5 fill-current ml-0.5" />}
+                  {isPlaying ? "Pause" : "Lire Vidéo"}
+                </Button>
+
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={() => handleSeek(playbackIndex + 5)}
+                  className="h-8 w-8 rounded-full border-white/20 bg-white/10 text-white hover:bg-white/20"
+                  title="+5 points"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
       {/* 2026 FLOATING TRANSLUCENT BOTTOM "PARC / FLOTTE" BUTTON (Inspired by Reference Image) */}
       <div
         className={`absolute left-1/2 -translate-x-1/2 z-[1000] pointer-events-auto transition-all duration-300 ${
-          routePoints.length >= 2 ? "bottom-44" : "bottom-6"
+          showPlayerHud && (routePoints.length >= 2 || (routeMode === "suivi" && routePoints.length >= 1)) ? "bottom-44" : "bottom-6"
         }`}
       >
         <button
@@ -1624,15 +1867,38 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
           onClick={() => {
             const targetId = selectedId || visibleItems[0]?.id;
             if (targetId) {
-              activateVehicleSuiviAndTracer(targetId, true);
-              toast.success("Traceur & Suivi activés sur la carte");
+              if (suiviActive) {
+                setShowPlayerHud(true);
+                setFollowSelected(true);
+                if (selectedItem?.last) {
+                  mapRef.current?.flyTo([selectedItem.last.lat, selectedItem.last.lng], 17, { duration: 0.6 });
+                }
+              } else {
+                activateVehicleSuiviAndTracer(targetId, true);
+              }
             }
           }}
-          className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/25 dark:bg-black/20 dark:hover:bg-black/40 backdrop-blur-2xl border border-white/30 text-emerald-400 shadow-[0_8px_32px_rgba(0,0,0,0.2)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center"
-          title="Activer Suivi & Traceur du véhicule"
+          className={`h-10 w-10 rounded-full backdrop-blur-2xl border shadow-[0_8px_32px_rgba(0,0,0,0.2)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center ${
+            suiviActive
+              ? "bg-emerald-500/30 border-emerald-400 text-emerald-300 ring-2 ring-emerald-400/50"
+              : "bg-white/10 hover:bg-white/25 dark:bg-black/20 dark:hover:bg-black/40 border-white/30 text-emerald-400"
+          }`}
+          title={suiviActive ? "Suivi en direct ACTIF (Cliquer pour centrer)" : "Activer Suivi & Traceur du véhicule"}
         >
           <Radio className="h-4 w-4 animate-pulse" />
         </button>
+
+        {/* Reopen Player HUD if closed */}
+        {!showPlayerHud && (routePoints.length >= 2 || (routeMode === "suivi" && routePoints.length >= 1)) && (
+          <button
+            type="button"
+            onClick={() => setShowPlayerHud(true)}
+            className="h-10 w-10 rounded-full bg-cyan-500/25 hover:bg-cyan-500/40 border border-cyan-400/50 text-cyan-300 shadow-[0_8px_32px_rgba(0,0,0,0.25)] hover:scale-110 active:scale-95 transition-all flex items-center justify-center animate-pulse"
+            title="Afficher le lecteur de trajet"
+          >
+            <Play className="h-4 w-4 fill-current ml-0.5" />
+          </button>
+        )}
 
         {/* Traceur Style Customization Trigger (Couleur & Taille) */}
         <button
