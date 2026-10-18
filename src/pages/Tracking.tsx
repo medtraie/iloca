@@ -155,9 +155,12 @@ const formatAgo = (timestamp: number | undefined) => {
 };
 
 const toIsoRange = (from: Date | undefined, to: Date | undefined) => {
-  const fromIso = (from || new Date(Date.now() - 24 * 3600 * 1000)).toISOString();
-  const toIso = (to || new Date()).toISOString();
-  return { fromIso, toIso };
+  const f = from ? new Date(from) : new Date(Date.now() - 24 * 3600 * 1000);
+  const t = to ? new Date(to) : new Date();
+  if (t.getHours() === 0 && t.getMinutes() === 0 && t.getSeconds() === 0) {
+    t.setHours(23, 59, 59, 999);
+  }
+  return { fromIso: f.toISOString(), toIso: t.toISOString() };
 };
 
 const haversineKm = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
@@ -1189,8 +1192,9 @@ export default function Tracking() {
       setToDate(now);
     } else if (preset === "today") {
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+      const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
       setFromDate(todayStart);
-      setToDate(now);
+      setToDate(todayEnd);
     } else if (preset === "24h") {
       setFromDate(new Date(now.getTime() - 24 * 3600 * 1000));
       setToDate(now);
@@ -2347,11 +2351,29 @@ export default function Tracking() {
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <span className="text-[10px] text-slate-400 font-semibold">Date début</span>
-                      <DatePicker value={fromDate} onChange={(d) => { setFromDate(d); setDatePreset("custom"); }} />
+                      <DatePicker
+                        value={fromDate}
+                        onChange={(d) => {
+                          setFromDate(d);
+                          setDatePreset("custom");
+                        }}
+                      />
                     </div>
                     <div className="space-y-1">
                       <span className="text-[10px] text-slate-400 font-semibold">Date fin</span>
-                      <DatePicker value={toDate} onChange={(d) => { setToDate(d); setDatePreset("custom"); }} />
+                      <DatePicker
+                        value={toDate}
+                        onChange={(d) => {
+                          if (d) {
+                            const adjusted = new Date(d);
+                            adjusted.setHours(23, 59, 59, 999);
+                            setToDate(adjusted);
+                          } else {
+                            setToDate(undefined);
+                          }
+                          setDatePreset("custom");
+                        }}
+                      />
                     </div>
                   </div>
 

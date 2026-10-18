@@ -154,17 +154,32 @@ const parseBool = (v: any) => {
   return false;
 };
 
-const splitHistoryDateTime = (input?: string) => {
-  if (!input) return { date: "", time: "" };
-  const asDate = new Date(input);
-  if (Number.isNaN(asDate.getTime())) return { date: "", time: "" };
+let memoryCachedHash = "";
+let memoryCachedHashTs = 0;
+
+const splitHistoryDateTime = (input?: string, isEnd = false) => {
+  if (!input) return { date: "", time: isEnd ? "23:59:59" : "00:00:00" };
+  const str = String(input).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return { date: str, time: isEnd ? "23:59:59" : "00:00:00" };
+  }
+  if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}$/.test(str)) {
+    const [d, t] = str.split(/\s+/);
+    return { date: d, time: t };
+  }
+  const asDate = new Date(str);
+  if (Number.isNaN(asDate.getTime())) return { date: "", time: isEnd ? "23:59:59" : "00:00:00" };
   const yyyy = asDate.getFullYear();
   const mm = String(asDate.getMonth() + 1).padStart(2, "0");
   const dd = String(asDate.getDate()).padStart(2, "0");
   const hh = String(asDate.getHours()).padStart(2, "0");
   const mi = String(asDate.getMinutes()).padStart(2, "0");
   const ss = String(asDate.getSeconds()).padStart(2, "0");
-  return { date: `${yyyy}-${mm}-${dd}`, time: `${hh}:${mi}:${ss}` };
+  let time = `${hh}:${mi}:${ss}`;
+  if (isEnd && time === "00:00:00") {
+    time = "23:59:59";
+  }
+  return { date: `${yyyy}-${mm}-${dd}`, time };
 };
 
 const pickArray = (payload: any): any[] => {
@@ -244,6 +259,18 @@ const writeHashToSupabase = async (hash: string) => {
     { setting_key: USER_HASH_TS_KEY, setting_value: Date.now() }
   ];
   await supabase.from("app_settings").upsert(payload, { onConflict: "user_id,setting_key" });
+};
+
+const clearHashInSupabase = async () => {
+  memoryCachedHash = "";
+  memoryCachedHashTs = 0;
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  try {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData?.user) return;
+    await supabase.from("app_settings").delete().in("setting_key", [USER_HASH_KEY, USER_HASH_TS_KEY]);
+  } catch {}
 };
 
 const buildUrl = (base: string, path: string, params?: Record<string, string>) => {
@@ -387,11 +414,20 @@ async function fetchJson(url: string, timeoutMs = 4500) {
   }
 }
 
-async function getUserApiHash() {
+async function getUserApiHash(forceFresh = false) {
   const directHash = (import.meta.env.VITE_GPSWOX_USER_API_HASH as string | undefined) || "";
-  if (directHash) return directHash;
-  const cached = await readHashFromSupabase();
-  if (cached) return cached;
+  if (directHash && !forceFresh) return directHash;
+  if (!forceFresh && memoryCachedHash && Date.now() - memoryCachedHashTs < HASH_TTL_MS) {
+    return memoryCachedHash;
+  }
+  if (!forceFresh) {
+    const cached = await readHashFromSupabase();
+    if (cached) {
+      memoryCachedHash = cached;
+      memoryCachedHashTs = Date.now();
+      return cached;
+    }
+  }
 
   const { email, password } = await getGpsConfig();
   if (!email || !password) return "";
@@ -404,6 +440,8 @@ async function getUserApiHash() {
       const payload = await fetchJson(loginViaQuery, 4500);
       const hash = parseHash(payload);
       if (hash) {
+        memoryCachedHash = hash;
+        memoryCachedHashTs = Date.now();
         await writeHashToSupabase(hash);
         return hash;
       }
@@ -428,6 +466,8 @@ async function getUserApiHash() {
         const payload = await res.json();
         const hash = parseHash(payload);
         if (hash) {
+          memoryCachedHash = hash;
+          memoryCachedHashTs = Date.now();
           await writeHashToSupabase(hash);
           return hash;
         }
@@ -451,6 +491,8 @@ async function getUserApiHash() {
         const payload = await res.json();
         const hash = parseHash(payload);
         if (hash) {
+          memoryCachedHash = hash;
+          memoryCachedHashTs = Date.now();
           await writeHashToSupabase(hash);
           return hash;
         }
@@ -461,16 +503,36 @@ async function getUserApiHash() {
   return "";
 }
 
-async function request(path: string, params?: Record<string, string>) {
-  const userApiHash = await getUserApiHash();
+async function request(path: string, params?: Record<string, string>, retryOnAuth = true): Promise<any> {
+  let userApiHash = await getUserApiHash();
   if (!userApiHash) {
     throw new Error("GPSWOX_MISSING_USER_API_HASH");
   }
   let lastError: unknown = null;
-  for (const base of await getApiCandidates()) {
+  const candidates = await getApiCandidates();
+  for (const base of candidates) {
     try {
       const url = buildUrl(base, path, { ...params, user_api_hash: userApiHash });
-      return await fetchJson(url, 4500);
+      const payload = await fetchJson(url, 6000);
+      if (payload && (payload.status === 0 || payload.status === false)) {
+        const msg = String(payload.message || "").toLowerCase();
+        if (
+          retryOnAuth &&
+          (msg.includes("connexion") ||
+            msg.includes("auth") ||
+            msg.includes("hash") ||
+            msg.includes("token") ||
+            msg.includes("échec") ||
+            payload.status === 0)
+        ) {
+          await clearHashInSupabase();
+          userApiHash = await getUserApiHash(true);
+          if (userApiHash) {
+            return await request(path, params, false);
+          }
+        }
+      }
+      return payload;
     } catch (error) {
       lastError = error;
     }
@@ -809,8 +871,8 @@ export function parseDevicePositions(device: any, from?: string, to?: string): A
 }
 
 async function getDeviceHistory(deviceId: string, from?: string, to?: string, deviceContext?: any) {
-  const fromParts = splitHistoryDateTime(from);
-  const toParts = splitHistoryDateTime(to);
+  const fromParts = splitHistoryDateTime(from, false);
+  const toParts = splitHistoryDateTime(to, true);
 
   // 1. Try direct GPSwox request (/get_history on http://sf-tracker.pro/api)
   const params = {
@@ -824,11 +886,27 @@ async function getDeviceHistory(deviceId: string, from?: string, to?: string, de
   for (const endpoint of endpoints) {
     try {
       const payload = await request(endpoint, params);
-      const rawItems = Array.isArray(payload?.items) ? payload.items : pickArray(payload);
-      const rows = rawItems.flatMap((group: any) => {
-        if (Array.isArray(group?.items)) return group.items;
-        return [group];
-      });
+      let rawGroups: any[] = [];
+      if (Array.isArray(payload?.items)) {
+        rawGroups = payload.items;
+      } else if (payload?.items && typeof payload.items === "object") {
+        rawGroups = Object.values(payload.items);
+      } else {
+        rawGroups = pickArray(payload);
+      }
+
+      const rows: any[] = [];
+      for (const group of rawGroups) {
+        if (!group) continue;
+        if (Array.isArray(group.items)) {
+          rows.push(...group.items);
+        } else if (group.items && typeof group.items === "object") {
+          rows.push(...Object.values(group.items));
+        } else if (group.lat !== undefined || group.latitude !== undefined) {
+          rows.push(group);
+        }
+      }
+
       const records = rows
         .map((item: any) => ({
           lat: parseNumber(item.lat ?? item.latitude),
@@ -838,7 +916,9 @@ async function getDeviceHistory(deviceId: string, from?: string, to?: string, de
         }))
         .filter(
           (record: any) => Number.isFinite(record.lat) && Number.isFinite(record.lng) && (record.lat !== 0 || record.lng !== 0)
-        );
+        )
+        .sort((a, b) => a.timestamp - b.timestamp);
+
       if (records.length >= 2) {
         return records;
       }

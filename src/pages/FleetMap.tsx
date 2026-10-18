@@ -871,13 +871,21 @@ export default function FleetMap() {
         const startOfToday = new Date();
         startOfToday.setHours(0, 0, 0, 0);
         fromIso = startOfToday.toISOString();
+        const endOfToday = new Date();
+        endOfToday.setHours(23, 59, 59, 999);
+        toIso = endOfToday.toISOString();
       } else if (datePreset === "24h") {
         fromIso = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
       } else if (datePreset === "7d") {
         fromIso = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
       } else {
-        fromIso = (customFrom || new Date(Date.now() - 24 * 3600 * 1000)).toISOString();
-        toIso = (customTo || new Date()).toISOString();
+        const f = customFrom ? new Date(customFrom) : new Date(Date.now() - 24 * 3600 * 1000);
+        const t = customTo ? new Date(customTo) : new Date();
+        if (t.getHours() === 0 && t.getMinutes() === 0 && t.getSeconds() === 0) {
+          t.setHours(23, 59, 59, 999);
+        }
+        fromIso = f.toISOString();
+        toIso = t.toISOString();
       }
 
       const targetItem = items.find((i) => String(i.id) === String(targetDeviceId)) || selectedItem;
@@ -2447,7 +2455,18 @@ ${detectedStops.map((s, idx) => `  ${idx + 1}. Durée: ${s.durationMin} min | Du
                     </div>
                     <div className="space-y-1">
                       <span className="text-[10px] font-bold text-slate-400">Au</span>
-                      <DatePicker value={customTo} onChange={setCustomTo} />
+                      <DatePicker
+                        value={customTo}
+                        onChange={(d) => {
+                          if (d) {
+                            const adjusted = new Date(d);
+                            adjusted.setHours(23, 59, 59, 999);
+                            setCustomTo(adjusted);
+                          } else {
+                            setCustomTo(undefined);
+                          }
+                        }}
+                      />
                     </div>
                   </div>
                 )}
