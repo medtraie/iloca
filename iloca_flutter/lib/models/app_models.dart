@@ -227,6 +227,33 @@ class VehicleModel {
 }
 
 /// 3. Contract Model (100% compatible with Supabase `public.contracts`)
+class DamagePointModel {
+  final String id;
+  final double x;
+  final double y;
+
+  const DamagePointModel({
+    required this.id,
+    required this.x,
+    required this.y,
+  });
+
+  factory DamagePointModel.fromJson(Map<String, dynamic> map) {
+    double toNum(dynamic v) => double.tryParse((v ?? '0').toString()) ?? 0;
+    return DamagePointModel(
+      id: (map['id'] ?? 'dmg_${DateTime.now().microsecondsSinceEpoch}').toString(),
+      x: toNum(map['x']).clamp(0.0, 100.0),
+      y: toNum(map['y']).clamp(0.0, 100.0),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'x': x,
+        'y': y,
+      };
+}
+
 class ContractModel {
   final String id;
   final String contractNumber;
@@ -242,7 +269,12 @@ class ContractModel {
   final double totalAmount;
   final double advancePayment;
   final String paymentMethod; // 'Espèces' | 'Chèque' | 'Virement'
-  final String status; // 'ouvert' | 'ferme' | 'signed' | 'completed'
+  final String status; // 'ouvert' | 'ferme' | 'signed' | 'completed' | 'draft' | 'sent'
+  final String notes;
+  final int deliveryFuelLevel;
+  final int returnFuelLevel;
+  final List<DamagePointModel> deliveryDamages;
+  final List<DamagePointModel> returnDamages;
   final Map<String, dynamic> contractData;
   final String createdAt;
   final String updatedAt;
@@ -263,24 +295,124 @@ class ContractModel {
     this.advancePayment = 0,
     this.paymentMethod = 'Espèces',
     this.status = 'ouvert',
+    this.notes = '',
+    this.deliveryFuelLevel = 100,
+    this.returnFuelLevel = 100,
+    this.deliveryDamages = const [],
+    this.returnDamages = const [],
     this.contractData = const {},
     required this.createdAt,
     required this.updatedAt,
   });
 
-  int get durationDays {
-    final s = DateTime.tryParse(startDate);
-    final e = DateTime.tryParse(endDate);
+  int get baseDurationDays {
+    final manualDays = int.tryParse(
+          (contractData['rentalDays'] ?? contractData['rentalDuration'] ?? '')
+              .toString(),
+        ) ??
+        0;
+    if (manualDays > 0) return manualDays;
+    final s = DateTime.tryParse(startDate.split('T').first);
+    final e = DateTime.tryParse(endDate.split('T').first);
     if (s == null || e == null) return 1;
     final diff = e.difference(s).inDays;
     return diff <= 0 ? 1 : diff;
   }
 
+  int get extensionDays {
+    final ext = int.tryParse((contractData['extendedDays'] ?? '0').toString()) ?? 0;
+    if (ext > 0) return ext;
+    final extUntil = (contractData['extensionUntil'] ?? '').toString().trim();
+    if (extUntil.isNotEmpty) {
+      final origEnd = DateTime.tryParse(endDate.split('T').first);
+      final extDate = DateTime.tryParse(extUntil.split('T').first);
+      if (origEnd != null && extDate != null && extDate.isAfter(origEnd)) {
+        return extDate.difference(origEnd).inDays;
+      }
+    }
+    return 0;
+  }
+
+  String get effectiveEndDate {
+    final extUntil = (contractData['extensionUntil'] ?? '').toString().trim();
+    if (extUntil.isNotEmpty) return extUntil.split('T').first;
+    final ext = extensionDays;
+    if (ext > 0) {
+      final origEnd = DateTime.tryParse(endDate.split('T').first);
+      if (origEnd != null) {
+        final d = origEnd.add(Duration(days: ext));
+        return '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      }
+    }
+    return endDate.split('T').first;
+  }
+
+  int get overdueDays {
+    if (!isActive) return 0;
+    final effEnd = DateTime.tryParse(effectiveEndDate);
+    if (effEnd == null) return 0;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final endDay = DateTime(effEnd.year, effEnd.month, effEnd.day);
+    if (today.isAfter(endDay)) {
+      return today.difference(endDay).inDays;
+    }
+    return 0;
+  }
+
+  int get durationDays => baseDurationDays + extensionDays + overdueDays;
+
+  double get effectiveTotalAmount {
+    if (dailyRate > 0) {
+      return dailyRate * durationDays;
+    }
+    return totalAmount;
+  }
+
   double get remainingAmount =>
-      (totalAmount - advancePayment).clamp(0, double.infinity);
+      (effectiveTotalAmount - advancePayment).clamp(0, double.infinity);
+
+  String get financialStatus {
+    if (remainingAmount <= 0) return 'payé';
+    if (advancePayment > 0) return 'en cours';
+    return 'en attente';
+  }
 
   bool get isActive =>
       ['ouvert', 'signed', 'sent', 'draft', 'actif'].contains(status.toLowerCase());
+
+  bool get isClosed =>
+      ['ferme', 'completed', 'cloture'].contains(status.toLowerCase());
+
+  bool get isOverdue => overdueDays > 0;
+
+  bool get hasDeliverySignature {
+    final a = (contractData['delivery_agent_signature'] ??
+            contractData['agentSignatureDelivery'] ??
+            '')
+        .toString()
+        .trim();
+    final t = (contractData['delivery_tenant_signature'] ??
+            contractData['renterSignatureDelivery'] ??
+            '')
+        .toString()
+        .trim();
+    return a.isNotEmpty || t.isNotEmpty;
+  }
+
+  bool get hasReturnSignature {
+    final a = (contractData['return_agent_signature'] ??
+            contractData['agentSignatureReturn'] ??
+            '')
+        .toString()
+        .trim();
+    final t = (contractData['return_tenant_signature'] ??
+            contractData['renterSignatureReturn'] ??
+            '')
+        .toString()
+        .trim();
+    return a.isNotEmpty || t.isNotEmpty;
+  }
 
   factory ContractModel.fromJson(Map<String, dynamic> row) {
     final now = DateTime.now().toIso8601String();
@@ -294,10 +426,37 @@ class ContractModel {
         ? Map<String, dynamic>.from(row['contract_data'] as Map)
         : <String, dynamic>{};
 
+    List<DamagePointModel> parseDamages(dynamic val) {
+      if (val is List) {
+        return val
+            .whereType<Map>()
+            .map((m) => DamagePointModel.fromJson(Map<String, dynamic>.from(m)))
+            .toList();
+      }
+      return const [];
+    }
+
+    final delivFuel = parseNum(
+      row['delivery_fuel_level'] ?? rawData['delivery_fuel_level'],
+      100,
+    ).round().clamp(0, 100);
+    final retFuel = parseNum(
+      row['return_fuel_level'] ?? rawData['return_fuel_level'],
+      100,
+    ).round().clamp(0, 100);
+
+    final delivDmg = parseDamages(
+      row['delivery_damages'] ?? rawData['delivery_damages'],
+    );
+    final retDmg = parseDamages(
+      row['return_damages'] ?? rawData['return_damages'],
+    );
+
     return ContractModel(
       id: (row['id'] ?? '').toString(),
       contractNumber: (row['contract_number'] ??
               row['contractNumber'] ??
+              rawData['contractSerie'] ??
               'CNT-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}')
           .toString(),
       customerName: (row['customer_name'] ??
@@ -312,6 +471,7 @@ class ContractModel {
           .toString(),
       customerCin: (row['customer_national_id'] ??
               row['customerCin'] ??
+              rawData['customerCin'] ??
               rawData['cin'] ??
               '')
           .toString(),
@@ -323,15 +483,29 @@ class ContractModel {
       endDate:
           (row['end_date'] ?? row['endDate'] ?? now.substring(0, 10)).toString(),
       dailyRate: parseNum(
-          row['daily_rate'] ?? row['dailyRate'] ?? rawData['dailyRate'], 300),
-      totalAmount: parseNum(row['total_amount'] ?? row['totalAmount'], 0),
-      advancePayment:
-          parseNum(row['advance_payment'] ?? rawData['advancePayment'], 0),
+          row['daily_rate'] ??
+              row['dailyRate'] ??
+              rawData['dailyPrice'] ??
+              rawData['dailyRate'],
+          300),
+      totalAmount: parseNum(
+          row['total_amount'] ?? row['totalAmount'] ?? rawData['totalPrice'],
+          0),
+      advancePayment: parseNum(
+          row['advance_payment'] ??
+              rawData['advance'] ??
+              rawData['advancePayment'],
+          0),
       paymentMethod: (row['payment_method'] ??
               rawData['paymentMethod'] ??
               'Espèces')
           .toString(),
       status: (row['status'] ?? 'ouvert').toString(),
+      notes: (row['notes'] ?? rawData['observationsDelivery'] ?? '').toString(),
+      deliveryFuelLevel: delivFuel,
+      returnFuelLevel: retFuel,
+      deliveryDamages: delivDmg,
+      returnDamages: retDmg,
       contractData: rawData,
       createdAt: (row['created_at'] ?? now).toString(),
       updatedAt: (row['updated_at'] ?? now).toString(),
@@ -339,6 +513,9 @@ class ContractModel {
   }
 
   Map<String, dynamic> toSupabasePayload() {
+    final delivDmgJson = deliveryDamages.map((d) => d.toJson()).toList();
+    final retDmgJson = returnDamages.map((d) => d.toJson()).toList();
+
     return {
       'contract_number': contractNumber,
       'customer_name': customerName,
@@ -352,10 +529,16 @@ class ContractModel {
       'daily_rate': dailyRate,
       'total_amount': totalAmount,
       'advance_payment': advancePayment,
-      'payment_method': paymentMethod,
+      'payment_method': paymentMethod.isEmpty ? 'Espèces' : paymentMethod,
       'status': status,
+      'notes': notes.isEmpty ? null : notes,
+      'delivery_fuel_level': deliveryFuelLevel,
+      'return_fuel_level': returnFuelLevel,
+      'delivery_damages': delivDmgJson,
+      'return_damages': retDmgJson,
       'contract_data': {
         ...contractData,
+        'contractSerie': contractNumber,
         'customerName': customerName,
         'customerPhone': customerPhone,
         'cin': customerCin,
@@ -364,6 +547,10 @@ class ContractModel {
         'advancePayment': advancePayment,
         'paymentMethod': paymentMethod,
         'originalAmount': totalAmount,
+        'delivery_fuel_level': deliveryFuelLevel,
+        'return_fuel_level': returnFuelLevel,
+        'delivery_damages': delivDmgJson,
+        'return_damages': retDmgJson,
       },
     };
   }
@@ -374,6 +561,58 @@ class ContractModel {
         'created_at': createdAt,
         'updated_at': updatedAt,
       };
+
+  ContractModel copyWith({
+    String? id,
+    String? contractNumber,
+    String? customerName,
+    String? customerPhone,
+    String? customerCin,
+    String? clientId,
+    String? vehicle,
+    String? vehicleId,
+    String? startDate,
+    String? endDate,
+    double? dailyRate,
+    double? totalAmount,
+    double? advancePayment,
+    String? paymentMethod,
+    String? status,
+    String? notes,
+    int? deliveryFuelLevel,
+    int? returnFuelLevel,
+    List<DamagePointModel>? deliveryDamages,
+    List<DamagePointModel>? returnDamages,
+    Map<String, dynamic>? contractData,
+    String? createdAt,
+    String? updatedAt,
+  }) {
+    return ContractModel(
+      id: id ?? this.id,
+      contractNumber: contractNumber ?? this.contractNumber,
+      customerName: customerName ?? this.customerName,
+      customerPhone: customerPhone ?? this.customerPhone,
+      customerCin: customerCin ?? this.customerCin,
+      clientId: clientId ?? this.clientId,
+      vehicle: vehicle ?? this.vehicle,
+      vehicleId: vehicleId ?? this.vehicleId,
+      startDate: startDate ?? this.startDate,
+      endDate: endDate ?? this.endDate,
+      dailyRate: dailyRate ?? this.dailyRate,
+      totalAmount: totalAmount ?? this.totalAmount,
+      advancePayment: advancePayment ?? this.advancePayment,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      status: status ?? this.status,
+      notes: notes ?? this.notes,
+      deliveryFuelLevel: deliveryFuelLevel ?? this.deliveryFuelLevel,
+      returnFuelLevel: returnFuelLevel ?? this.returnFuelLevel,
+      deliveryDamages: deliveryDamages ?? this.deliveryDamages,
+      returnDamages: returnDamages ?? this.returnDamages,
+      contractData: contractData ?? this.contractData,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
 }
 
 /// 4. GPSWOX Live Telemetry Device Model
