@@ -37,12 +37,14 @@ jobs:
         run: |
           cp -r lib /tmp/iloca_lib_backup
           cp pubspec.yaml /tmp/iloca_pubspec_backup.yaml
-          cp android/app/src/main/AndroidManifest.xml /tmp/AndroidManifest_backup.xml
+          rm -rf android ios test
           flutter create . --project-name iloca_flutter --org com.sft.iloca --platforms=android,ios
           cp -r /tmp/iloca_lib_backup/* lib/
           cp /tmp/iloca_pubspec_backup.yaml pubspec.yaml
-          cp /tmp/AndroidManifest_backup.xml android/app/src/main/AndroidManifest.xml
-          rm -rf test/widget_test.dart
+          rm -rf test
+          # Inject Internet & Location permissions + Cleartext HTTP support for GPSWOX into generated AndroidManifest.xml
+          sed -i 's/<application/<uses-permission android:name="android.permission.INTERNET"\/>\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"\/>\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"\/>\n    <application android:usesCleartextTraffic="true"/g' android/app/src/main/AndroidManifest.xml
+          sed -i 's/android:label="iloca_flutter"/android:label="iLOCA 2026"/g' android/app/src/main/AndroidManifest.xml
           flutter pub get
 
       - name: Build Release APK
@@ -60,7 +62,7 @@ jobs:
           name: iLOCA-2026-Android-Release-APK
           path: iloca_flutter/build/app/outputs/flutter-apk/iLOCA-2026.apk
 
-      - name: Publish APK to GitHub Release (v2026-latest)
+      - name: Publish APK to GitHub Release (v2026-apk)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v2026-apk
