@@ -6,6 +6,8 @@ class AppColors2026 {
   // Deep Spatial Obsidian Backgrounds
   static const Color abyss = Color(0xFF050811);
   static const Color obsidian = Color(0xFF0A0F1E);
+  static const Color obsidianSurface = Color(0xFF0F172A);
+  static const Color obsidianElevated = Color(0xFF1E293B);
   static const Color slate900 = Color(0xFF0F172A);
   static const Color slate800 = Color(0xFF1E293B);
   static const Color surfaceGlass = Color(0xCC111827);
