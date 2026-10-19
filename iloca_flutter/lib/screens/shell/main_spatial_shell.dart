@@ -1,7 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:provider/provider.dart';
 import '../../core/theme/app_theme_2026.dart';
 import '../../core/widgets/spatial_glass_widgets.dart';
 import '../../providers/app_state_provider.dart';
@@ -29,89 +28,91 @@ class SpatialSectionMeta {
 }
 
 class MainSpatialShell extends StatelessWidget {
-  const MainSpatialShell({super.key});
+  final AppStateProvider appState;
+
+  const MainSpatialShell({super.key, required this.appState});
 
   static const List<SpatialSectionMeta> sections = [
     SpatialSectionMeta(
       title: 'Overview',
       subtitle: 'Centre de Commandement Spatial 2026',
       icon: LucideIcons.layoutGrid,
-      accentColor: AppTheme2026.electricCyan,
+      accentColor: AppColors2026.cyanNeon,
     ),
     SpatialSectionMeta(
       title: 'Clients',
       subtitle: 'CRM & Profils Locataires Synchronisés',
       icon: LucideIcons.users,
-      accentColor: AppTheme2026.hyperViolet,
+      accentColor: AppColors2026.violetElectric,
     ),
     SpatialSectionMeta(
       title: 'Véhicules',
       subtitle: 'Parc Automobile & Statut Temps Réel',
       icon: LucideIcons.car,
-      accentColor: AppTheme2026.neonEmerald,
+      accentColor: AppColors2026.emeraldNeon,
     ),
     SpatialSectionMeta(
       title: 'Contrats',
       subtitle: 'Locations Actives & Facturation Instantanée',
       icon: LucideIcons.fileText,
-      accentColor: AppTheme2026.amberGold,
+      accentColor: AppColors2026.amberSolar,
     ),
     SpatialSectionMeta(
       title: 'Rapports',
       subtitle: 'Intelligence Financière & Rentabilité',
       icon: LucideIcons.barChart3,
-      accentColor: AppTheme2026.electricCyan,
+      accentColor: AppColors2026.cyanNeon,
     ),
     SpatialSectionMeta(
       title: 'Carte',
       subtitle: 'Google Maps Live & Suivi Traceur Direct',
       icon: LucideIcons.map,
-      accentColor: AppTheme2026.neonEmerald,
+      accentColor: AppColors2026.emeraldNeon,
     ),
     SpatialSectionMeta(
       title: 'Suivi',
       subtitle: 'Studio Trajectoire GPSWOX & Lecteur Vidéo',
-      icon: LucideIcons.radar,
-      accentColor: AppTheme2026.hyperViolet,
+      icon: LucideIcons.radio,
+      accentColor: AppColors2026.violetElectric,
     ),
     SpatialSectionMeta(
       title: 'Alertes',
       subtitle: 'Télémesure Sécurité, Vitesse & Contrats',
       icon: LucideIcons.bellRing,
-      accentColor: AppTheme2026.crimsonAlert,
+      accentColor: AppColors2026.roseLaser,
     ),
   ];
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppStateProvider>();
-    final currentIndex = state.activeTabIndex.clamp(0, sections.length - 1);
+    final currentIndex =
+        appState.activeTabIndex.clamp(0, sections.length - 1);
     final currentMeta = sections[currentIndex];
     final isWide = MediaQuery.of(context).size.width >= 840;
     final isFullBleedMap = currentIndex == 5 || currentIndex == 6;
 
-    final screens = const [
-      OverviewScreen(),
-      ClientsScreen(),
-      VehiclesScreen(),
-      ContractsScreen(),
-      ReportsScreen(),
-      FleetMapScreen(),
-      TrackingScreen(),
-      AlertsScreen(),
+    final screens = [
+      OverviewScreen(appState: appState),
+      ClientsScreen(appState: appState),
+      VehiclesScreen(appState: appState),
+      ContractsScreen(appState: appState),
+      ReportsScreen(appState: appState),
+      FleetMapScreen(appState: appState),
+      TrackingScreen(appState: appState),
+      AlertsScreen(appState: appState),
     ];
 
     return Scaffold(
       extendBody: !isFullBleedMap,
       body: Container(
         decoration: BoxDecoration(
-          gradient: state.isDarkMode
+          gradient: appState.isDarkMode
               ? const RadialGradient(
                   center: Alignment(-0.7, -0.8),
                   radius: 1.6,
                   colors: [
                     Color(0xFF0E1B38),
-                    AppTheme2026.obsidianBg,
+                    AppColors2026.abyss,
                     Color(0xFF03060C),
                   ],
                 )
@@ -121,15 +122,12 @@ class MainSpatialShell extends StatelessWidget {
           bottom: isFullBleedMap,
           child: Row(
             children: [
-              // ── ADAPTIVE TABLET / DESKTOP SPATIAL RAIL ──
               if (isWide)
-                _buildSpatialNavigationRail(context, state, currentIndex),
-
-              // ── MAIN WORKSPACE ──
+                _buildSpatialNavigationRail(context, appState, currentIndex),
               Expanded(
                 child: Column(
                   children: [
-                    _buildTopSpatialHeader(context, state, currentMeta),
+                    _buildTopSpatialHeader(context, appState, currentMeta),
                     Expanded(
                       child: IndexedStack(
                         index: currentIndex,
@@ -145,7 +143,7 @@ class MainSpatialShell extends StatelessWidget {
       ),
       bottomNavigationBar: isWide
           ? null
-          : _buildMobileSpatialDock(context, state, currentIndex),
+          : _buildMobileSpatialDock(context, appState, currentIndex),
     );
   }
 
@@ -160,8 +158,8 @@ class MainSpatialShell extends StatelessWidget {
         border: Border(
           bottom: BorderSide(
             color: state.isDarkMode
-                ? Colors.white.withValues(alpha: 0.07)
-                : Colors.black.withValues(alpha: 0.06),
+                ? Colors.white.withOpacity(0.07)
+                : Colors.black.withOpacity(0.06),
           ),
         ),
       ),
@@ -175,12 +173,12 @@ class MainSpatialShell extends StatelessWidget {
               gradient: LinearGradient(
                 colors: [
                   meta.accentColor,
-                  meta.accentColor.withValues(alpha: 0.45),
+                  meta.accentColor.withOpacity(0.45),
                 ],
               ),
               boxShadow: [
                 BoxShadow(
-                  color: meta.accentColor.withValues(alpha: 0.35),
+                  color: meta.accentColor.withOpacity(0.35),
                   blurRadius: 12,
                 ),
               ],
@@ -203,35 +201,34 @@ class MainSpatialShell extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    // Instant Web <-> Mobile Sync Indicator
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: AppTheme2026.neonEmerald.withValues(alpha: 0.14),
+                        color: AppColors2026.emeraldNeon.withOpacity(0.14),
                         borderRadius: BorderRadius.circular(999),
                         border: Border.all(
-                          color: AppTheme2026.neonEmerald.withValues(alpha: 0.4),
+                          color: AppColors2026.emeraldNeon.withOpacity(0.4),
                         ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           AnimatedPulseDot(
-                            color: state.isSyncingDb
-                                ? AppTheme2026.electricCyan
-                                : AppTheme2026.neonEmerald,
+                            color: state.isSyncing
+                                ? AppColors2026.cyanNeon
+                                : AppColors2026.emeraldNeon,
                             size: 6,
                           ),
                           const SizedBox(width: 5),
                           Text(
-                            state.isSyncingDb ? 'SYNC...' : 'SYNC LIVE',
+                            state.isSyncing ? 'SYNC...' : 'SYNC LIVE',
                             style: const TextStyle(
                               fontSize: 9,
                               fontWeight: FontWeight.w900,
-                              color: AppTheme2026.neonEmerald,
+                              color: AppColors2026.emeraldNeon,
                               letterSpacing: 0.5,
                             ),
                           ),
@@ -246,44 +243,38 @@ class MainSpatialShell extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 11,
-                    color: AppTheme2026.textSecondaryDark,
+                    color: AppColors2026.textSecondary,
                   ),
                 ),
               ],
             ),
           ),
-
-          // Quick Sync Button
           IconButton(
             tooltip: 'Synchroniser maintenant (Web & GPSWOX)',
             onPressed: () {
               state.refreshAllData();
-              state.refreshGpsNow();
+              state.refreshGpsTelemetry();
             },
             icon: const Icon(LucideIcons.refreshCw, size: 18),
           ),
-
-          // Theme Toggle (Spatial Dark / Pearl Light)
           IconButton(
             tooltip: 'Changer le thème 2026',
-            onPressed: () => state.toggleTheme(),
+            onPressed: () => state.toggleThemeMode(),
             icon: Icon(
               state.isDarkMode ? LucideIcons.sun : LucideIcons.moon,
               size: 18,
               color: state.isDarkMode
-                  ? AppTheme2026.amberGold
-                  : AppTheme2026.hyperViolet,
+                  ? AppColors2026.amberSolar
+                  : AppColors2026.violetElectric,
             ),
           ),
-
-          // Logout
           IconButton(
             tooltip: 'Déconnexion',
-            onPressed: () => state.signOut(),
+            onPressed: () => state.logout(),
             icon: const Icon(
               LucideIcons.logOut,
               size: 18,
-              color: AppTheme2026.crimsonAlert,
+              color: AppColors2026.roseLaser,
             ),
           ),
         ],
@@ -312,7 +303,7 @@ class MainSpatialShell extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      gradient: AppTheme2026.cyberAuroraGradient,
+                      gradient: AppColors2026.cyanEmeraldGradient,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(
@@ -338,7 +329,7 @@ class MainSpatialShell extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 9,
                           fontWeight: FontWeight.w800,
-                          color: AppTheme2026.electricCyan,
+                          color: AppColors2026.cyanNeon,
                           letterSpacing: 0.8,
                         ),
                       ),
@@ -355,8 +346,9 @@ class MainSpatialShell extends StatelessWidget {
                 itemBuilder: (context, index) {
                   final item = sections[index];
                   final selected = index == currentIndex;
-                  final alertBadge =
-                      index == 7 && state.alerts.isNotEmpty ? state.alerts.length : 0;
+                  final alertBadge = index == 7 && state.allAlerts.isNotEmpty
+                      ? state.allAlerts.length
+                      : 0;
 
                   return InkWell(
                     borderRadius: BorderRadius.circular(16),
@@ -370,11 +362,11 @@ class MainSpatialShell extends StatelessWidget {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(16),
                         color: selected
-                            ? item.accentColor.withValues(alpha: 0.18)
+                            ? item.accentColor.withOpacity(0.18)
                             : Colors.transparent,
                         border: Border.all(
                           color: selected
-                              ? item.accentColor.withValues(alpha: 0.55)
+                              ? item.accentColor.withOpacity(0.55)
                               : Colors.transparent,
                         ),
                       ),
@@ -385,19 +377,20 @@ class MainSpatialShell extends StatelessWidget {
                             size: 19,
                             color: selected
                                 ? item.accentColor
-                                : AppTheme2026.textSecondaryDark,
+                                : AppColors2026.textSecondary,
                           ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
                               item.title,
                               style: TextStyle(
-                                fontWeight:
-                                    selected ? FontWeight.w800 : FontWeight.w600,
+                                fontWeight: selected
+                                    ? FontWeight.w800
+                                    : FontWeight.w600,
                                 fontSize: 13.5,
                                 color: selected
                                     ? Colors.white
-                                    : AppTheme2026.textSecondaryDark,
+                                    : AppColors2026.textSecondary,
                               ),
                             ),
                           ),
@@ -408,7 +401,7 @@ class MainSpatialShell extends StatelessWidget {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: AppTheme2026.crimsonAlert,
+                                color: AppColors2026.roseLaser,
                                 borderRadius: BorderRadius.circular(999),
                               ),
                               child: Text(
@@ -433,7 +426,6 @@ class MainSpatialShell extends StatelessWidget {
     );
   }
 
-  /// 2026 Scrollable Spatial Glass Dock for Mobile Phones (all 8 sections accessible in 1 tap)
   Widget _buildMobileSpatialDock(
     BuildContext context,
     AppStateProvider state,
@@ -448,12 +440,12 @@ class MainSpatialShell extends StatelessWidget {
           decoration: BoxDecoration(
             color: state.isDarkMode
                 ? const Color(0xE6080E1C)
-                : Colors.white.withValues(alpha: 0.92),
+                : Colors.white.withOpacity(0.92),
             border: Border(
               top: BorderSide(
                 color: state.isDarkMode
-                    ? Colors.white.withValues(alpha: 0.1)
-                    : Colors.black.withValues(alpha: 0.08),
+                    ? Colors.white.withOpacity(0.1)
+                    : Colors.black.withOpacity(0.08),
               ),
             ),
           ),
@@ -465,8 +457,9 @@ class MainSpatialShell extends StatelessWidget {
             itemBuilder: (context, index) {
               final item = sections[index];
               final selected = index == currentIndex;
-              final alertBadge =
-                  index == 7 && state.alerts.isNotEmpty ? state.alerts.length : 0;
+              final alertBadge = index == 7 && state.allAlerts.isNotEmpty
+                  ? state.allAlerts.length
+                  : 0;
 
               return GestureDetector(
                 onTap: () => state.setActiveTab(index),
@@ -480,11 +473,11 @@ class MainSpatialShell extends StatelessWidget {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(18),
                     color: selected
-                        ? item.accentColor.withValues(alpha: 0.18)
+                        ? item.accentColor.withOpacity(0.18)
                         : Colors.transparent,
                     border: Border.all(
                       color: selected
-                          ? item.accentColor.withValues(alpha: 0.6)
+                          ? item.accentColor.withOpacity(0.6)
                           : Colors.transparent,
                     ),
                   ),
@@ -499,7 +492,7 @@ class MainSpatialShell extends StatelessWidget {
                             size: 20,
                             color: selected
                                 ? item.accentColor
-                                : AppTheme2026.textSecondaryDark,
+                                : AppColors2026.textSecondary,
                           ),
                           if (alertBadge > 0)
                             Positioned(
@@ -508,7 +501,7 @@ class MainSpatialShell extends StatelessWidget {
                               child: Container(
                                 padding: const EdgeInsets.all(3),
                                 decoration: const BoxDecoration(
-                                  color: AppTheme2026.crimsonAlert,
+                                  color: AppColors2026.roseLaser,
                                   shape: BoxShape.circle,
                                 ),
                                 child: Text(
@@ -532,7 +525,7 @@ class MainSpatialShell extends StatelessWidget {
                               selected ? FontWeight.w800 : FontWeight.w600,
                           color: selected
                               ? (state.isDarkMode ? Colors.white : Colors.black)
-                              : AppTheme2026.textSecondaryDark,
+                              : AppColors2026.textSecondary,
                         ),
                       ),
                     ],

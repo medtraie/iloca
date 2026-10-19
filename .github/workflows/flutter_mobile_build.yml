@@ -8,13 +8,13 @@ on:
       - '.github/workflows/flutter_mobile_build.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-android:
     name: Build Android APK (Flutter 2026)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: iloca_flutter
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -25,46 +25,46 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Flutter Stable
+      - name: Setup Flutter 3.24.5
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.24.5'
           channel: 'stable'
           cache: true
 
-      - name: Scaffold Missing Platform Runner Files & Get Dependencies
+      - name: Scaffold Platform Runner Files & Get Dependencies
+        working-directory: iloca_flutter
         run: |
+          cp -r lib /tmp/iloca_lib_backup
+          cp pubspec.yaml /tmp/iloca_pubspec_backup.yaml
+          cp android/app/src/main/AndroidManifest.xml /tmp/AndroidManifest_backup.xml
           flutter create . --project-name iloca_flutter --org com.sft.iloca --platforms=android,ios
+          cp -r /tmp/iloca_lib_backup/* lib/
+          cp /tmp/iloca_pubspec_backup.yaml pubspec.yaml
+          cp /tmp/AndroidManifest_backup.xml android/app/src/main/AndroidManifest.xml
+          rm -rf test/widget_test.dart
           flutter pub get
 
       - name: Build Release APK
+        working-directory: iloca_flutter
         run: flutter build apk --release
 
-      - name: Upload Android Release APK
+      - name: Rename APK to iLOCA-2026.apk
+        working-directory: iloca_flutter
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/iLOCA-2026.apk
+
+      - name: Upload Android Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: iLOCA-2026-Android-Release-APK
-          path: iloca_flutter/build/app/outputs/flutter-apk/app-release.apk
+          path: iloca_flutter/build/app/outputs/flutter-apk/iLOCA-2026.apk
 
-  build-ios:
-    name: Build iOS Unsigned IPA (Flutter 2026)
-    runs-on: macos-latest
-    defaults:
-      run:
-        working-directory: iloca_flutter
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Flutter Stable
-        uses: subosito/flutter-action@v2
+      - name: Publish APK to GitHub Release (v2026-latest)
+        uses: softprops/action-gh-release@v2
         with:
-          channel: 'stable'
-          cache: true
-
-      - name: Scaffold Missing Platform Runner Files & Get Dependencies
-        run: |
-          flutter create . --project-name iloca_flutter --org com.sft.iloca --platforms=android,ios
-          flutter pub get
-
-      - name: Build iOS Release (No Codesign)
-        run: flutter build ios --release --no-codesign
+          tag_name: v2026-apk
+          name: "iLOCA PRO 2026 - Android APK (Spatial Edition)"
+          files: iloca_flutter/build/app/outputs/flutter-apk/iLOCA-2026.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:provider/provider.dart';
 import '../../core/config/app_config.dart';
 import '../../core/theme/app_theme_2026.dart';
 import '../../core/widgets/spatial_glass_widgets.dart';
@@ -11,8 +11,11 @@ import '../../models/app_models.dart';
 import '../../providers/app_state_provider.dart';
 import '../../services/gpswox_service.dart';
 
+/// 6. CARTE SCREEN (Google Maps Live & Activer Suivi & Traceur en Direct)
 class FleetMapScreen extends StatefulWidget {
-  const FleetMapScreen({super.key});
+  final AppStateProvider appState;
+
+  const FleetMapScreen({super.key, required this.appState});
 
   @override
   State<FleetMapScreen> createState() => _FleetMapScreenState();
@@ -21,8 +24,9 @@ class FleetMapScreen extends StatefulWidget {
 class _FleetMapScreenState extends State<FleetMapScreen> {
   final MapController _mapController = MapController();
 
-  int? _selectedDeviceId;
-  int? _followedDeviceId; // Activer Suivi & Traceur (EN DIRECT)
+  String _mapLayerId = 'google_hybrid';
+  String? _selectedDeviceId;
+  String? _followedDeviceId; // Activer Suivi & Traceur (EN DIRECT)
 
   // Live Suivi Trail points starting at the moment Suivi is activated
   final List<HistoryPointModel> _liveTrailPoints = [];
@@ -38,6 +42,7 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
   // Trajectory Player (works for both Live Suivi and History)
   bool _isPlaying = false;
   int _playbackIndex = 0;
+  double _playbackSpeed = 1.0;
   Timer? _playbackTimer;
   bool _showPlayerHud = true;
 
@@ -52,9 +57,6 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
     super.dispose();
   }
 
-  /// Active trajectory points:
-  /// When `Activer Suivi & Traceur` is active on the selected vehicle,
-  /// returns `_liveTrailPoints` (starting from the activation point) and updates continuously!
   bool get _isLiveTrailActive =>
       _followedDeviceId != null && _followedDeviceId == _selectedDeviceId;
 
@@ -64,108 +66,104 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
   /// Synchronize live vehicle polls into `_liveTrailPoints` when `Suivi & Traceur` is active
   void _syncLiveFollowProgress(List<GpsDeviceModel> devices) {
     if (_followedDeviceId == null) return;
-    final followed = devices.where((d) => d.id == _followedDeviceId).firstOrNull;
-    if (followed == null || !followed.hasValidCoords) return;
+    final followed =
+        devices.where((d) => d.id == _followedDeviceId).firstOrNull;
+    if (followed == null || !followed.hasValidPosition) return;
 
-    final nowIso = followed.lastUpdate.isNotEmpty
-        ? followed.lastUpdate
-        : DateTime.now().toIso8601String();
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
 
     if (_liveTrailPoints.isEmpty) {
       final startPt = HistoryPointModel(
-        lat: followed.lat!,
-        lng: followed.lng!,
+        lat: followed.lat,
+        lng: followed.lng,
         speed: followed.speed,
-        course: followed.course,
-        timestamp: nowIso,
+        timestamp: nowMs,
       );
       _liveTrailPoints.add(startPt);
-      _lastAppendedKey = '${followed.lat!.toStringAsFixed(6)}_${followed.lng!.toStringAsFixed(6)}';
+      _lastAppendedKey =
+          '${followed.lat.toStringAsFixed(6)}_${followed.lng.toStringAsFixed(6)}';
       _playbackIndex = 0;
       return;
     }
 
     final lastPt = _liveTrailPoints.last;
-    final movedMeters = GpswoxService.instance.haversineMeters(
+    final movedKm = GpswoxService.haversineKm(
       lastPt.lat,
       lastPt.lng,
-      followed.lat!,
-      followed.lng!,
+      followed.lat,
+      followed.lng,
     );
+    final movedMeters = movedKm * 1000.0;
     final coordKey =
-        '${followed.lat!.toStringAsFixed(6)}_${followed.lng!.toStringAsFixed(6)}_${followed.lastUpdate}';
+        '${followed.lat.toStringAsFixed(6)}_${followed.lng.toStringAsFixed(6)}_${followed.lastUpdate}';
 
-    if (movedMeters >= 2.0 || (coordKey != _lastAppendedKey && lastPt.timestamp != nowIso)) {
+    if (movedMeters >= 2.0 || coordKey != _lastAppendedKey) {
       _lastAppendedKey = coordKey;
       final wasAtLatest = _playbackIndex >= _liveTrailPoints.length - 2;
       _liveTrailPoints.add(
         HistoryPointModel(
-          lat: followed.lat!,
-          lng: followed.lng!,
+          lat: followed.lat,
+          lng: followed.lng,
           speed: followed.speed,
-          course: followed.course,
-          timestamp: nowIso,
+          timestamp: nowMs,
         ),
       );
       if (wasAtLatest && !_isPlaying) {
         _playbackIndex = _liveTrailPoints.length - 1;
       }
-      // Keep camera centered on followed vehicle
       try {
         _mapController.move(
-          LatLng(followed.lat!, followed.lng!),
+          LatLng(followed.lat, followed.lng),
           _mapController.camera.zoom < 14 ? 15.5 : _mapController.camera.zoom,
         );
       } catch (_) {}
     }
   }
 
-  void _toggleLiveSuivi(GpsDeviceModel device, AppStateProvider state) {
+  void _toggleLiveSuivi(GpsDeviceModel device) {
     _playbackTimer?.cancel();
     setState(() {
       _isPlaying = false;
       if (_followedDeviceId == device.id) {
-        // Deactivate Suivi
         _followedDeviceId = null;
         _liveTrailPoints.clear();
         _lastAppendedKey = null;
-        state.setFastTrackingMode(false);
+        widget.appState.setFastGpsPolling(false);
       } else {
-        // Activate Suivi & Traceur starting from current position
         _selectedDeviceId = device.id;
         _followedDeviceId = device.id;
         _showPlayerHud = true;
         _liveTrailPoints.clear();
-        if (device.hasValidCoords) {
+        if (device.hasValidPosition) {
           _liveTrailPoints.add(
             HistoryPointModel(
-              lat: device.lat!,
-              lng: device.lng!,
+              lat: device.lat,
+              lng: device.lng,
               speed: device.speed,
-              course: device.course,
-              timestamp: device.lastUpdate.isNotEmpty
-                  ? device.lastUpdate
-                  : DateTime.now().toIso8601String(),
+              timestamp: DateTime.now().millisecondsSinceEpoch,
             ),
           );
           _lastAppendedKey =
-              '${device.lat!.toStringAsFixed(6)}_${device.lng!.toStringAsFixed(6)}_${device.lastUpdate}';
+              '${device.lat.toStringAsFixed(6)}_${device.lng.toStringAsFixed(6)}_${device.lastUpdate}';
           _playbackIndex = 0;
           try {
-            _mapController.move(LatLng(device.lat!, device.lng!), 16.0);
+            _mapController.move(LatLng(device.lat, device.lng), 16.0);
           } catch (_) {}
         }
-        state.setFastTrackingMode(true);
+        widget.appState.setFastGpsPolling(true);
       }
     });
   }
 
-  Future<void> _loadHistoryForPreset(String preset) async {
+  Future<void> _loadHistoryForPreset(
+    String preset,
+    GpsDeviceModel? selectedDevice,
+  ) async {
     if (_selectedDeviceId == null) return;
     _playbackTimer?.cancel();
     setState(() {
       _selectedPreset = preset;
-      _followedDeviceId = null; // Switch from live follow to historical route
+      _followedDeviceId = null;
       _loadingHistory = true;
       _historyError = null;
       _isPlaying = false;
@@ -190,22 +188,23 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
     }
 
     try {
-      final result = await GpswoxService.instance.getDeviceHistory(
+      final points = await GpswoxService.getDeviceHistory(
         deviceId: _selectedDeviceId!,
         from: from,
         to: now,
+        fallbackDevice: selectedDevice,
       );
       if (!mounted) return;
       setState(() {
-        _historyPoints = result.points;
-        _detectedStops = GpswoxService.instance.detectStops(result.points);
-        _playbackIndex = result.points.isNotEmpty ? result.points.length - 1 : 0;
+        _historyPoints = points;
+        _detectedStops = GpswoxService.detectStops(points);
+        _playbackIndex = points.isNotEmpty ? points.length - 1 : 0;
         _showPlayerHud = true;
         _loadingHistory = false;
-        if (result.points.isEmpty) {
+        if (points.isEmpty) {
           _historyError = 'Aucun trajet enregistré sur cette période.';
         } else {
-          _fitRouteBounds(result.points);
+          _fitRouteBounds(points);
         }
       });
     } catch (e) {
@@ -235,7 +234,7 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
     } catch (_) {}
   }
 
-  void _togglePlayback(double speedMultiplier) {
+  void _togglePlayback() {
     final pts = _activePoints;
     if (pts.length < 2) return;
 
@@ -250,7 +249,7 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
     }
 
     setState(() => _isPlaying = true);
-    final intervalMs = (240 / speedMultiplier).round().clamp(30, 500);
+    final intervalMs = (240 / _playbackSpeed).round().clamp(30, 500);
     _playbackTimer = Timer.periodic(Duration(milliseconds: intervalMs), (timer) {
       if (!mounted) {
         timer.cancel();
@@ -270,43 +269,43 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppStateProvider>();
+    final state = widget.appState;
     final devices = state.gpsDevices;
 
     // Keep live Suivi & Traceur points updated on every GPS poll!
     _syncLiveFollowProgress(devices);
 
-    final selectedDevice = devices.where((d) => d.id == _selectedDeviceId).firstOrNull;
+    final selectedDevice =
+        devices.where((d) => d.id == _selectedDeviceId).firstOrNull;
     final activePts = _activePoints;
-    final safeIndex = activePts.isEmpty
-        ? 0
-        : _playbackIndex.clamp(0, activePts.length - 1);
-    final currentPlayPoint = activePts.isNotEmpty ? activePts[safeIndex] : null;
-    final routeStats = GpswoxService.instance.computeRouteStats(activePts);
+    final safeIndex =
+        activePts.isEmpty ? 0 : _playbackIndex.clamp(0, activePts.length - 1);
+    final currentPlayPoint =
+        activePts.isNotEmpty ? activePts[safeIndex] : null;
+    final routeStats = GpswoxService.computeRouteStats(activePts);
 
-    final tileOption = AppConfig.mapLayers.firstWhere(
-      (l) => l.id == state.mapLayerId,
-      orElse: () => AppConfig.mapLayers.first,
-    );
+    final tileOption = AppConfig.mapTileStyles[_mapLayerId] ??
+        AppConfig.mapTileStyles['google_hybrid']!;
 
     final filteredDevices = devices.where((d) {
       final matchesSearch = _searchQuery.isEmpty ||
           d.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          d.plate.toLowerCase().contains(_searchQuery.toLowerCase()) ||
           d.imei.toLowerCase().contains(_searchQuery.toLowerCase());
       if (!matchesSearch) return false;
-      if (_statusFilter == 'online') return d.online == 'online';
-      if (_statusFilter == 'moving') return d.speed > 0 || d.ignition == true;
+      if (_statusFilter == 'online') return d.online;
+      if (_statusFilter == 'moving') return d.speed > 0 || d.ignition;
       return true;
     }).toList();
 
-    final initialCenter = selectedDevice?.hasValidCoords == true
-        ? LatLng(selectedDevice!.lat!, selectedDevice.lng!)
-        : (devices.where((d) => d.hasValidCoords).isNotEmpty
-            ? LatLng(
-                devices.firstWhere((d) => d.hasValidCoords).lat!,
-                devices.firstWhere((d) => d.hasValidCoords).lng!,
-              )
-            : const LatLng(33.5731, -7.5898)); // Casablanca default
+    final validDevices = devices.where((d) => d.hasValidPosition).toList();
+    final initialCenter = selectedDevice?.hasValidPosition == true
+        ? LatLng(selectedDevice!.lat, selectedDevice.lng)
+        : (validDevices.isNotEmpty
+            ? LatLng(validDevices.first.lat, validDevices.first.lng)
+            : const LatLng(33.5731, -7.5898));
+
+    final onlineCount = devices.where((d) => d.online).length;
 
     return Stack(
       children: [
@@ -327,8 +326,7 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
           children: [
             TileLayer(
               urlTemplate: tileOption.urlTemplate,
-              subdomains: tileOption.subdomains,
-              maxZoom: tileOption.maxZoom,
+              maxZoom: 20,
               userAgentPackageName: 'com.sft.iloca',
             ),
 
@@ -336,46 +334,49 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
             if (activePts.length > 1)
               PolylineLayer(
                 polylines: [
-                  if (state.traceurGlow)
+                  if (state.tracerGlow)
                     Polyline(
-                      points: activePts.map((p) => LatLng(p.lat, p.lng)).toList(),
-                      strokeWidth: state.traceurWidth * 2.8,
-                      color: state.traceurColor.withValues(alpha: 0.28),
+                      points:
+                          activePts.map((p) => LatLng(p.lat, p.lng)).toList(),
+                      strokeWidth: state.tracerWeight * 2.8,
+                      color: state.tracerColor.withOpacity(0.28),
                     ),
                   Polyline(
-                    points: activePts.map((p) => LatLng(p.lat, p.lng)).toList(),
-                    strokeWidth: state.traceurWidth * 0.7,
-                    color: state.traceurColor.withValues(alpha: 0.35),
+                    points:
+                        activePts.map((p) => LatLng(p.lat, p.lng)).toList(),
+                    strokeWidth: state.tracerWeight * 0.7,
+                    color: state.tracerColor.withOpacity(0.35),
                   ),
-                  // Progressed segment up to current player scrubber index
                   Polyline(
                     points: activePts
                         .take(safeIndex + 1)
                         .map((p) => LatLng(p.lat, p.lng))
                         .toList(),
-                    strokeWidth: state.traceurWidth,
-                    color: state.traceurColor,
+                    strokeWidth: state.tracerWeight,
+                    color: state.tracerColor,
                   ),
                 ],
               ),
 
-            // ── START (Départ), END (Arrivée / Position Actuelle), & STOPS MARKERS ──
+            // ── START (Départ), STOPS, & SCRUBBER CURSOR ──
             if (activePts.isNotEmpty)
               MarkerLayer(
                 markers: [
-                  // Départ Marker (Start of Live Suivi or Start of History)
                   Marker(
                     point: LatLng(activePts.first.lat, activePts.first.lng),
                     width: 90,
                     height: 36,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
-                        color: AppTheme2026.neonEmerald,
+                        color: AppColors2026.emeraldNeon,
                         borderRadius: BorderRadius.circular(999),
                         boxShadow: [
                           BoxShadow(
-                            color: AppTheme2026.neonEmerald.withValues(alpha: 0.5),
+                            color: AppColors2026.emeraldNeon.withOpacity(0.5),
                             blurRadius: 10,
                           ),
                         ],
@@ -398,8 +399,6 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                       ),
                     ),
                   ),
-
-                  // Stops Markers (Historical mode)
                   if (!_isLiveTrailActive)
                     ..._detectedStops.map(
                       (stop) => Marker(
@@ -407,10 +406,10 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                         width: 30,
                         height: 30,
                         child: Tooltip(
-                          message: 'Arrêt (${stop.durationMinutes} min)',
+                          message: 'Arrêt (${stop.durationMin} min)',
                           child: Container(
                             decoration: BoxDecoration(
-                              color: AppTheme2026.amberGold,
+                              color: AppColors2026.amberSolar,
                               shape: BoxShape.circle,
                               border: Border.all(color: Colors.white, width: 2),
                             ),
@@ -428,26 +427,24 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                         ),
                       ),
                     ),
-
-                  // Scrubber / Playback Cursor Marker
                   if (currentPlayPoint != null && activePts.length > 1)
                     Marker(
                       point: LatLng(currentPlayPoint.lat, currentPlayPoint.lng),
-                      width: 44,
-                      height: 44,
+                      width: state.tracerSize,
+                      height: state.tracerSize,
                       child: Container(
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: state.traceurColor.withValues(alpha: 0.25),
+                          color: state.tracerColor.withOpacity(0.25),
                           border: Border.all(color: Colors.white, width: 2),
                         ),
                         child: Center(
                           child: Container(
-                            width: 16,
-                            height: 16,
+                            width: state.tracerSize * 0.4,
+                            height: state.tracerSize * 0.4,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: state.traceurColor,
+                              color: state.tracerColor,
                             ),
                           ),
                         ),
@@ -456,11 +453,10 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                 ],
               ),
 
-            // ── LIVE VEHICLE CAPSULES (2026 Spatial Markers) ──
+            // ── LIVE VEHICLE CAPSULES ──
             MarkerLayer(
-              markers: devices
-                  .where((d) => d.hasValidCoords)
-                  .map((device) => _buildVehicleMarker(device, state))
+              markers: validDevices
+                  .map((device) => _buildVehicleMarker(device))
                   .toList(),
             ),
           ],
@@ -473,21 +469,23 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
           right: 12,
           child: Row(
             children: [
-              // Parc Button
               GestureDetector(
                 onTap: () => setState(() => _showFleetSheet = !_showFleetSheet),
                 child: SpatialGlassCard(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
                   borderRadius: 16,
                   borderColor: _showFleetSheet
-                      ? AppTheme2026.electricCyan.withValues(alpha: 0.6)
+                      ? AppColors2026.cyanNeon.withOpacity(0.6)
                       : null,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(
                         LucideIcons.car,
-                        color: AppTheme2026.electricCyan,
+                        color: AppColors2026.cyanNeon,
                         size: 18,
                       ),
                       const SizedBox(width: 8),
@@ -500,15 +498,18 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                       ),
                       const SizedBox(width: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
-                          color: AppTheme2026.neonEmerald.withValues(alpha: 0.18),
+                          color: AppColors2026.emeraldNeon.withOpacity(0.18),
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Text(
-                          '${state.onlineGpsCount} ON',
+                          '$onlineCount ON',
                           style: const TextStyle(
-                            color: AppTheme2026.neonEmerald,
+                            color: AppColors2026.emeraldNeon,
                             fontSize: 10,
                             fontWeight: FontWeight.w800,
                           ),
@@ -519,20 +520,24 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                 ),
               ),
               const Spacer(),
-
-              // Live Follow Status Pill when active
               if (_followedDeviceId != null)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: SpatialGlassCard(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 9,
+                    ),
                     borderRadius: 999,
-                    borderColor: AppTheme2026.crimsonAlert.withValues(alpha: 0.6),
-                    glowColor: AppTheme2026.crimsonAlert,
+                    borderColor: AppColors2026.roseLaser.withOpacity(0.6),
+                    glowColor: AppColors2026.roseLaser,
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const AnimatedPulseDot(color: AppTheme2026.crimsonAlert, size: 8),
+                        const AnimatedPulseDot(
+                          color: AppColors2026.roseLaser,
+                          size: 8,
+                        ),
                         const SizedBox(width: 8),
                         Text(
                           'SUIVI & TRACEUR (${_liveTrailPoints.length} pts)',
@@ -546,25 +551,23 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                     ),
                   ),
                 ),
-
-              // Refresh GPS Button
               SpatialGlassCard(
                 padding: const EdgeInsets.all(10),
                 borderRadius: 14,
-                onTap: () => state.refreshGpsNow(),
-                child: state.isSyncingGps
+                onTap: () => state.refreshGpsTelemetry(),
+                child: state.isSyncing
                     ? const SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: AppTheme2026.electricCyan,
+                          color: AppColors2026.cyanNeon,
                         ),
                       )
                     : const Icon(
                         LucideIcons.refreshCw,
                         size: 18,
-                        color: AppTheme2026.electricCyan,
+                        color: AppColors2026.cyanNeon,
                       ),
               ),
             ],
@@ -580,44 +583,52 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
               _buildDockButton(
                 icon: LucideIcons.layers,
                 tooltip: 'Fond de carte Google Maps',
-                color: AppTheme2026.electricCyan,
+                color: AppColors2026.cyanNeon,
                 onTap: () => showModalBottomSheet(
                   context: context,
-                  backgroundColor: Colors.transparent,
-                  builder: (_) => const MapLayerSwitcherSheet(),
+                  builder: (_) => MapLayerSwitcherSheet(
+                    currentLayerId: _mapLayerId,
+                    onSelectLayer: (id) => setState(() => _mapLayerId = id),
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
               _buildDockButton(
                 icon: LucideIcons.palette,
                 tooltip: 'Personnaliser Traceur',
-                color: state.traceurColor,
+                color: state.tracerColor,
                 onTap: () => showModalBottomSheet(
                   context: context,
-                  backgroundColor: Colors.transparent,
                   isScrollControlled: true,
-                  builder: (_) => const TraceurCustomizerSheet(),
+                  builder: (_) => TraceurCustomizerSheet(
+                    selectedColor: state.tracerColor,
+                    weight: state.tracerWeight,
+                    markerSize: state.tracerSize,
+                    glow: state.tracerGlow,
+                    onColorChanged: state.setTracerColor,
+                    onWeightChanged: state.setTracerWeight,
+                    onSizeChanged: state.setTracerSize,
+                    onGlowChanged: state.setTracerGlow,
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
               _buildDockButton(
                 icon: LucideIcons.maximize2,
                 tooltip: 'Centrer sur la flotte',
-                color: AppTheme2026.textSecondaryDark,
+                color: AppColors2026.textSecondary,
                 onTap: () {
-                  final valid = devices
-                      .where((d) => d.hasValidCoords)
-                      .map((d) => LatLng(d.lat!, d.lng!))
-                      .toList();
-                  if (valid.length > 1) {
+                  final coords =
+                      validDevices.map((d) => LatLng(d.lat, d.lng)).toList();
+                  if (coords.length > 1) {
                     _mapController.fitCamera(
                       CameraFit.bounds(
-                        bounds: LatLngBounds.fromPoints(valid),
+                        bounds: LatLngBounds.fromPoints(coords),
                         padding: const EdgeInsets.all(60),
                       ),
                     );
-                  } else if (valid.length == 1) {
-                    _mapController.move(valid.first, 15);
+                  } else if (coords.length == 1) {
+                    _mapController.move(coords.first, 15);
                   }
                 },
               ),
@@ -626,7 +637,7 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                 _buildDockButton(
                   icon: LucideIcons.playCircle,
                   tooltip: 'Ouvrir Lecteur de trajet',
-                  color: AppTheme2026.neonEmerald,
+                  color: AppColors2026.emeraldNeon,
                   onTap: () => setState(() => _showPlayerHud = true),
                 ),
               ],
@@ -640,7 +651,7 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
             left: 12,
             right: 12,
             bottom: (activePts.isNotEmpty && _showPlayerHud) ? 188 : 16,
-            child: _buildSelectedVehicleCard(selectedDevice, state),
+            child: _buildSelectedVehicleCard(selectedDevice),
           ),
 
         // ── 5. BOTTOM LECTEUR DE TRAJET HUD (LIVE SUIVI OR HISTORICAL) ──
@@ -665,24 +676,19 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
             left: 12,
             bottom: 16,
             width: 310,
-            child: _buildFleetDrawer(filteredDevices, state),
+            child: _buildFleetDrawer(filteredDevices),
           ),
       ],
     );
   }
 
-  Marker _buildVehicleMarker(GpsDeviceModel device, AppStateProvider state) {
+  Marker _buildVehicleMarker(GpsDeviceModel device) {
     final isSelected = _selectedDeviceId == device.id;
     final isFollowed = _followedDeviceId == device.id;
-    final isMoving = device.speed > 1;
-    final isOnline = device.online == 'online';
-
-    final statusColor = isMoving
-        ? AppTheme2026.neonEmerald
-        : (isOnline ? AppTheme2026.electricCyan : AppTheme2026.textMutedDark);
+    final statusColor = device.statusColor;
 
     return Marker(
-      point: LatLng(device.lat!, device.lng!),
+      point: LatLng(device.lat, device.lng),
       width: isSelected ? 140 : 115,
       height: isSelected ? 66 : 54,
       child: GestureDetector(
@@ -691,7 +697,7 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
             _selectedDeviceId = device.id;
             _showFleetSheet = false;
           });
-          _mapController.move(LatLng(device.lat!, device.lng!), 15.5);
+          _mapController.move(LatLng(device.lat, device.lng), 15.5);
         },
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -700,7 +706,7 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
                 color: isFollowed
-                    ? AppTheme2026.crimsonAlert
+                    ? AppColors2026.roseLaser
                     : const Color(0xEB0B1222),
                 borderRadius: BorderRadius.circular(999),
                 border: Border.all(
@@ -709,8 +715,9 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: (isFollowed ? AppTheme2026.crimsonAlert : statusColor)
-                        .withValues(alpha: 0.45),
+                    color:
+                        (isFollowed ? AppColors2026.roseLaser : statusColor)
+                            .withOpacity(0.45),
                     blurRadius: isSelected ? 12 : 6,
                   ),
                 ],
@@ -744,7 +751,7 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                     Text(
                       '${device.speed.round()}km/h',
                       style: const TextStyle(
-                        color: AppTheme2026.neonEmerald,
+                        color: AppColors2026.emeraldNeon,
                         fontSize: 9,
                         fontWeight: FontWeight.w900,
                       ),
@@ -763,18 +770,15 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                 border: Border.all(color: Colors.white, width: 2),
                 boxShadow: [
                   BoxShadow(
-                    color: statusColor.withValues(alpha: 0.6),
+                    color: statusColor.withOpacity(0.6),
                     blurRadius: 10,
                   ),
                 ],
               ),
-              child: Transform.rotate(
-                angle: device.course * 3.1415926535 / 180,
-                child: const Icon(
-                  LucideIcons.navigation,
-                  size: 13,
-                  color: Colors.black,
-                ),
+              child: const Icon(
+                LucideIcons.navigation,
+                size: 13,
+                color: Colors.black,
               ),
             ),
           ],
@@ -800,16 +804,17 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
     );
   }
 
-  Widget _buildSelectedVehicleCard(GpsDeviceModel device, AppStateProvider state) {
+  Widget _buildSelectedVehicleCard(GpsDeviceModel device) {
     final isFollowed = _followedDeviceId == device.id;
 
     return SpatialGlassCard(
       padding: const EdgeInsets.all(14),
       borderRadius: 22,
       borderColor: isFollowed
-          ? AppTheme2026.crimsonAlert.withValues(alpha: 0.6)
-          : AppTheme2026.electricCyan.withValues(alpha: 0.4),
-      glowColor: isFollowed ? AppTheme2026.crimsonAlert : AppTheme2026.electricCyan,
+          ? AppColors2026.roseLaser.withOpacity(0.6)
+          : AppColors2026.cyanNeon.withOpacity(0.4),
+      glowColor:
+          isFollowed ? AppColors2026.roseLaser : AppColors2026.cyanNeon,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -819,16 +824,16 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: (isFollowed
-                          ? AppTheme2026.crimsonAlert
-                          : AppTheme2026.electricCyan)
-                      .withValues(alpha: 0.16),
+                          ? AppColors2026.roseLaser
+                          : AppColors2026.cyanNeon)
+                      .withOpacity(0.16),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(
                   isFollowed ? LucideIcons.radio : LucideIcons.car,
                   color: isFollowed
-                      ? AppTheme2026.crimsonAlert
-                      : AppTheme2026.electricCyan,
+                      ? AppColors2026.roseLaser
+                      : AppColors2026.cyanNeon,
                   size: 20,
                 ),
               ),
@@ -854,21 +859,19 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                         NeonBadge(
                           label: '${device.speed.round()} km/h',
                           color: device.speed > 0
-                              ? AppTheme2026.neonEmerald
-                              : AppTheme2026.electricCyan,
+                              ? AppColors2026.emeraldNeon
+                              : AppColors2026.cyanNeon,
                         ),
                       ],
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      device.address?.isNotEmpty == true
-                          ? device.address!
-                          : '${device.lat?.toStringAsFixed(5)}, ${device.lng?.toStringAsFixed(5)}',
+                      '${device.plate} • ${device.lat.toStringAsFixed(5)}, ${device.lng.toStringAsFixed(5)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 11,
-                        color: AppTheme2026.textSecondaryDark,
+                        color: AppColors2026.textSecondary,
                       ),
                     ),
                   ],
@@ -879,7 +882,7 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                   setState(() {
                     if (_followedDeviceId == device.id) {
                       _followedDeviceId = null;
-                      state.setFastTrackingMode(false);
+                      widget.appState.setFastGpsPolling(false);
                     }
                     _selectedDeviceId = null;
                   });
@@ -889,21 +892,21 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
             ],
           ),
           const SizedBox(height: 10),
-
-          // Action Row: Activer Suivi & Traceur + Quick History Presets
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                // ACTIVER SUIVI & TRACEUR BUTTON
                 ElevatedButton.icon(
-                  onPressed: () => _toggleLiveSuivi(device, state),
+                  onPressed: () => _toggleLiveSuivi(device),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: isFollowed
-                        ? AppTheme2026.crimsonAlert
-                        : AppTheme2026.neonEmerald,
+                        ? AppColors2026.roseLaser
+                        : AppColors2026.emeraldNeon,
                     foregroundColor: isFollowed ? Colors.white : Colors.black,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                   ),
                   icon: Icon(
                     isFollowed ? LucideIcons.square : LucideIcons.navigation,
@@ -913,12 +916,13 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                     isFollowed
                         ? 'Arrêter Suivi (${_liveTrailPoints.length} pts)'
                         : 'Activer Suivi & Traceur',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
-
-                // Quick History Period Buttons
                 for (final entry in const [
                   ('today', "Aujourd'hui"),
                   ('1h', '1h'),
@@ -930,12 +934,17 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                     child: OutlinedButton(
                       onPressed: _loadingHistory
                           ? null
-                          : () => _loadHistoryForPreset(entry.$1),
+                          : () => _loadHistoryForPreset(entry.$1, device),
                       style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                         side: BorderSide(
-                          color: (!_isLiveTrailActive && _selectedPreset == entry.$1 && _historyPoints.isNotEmpty)
-                              ? AppTheme2026.electricCyan
+                          color: (!_isLiveTrailActive &&
+                                  _selectedPreset == entry.$1 &&
+                                  _historyPoints.isNotEmpty)
+                              ? AppColors2026.cyanNeon
                               : Colors.white24,
                         ),
                       ),
@@ -944,8 +953,10 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
-                          color: (!_isLiveTrailActive && _selectedPreset == entry.$1 && _historyPoints.isNotEmpty)
-                              ? AppTheme2026.electricCyan
+                          color: (!_isLiveTrailActive &&
+                                  _selectedPreset == entry.$1 &&
+                                  _historyPoints.isNotEmpty)
+                              ? AppColors2026.cyanNeon
                               : Colors.white70,
                         ),
                       ),
@@ -954,11 +965,10 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
               ],
             ),
           ),
-
           if (_loadingHistory)
             const Padding(
               padding: EdgeInsets.only(top: 8),
-              child: LinearProgressIndicator(color: AppTheme2026.electricCyan),
+              child: LinearProgressIndicator(color: AppColors2026.cyanNeon),
             ),
           if (_historyError != null)
             Padding(
@@ -966,7 +976,7 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
               child: Text(
                 _historyError!,
                 style: const TextStyle(
-                  color: AppTheme2026.amberGold,
+                  color: AppColors2026.amberSolar,
                   fontSize: 11,
                 ),
               ),
@@ -987,30 +997,35 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       borderRadius: 22,
       borderColor: _isLiveTrailActive
-          ? AppTheme2026.crimsonAlert.withValues(alpha: 0.55)
-          : state.traceurColor.withValues(alpha: 0.45),
+          ? AppColors2026.roseLaser.withOpacity(0.55)
+          : state.tracerColor.withOpacity(0.45),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             children: [
               NeonBadge(
-                label: _isLiveTrailActive ? '🔴 EN DIRECT (SUIVI)' : 'LECTEUR DE TRAJET',
+                label: _isLiveTrailActive
+                    ? '🔴 EN DIRECT (SUIVI)'
+                    : 'LECTEUR DE TRAJET',
                 color: _isLiveTrailActive
-                    ? AppTheme2026.crimsonAlert
-                    : state.traceurColor,
+                    ? AppColors2026.roseLaser
+                    : state.tracerColor,
                 pulsing: _isLiveTrailActive,
               ),
               const SizedBox(width: 8),
-              Text(
-                '${stats.distanceKm.toStringAsFixed(2)} km • Max ${stats.maxSpeedKmh.round()} km/h • ${points.length} pts',
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme2026.textSecondaryDark,
+              Expanded(
+                child: Text(
+                  '${stats.distanceKm.toStringAsFixed(1)} km • Max ${stats.maxSpeed} km/h • ${points.length} pts',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors2026.textSecondary,
+                  ),
                 ),
               ),
-              const Spacer(),
               IconButton(
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
@@ -1024,16 +1039,14 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
           Row(
             children: [
               IconButton(
-                onPressed: points.length < 2
-                    ? null
-                    : () => _togglePlayback(state.playbackSpeed),
+                onPressed: points.length < 2 ? null : _togglePlayback,
                 style: IconButton.styleFrom(
-                  backgroundColor: state.traceurColor.withValues(alpha: 0.2),
+                  backgroundColor: state.tracerColor.withOpacity(0.2),
                 ),
                 icon: Icon(
                   _isPlaying ? LucideIcons.pause : LucideIcons.play,
                   size: 18,
-                  color: state.traceurColor,
+                  color: state.tracerColor,
                 ),
               ),
               Expanded(
@@ -1041,7 +1054,7 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                   value: safeIndex.toDouble(),
                   min: 0,
                   max: (points.length - 1).clamp(1, 999999).toDouble(),
-                  activeColor: state.traceurColor,
+                  activeColor: state.tracerColor,
                   onChanged: points.length < 2
                       ? null
                       : (v) {
@@ -1057,8 +1070,9 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
               ),
               if (currentPoint != null)
                 NeonBadge(
-                  label: '${currentPoint.speed.round()} km/h',
-                  color: AppTheme2026.neonEmerald,
+                  label:
+                      '${currentPoint.speed.round()} km/h • ${DateFormat('HH:mm').format(currentPoint.dateTime)}',
+                  color: AppColors2026.emeraldNeon,
                 ),
             ],
           ),
@@ -1067,7 +1081,7 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
     );
   }
 
-  Widget _buildFleetDrawer(List<GpsDeviceModel> devices, AppStateProvider state) {
+  Widget _buildFleetDrawer(List<GpsDeviceModel> devices) {
     return SpatialGlassCard(
       padding: const EdgeInsets.all(14),
       borderRadius: 24,
@@ -1076,7 +1090,11 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
         children: [
           Row(
             children: [
-              const Icon(LucideIcons.radar, color: AppTheme2026.electricCyan, size: 18),
+              const Icon(
+                LucideIcons.radio,
+                color: AppColors2026.cyanNeon,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
@@ -1134,32 +1152,26 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                       _selectedDeviceId = d.id;
                       _showFleetSheet = false;
                     });
-                    if (d.hasValidCoords) {
-                      _mapController.move(LatLng(d.lat!, d.lng!), 16);
+                    if (d.hasValidPosition) {
+                      _mapController.move(LatLng(d.lat, d.lng), 16);
                     }
                   },
                   child: Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       color: isSelected
-                          ? AppTheme2026.electricCyan.withValues(alpha: 0.14)
-                          : Colors.white.withValues(alpha: 0.03),
+                          ? AppColors2026.cyanNeon.withOpacity(0.14)
+                          : Colors.white.withOpacity(0.03),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
                         color: isSelected
-                            ? AppTheme2026.electricCyan
+                            ? AppColors2026.cyanNeon
                             : Colors.white10,
                       ),
                     ),
                     child: Row(
                       children: [
-                        AnimatedPulseDot(
-                          color: d.speed > 0
-                              ? AppTheme2026.neonEmerald
-                              : (d.online == 'online'
-                                  ? AppTheme2026.electricCyan
-                                  : Colors.grey),
-                        ),
+                        AnimatedPulseDot(color: d.statusColor),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
@@ -1175,10 +1187,10 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                                 ),
                               ),
                               Text(
-                                '${d.speed.round()} km/h • ${d.online.toUpperCase()}',
+                                '${d.speed.round()} km/h • ${d.statusLabel}',
                                 style: const TextStyle(
                                   fontSize: 11,
-                                  color: AppTheme2026.textSecondaryDark,
+                                  color: AppColors2026.textSecondary,
                                 ),
                               ),
                             ],
@@ -1186,13 +1198,13 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
                         ),
                         IconButton(
                           tooltip: 'Activer Suivi & Traceur',
-                          onPressed: () => _toggleLiveSuivi(d, state),
+                          onPressed: () => _toggleLiveSuivi(d),
                           icon: Icon(
                             LucideIcons.navigation,
                             size: 16,
                             color: isFollowed
-                                ? AppTheme2026.crimsonAlert
-                                : AppTheme2026.neonEmerald,
+                                ? AppColors2026.roseLaser
+                                : AppColors2026.emeraldNeon,
                           ),
                         ),
                       ],

@@ -4,7 +4,6 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:provider/provider.dart';
 import '../../core/config/app_config.dart';
 import '../../core/theme/app_theme_2026.dart';
 import '../../core/widgets/spatial_glass_widgets.dart';
@@ -12,8 +11,11 @@ import '../../models/app_models.dart';
 import '../../providers/app_state_provider.dart';
 import '../../services/gpswox_service.dart';
 
+/// 7. SUIVI SCREEN (Studio Trajectoire GPSWOX, Période d'analyse & Lecteur Vidéo avec bouton X)
 class TrackingScreen extends StatefulWidget {
-  const TrackingScreen({super.key});
+  final AppStateProvider appState;
+
+  const TrackingScreen({super.key, required this.appState});
 
   @override
   State<TrackingScreen> createState() => _TrackingScreenState();
@@ -22,7 +24,8 @@ class TrackingScreen extends StatefulWidget {
 class _TrackingScreenState extends State<TrackingScreen> {
   final MapController _mapController = MapController();
 
-  int? _selectedDeviceId;
+  String _mapLayerId = 'google_hybrid';
+  String? _selectedDeviceId;
   String _periodPreset = 'today'; // '1h' | 'today' | '24h' | '7d' | 'custom'
   DateTime _customFrom = DateTime.now().subtract(const Duration(hours: 24));
   DateTime _customTo = DateTime.now();
@@ -36,12 +39,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
   bool _showVideoPlayer = true;
   bool _isPlaying = false;
   int _playerIndex = 0;
+  double _playbackSpeed = 1.0;
   Timer? _playbackTimer;
 
   // Geofence Security Zone
   bool _geofenceActive = false;
   LatLng? _geofenceCenter;
-  double _geofenceRadiusMeters = 500;
+  final double _geofenceRadiusMeters = 500;
 
   // Collapsible Control Panel
   bool _showControlSheet = true;
@@ -55,6 +59,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
   Future<void> _loadAndTraceHistory(List<GpsDeviceModel> devices) async {
     final targetId = _selectedDeviceId ?? devices.firstOrNull?.id;
     if (targetId == null) return;
+
+    final targetDevice = devices.where((d) => d.id == targetId).firstOrNull;
 
     _playbackTimer?.cancel();
     setState(() {
@@ -82,8 +88,22 @@ class _TrackingScreenState extends State<TrackingScreen> {
         to = now;
         break;
       case 'custom':
-        from = DateTime(_customFrom.year, _customFrom.month, _customFrom.day, 0, 0, 0);
-        to = DateTime(_customTo.year, _customTo.month, _customTo.day, 23, 59, 59);
+        from = DateTime(
+          _customFrom.year,
+          _customFrom.month,
+          _customFrom.day,
+          0,
+          0,
+          0,
+        );
+        to = DateTime(
+          _customTo.year,
+          _customTo.month,
+          _customTo.day,
+          23,
+          59,
+          59,
+        );
         break;
       case 'today':
       default:
@@ -93,24 +113,25 @@ class _TrackingScreenState extends State<TrackingScreen> {
     }
 
     try {
-      final result = await GpswoxService.instance.getDeviceHistory(
+      final points = await GpswoxService.getDeviceHistory(
         deviceId: targetId,
         from: from,
         to: to,
+        fallbackDevice: targetDevice,
       );
       if (!mounted) return;
 
       setState(() {
-        _routePoints = result.points;
-        _stops = GpswoxService.instance.detectStops(result.points);
+        _routePoints = points;
+        _stops = GpswoxService.detectStops(points);
         _playerIndex = 0;
         _showVideoPlayer = true;
         _isLoadingHistory = false;
-        if (result.points.isEmpty) {
+        if (points.isEmpty) {
           _errorMessage =
               'Aucun point historique trouvé pour cette période sur GPSWOX.';
         } else {
-          _fitBounds(result.points);
+          _fitBounds(points);
         }
       });
     } catch (e) {
@@ -139,7 +160,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
     } catch (_) {}
   }
 
-  void _toggleVideoPlayback(double speedMultiplier) {
+  void _toggleVideoPlayback() {
     if (_routePoints.length < 2) return;
 
     if (_isPlaying) {
@@ -153,7 +174,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
     }
 
     setState(() => _isPlaying = true);
-    final delayMs = (220 / speedMultiplier).round().clamp(25, 450);
+    final delayMs = (220 / _playbackSpeed).round().clamp(25, 450);
 
     _playbackTimer = Timer.periodic(Duration(milliseconds: delayMs), (timer) {
       if (!mounted) {
@@ -164,7 +185,10 @@ class _TrackingScreenState extends State<TrackingScreen> {
         setState(() => _playerIndex++);
         final pt = _routePoints[_playerIndex];
         try {
-          _mapController.move(LatLng(pt.lat, pt.lng), _mapController.camera.zoom);
+          _mapController.move(
+            LatLng(pt.lat, pt.lng),
+            _mapController.camera.zoom,
+          );
         } catch (_) {}
       } else {
         timer.cancel();
@@ -191,7 +215,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppStateProvider>();
+    final state = widget.appState;
     final devices = state.gpsDevices;
 
     if (_selectedDeviceId == null && devices.isNotEmpty) {
@@ -204,15 +228,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
         ? 0
         : _playerIndex.clamp(0, _routePoints.length - 1);
     final currentPt = _routePoints.isNotEmpty ? _routePoints[safeIdx] : null;
-    final stats = GpswoxService.instance.computeRouteStats(_routePoints);
+    final stats = GpswoxService.computeRouteStats(_routePoints);
 
-    final tileOption = AppConfig.mapLayers.firstWhere(
-      (l) => l.id == state.mapLayerId,
-      orElse: () => AppConfig.mapLayers.first,
-    );
+    final tileOption = AppConfig.mapTileStyles[_mapLayerId] ??
+        AppConfig.mapTileStyles['google_hybrid']!;
 
-    final center = selectedDevice?.hasValidCoords == true
-        ? LatLng(selectedDevice!.lat!, selectedDevice.lng!)
+    final center = selectedDevice?.hasValidPosition == true
+        ? LatLng(selectedDevice!.lat, selectedDevice.lng)
         : const LatLng(33.5731, -7.5898);
 
     return Stack(
@@ -229,8 +251,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
           children: [
             TileLayer(
               urlTemplate: tileOption.urlTemplate,
-              subdomains: tileOption.subdomains,
-              maxZoom: tileOption.maxZoom,
+              maxZoom: 20,
               userAgentPackageName: 'com.sft.iloca',
             ),
 
@@ -242,8 +263,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
                     point: _geofenceCenter!,
                     radius: _geofenceRadiusMeters,
                     useRadiusInMeter: true,
-                    color: AppTheme2026.neonEmerald.withValues(alpha: 0.16),
-                    borderColor: AppTheme2026.neonEmerald,
+                    color: AppColors2026.emeraldNeon.withOpacity(0.16),
+                    borderColor: AppColors2026.emeraldNeon,
                     borderStrokeWidth: 2,
                   ),
                 ],
@@ -253,24 +274,26 @@ class _TrackingScreenState extends State<TrackingScreen> {
             if (_routePoints.length > 1)
               PolylineLayer(
                 polylines: [
-                  if (state.traceurGlow)
+                  if (state.tracerGlow)
                     Polyline(
-                      points: _routePoints.map((p) => LatLng(p.lat, p.lng)).toList(),
-                      strokeWidth: state.traceurWidth * 2.6,
-                      color: state.traceurColor.withValues(alpha: 0.25),
+                      points:
+                          _routePoints.map((p) => LatLng(p.lat, p.lng)).toList(),
+                      strokeWidth: state.tracerWeight * 2.6,
+                      color: state.tracerColor.withOpacity(0.25),
                     ),
                   Polyline(
-                    points: _routePoints.map((p) => LatLng(p.lat, p.lng)).toList(),
-                    strokeWidth: state.traceurWidth * 0.7,
-                    color: state.traceurColor.withValues(alpha: 0.35),
+                    points:
+                        _routePoints.map((p) => LatLng(p.lat, p.lng)).toList(),
+                    strokeWidth: state.tracerWeight * 0.7,
+                    color: state.tracerColor.withOpacity(0.35),
                   ),
                   Polyline(
                     points: _routePoints
                         .take(safeIdx + 1)
                         .map((p) => LatLng(p.lat, p.lng))
                         .toList(),
-                    strokeWidth: state.traceurWidth,
-                    color: state.traceurColor,
+                    strokeWidth: state.tracerWeight,
+                    color: state.tracerColor,
                   ),
                 ],
               ),
@@ -279,15 +302,18 @@ class _TrackingScreenState extends State<TrackingScreen> {
             if (_routePoints.isNotEmpty)
               MarkerLayer(
                 markers: [
-                  // Start Flag
                   Marker(
-                    point: LatLng(_routePoints.first.lat, _routePoints.first.lng),
+                    point:
+                        LatLng(_routePoints.first.lat, _routePoints.first.lng),
                     width: 85,
                     height: 32,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
-                        color: AppTheme2026.neonEmerald,
+                        color: AppColors2026.emeraldNeon,
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: const Center(
@@ -302,15 +328,17 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       ),
                     ),
                   ),
-                  // End Flag
                   Marker(
                     point: LatLng(_routePoints.last.lat, _routePoints.last.lng),
                     width: 85,
                     height: 32,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
-                        color: AppTheme2026.crimsonAlert,
+                        color: AppColors2026.roseLaser,
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: const Center(
@@ -325,17 +353,16 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       ),
                     ),
                   ),
-                  // Stop Markers
                   ..._stops.map(
                     (s) => Marker(
                       point: LatLng(s.lat, s.lng),
                       width: 28,
                       height: 28,
                       child: Tooltip(
-                        message: 'Arrêt ${s.durationMinutes} min',
+                        message: 'Arrêt ${s.durationMin} min',
                         child: Container(
                           decoration: BoxDecoration(
-                            color: AppTheme2026.amberGold,
+                            color: AppColors2026.amberSolar,
                             shape: BoxShape.circle,
                             border: Border.all(color: Colors.white, width: 2),
                           ),
@@ -353,31 +380,27 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       ),
                     ),
                   ),
-                  // Current Scrubber Vehicle Position
                   if (currentPt != null)
                     Marker(
                       point: LatLng(currentPt.lat, currentPt.lng),
-                      width: 48,
-                      height: 48,
+                      width: state.tracerSize,
+                      height: state.tracerSize,
                       child: Container(
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: state.traceurColor,
+                          color: state.tracerColor,
                           border: Border.all(color: Colors.white, width: 2.5),
                           boxShadow: [
                             BoxShadow(
-                              color: state.traceurColor.withValues(alpha: 0.7),
+                              color: state.tracerColor.withOpacity(0.7),
                               blurRadius: 14,
                             ),
                           ],
                         ),
-                        child: Transform.rotate(
-                          angle: currentPt.course * 3.1415926535 / 180,
-                          child: const Icon(
-                            LucideIcons.navigation,
-                            color: Colors.black,
-                            size: 20,
-                          ),
+                        child: const Icon(
+                          LucideIcons.navigation,
+                          color: Colors.black,
+                          size: 20,
                         ),
                       ),
                     ),
@@ -394,20 +417,26 @@ class _TrackingScreenState extends State<TrackingScreen> {
           child: Row(
             children: [
               SpatialGlassCard(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
                 borderRadius: 16,
-                onTap: () => setState(() => _showControlSheet = !_showControlSheet),
+                onTap: () =>
+                    setState(() => _showControlSheet = !_showControlSheet),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(
-                      LucideIcons.route,
-                      color: AppTheme2026.electricCyan,
+                      LucideIcons.compass,
+                      color: AppColors2026.cyanNeon,
                       size: 18,
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      _showControlSheet ? 'Masquer Période' : 'Période & Trajets',
+                      _showControlSheet
+                          ? 'Masquer Période'
+                          : 'Période & Trajets',
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 13,
@@ -417,19 +446,22 @@ class _TrackingScreenState extends State<TrackingScreen> {
                 ),
               ),
               const Spacer(),
-              // Geofence quick toggle
               SpatialGlassCard(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 borderRadius: 16,
                 borderColor: _geofenceActive
-                    ? AppTheme2026.neonEmerald.withValues(alpha: 0.6)
+                    ? AppColors2026.emeraldNeon.withOpacity(0.6)
                     : null,
                 onTap: () {
                   setState(() {
                     _geofenceActive = !_geofenceActive;
-                    if (_geofenceActive && selectedDevice?.hasValidCoords == true) {
+                    if (_geofenceActive &&
+                        selectedDevice?.hasValidPosition == true) {
                       _geofenceCenter =
-                          LatLng(selectedDevice!.lat!, selectedDevice.lng!);
+                          LatLng(selectedDevice!.lat, selectedDevice.lng);
                     }
                   });
                 },
@@ -440,8 +472,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       LucideIcons.shieldCheck,
                       size: 16,
                       color: _geofenceActive
-                          ? AppTheme2026.neonEmerald
-                          : AppTheme2026.textSecondaryDark,
+                          ? AppColors2026.emeraldNeon
+                          : AppColors2026.textSecondary,
                     ),
                     const SizedBox(width: 6),
                     Text(
@@ -469,13 +501,15 @@ class _TrackingScreenState extends State<TrackingScreen> {
                 borderRadius: 14,
                 onTap: () => showModalBottomSheet(
                   context: context,
-                  backgroundColor: Colors.transparent,
-                  builder: (_) => const MapLayerSwitcherSheet(),
+                  builder: (_) => MapLayerSwitcherSheet(
+                    currentLayerId: _mapLayerId,
+                    onSelectLayer: (id) => setState(() => _mapLayerId = id),
+                  ),
                 ),
                 child: const Icon(
                   LucideIcons.layers,
                   size: 19,
-                  color: AppTheme2026.electricCyan,
+                  color: AppColors2026.cyanNeon,
                 ),
               ),
               const SizedBox(height: 8),
@@ -484,17 +518,24 @@ class _TrackingScreenState extends State<TrackingScreen> {
                 borderRadius: 14,
                 onTap: () => showModalBottomSheet(
                   context: context,
-                  backgroundColor: Colors.transparent,
                   isScrollControlled: true,
-                  builder: (_) => const TraceurCustomizerSheet(),
+                  builder: (_) => TraceurCustomizerSheet(
+                    selectedColor: state.tracerColor,
+                    weight: state.tracerWeight,
+                    markerSize: state.tracerSize,
+                    glow: state.tracerGlow,
+                    onColorChanged: state.setTracerColor,
+                    onWeightChanged: state.setTracerWeight,
+                    onSizeChanged: state.setTracerSize,
+                    onGlowChanged: state.setTracerGlow,
+                  ),
                 ),
                 child: Icon(
                   LucideIcons.palette,
                   size: 19,
-                  color: state.traceurColor,
+                  color: state.tracerColor,
                 ),
               ),
-              // Reopen Video Player Button when closed via 'X'
               if (_routePoints.isNotEmpty && !_showVideoPlayer) ...[
                 const SizedBox(height: 8),
                 Tooltip(
@@ -502,12 +543,12 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   child: SpatialGlassCard(
                     padding: const EdgeInsets.all(11),
                     borderRadius: 14,
-                    borderColor: AppTheme2026.neonEmerald.withValues(alpha: 0.6),
+                    borderColor: AppColors2026.emeraldNeon.withOpacity(0.6),
                     onTap: () => setState(() => _showVideoPlayer = true),
                     child: const Icon(
                       LucideIcons.playCircle,
                       size: 20,
-                      color: AppTheme2026.neonEmerald,
+                      color: AppColors2026.emeraldNeon,
                     ),
                   ),
                 ),
@@ -529,8 +570,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Vehicle selector
-                  DropdownButtonFormField<int>(
+                  DropdownButtonFormField<String>(
                     value: _selectedDeviceId,
                     isDense: true,
                     decoration: const InputDecoration(
@@ -539,7 +579,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                     ),
                     items: devices
                         .map(
-                          (d) => DropdownMenuItem<int>(
+                          (d) => DropdownMenuItem<String>(
                             value: d.id,
                             child: Text(
                               '${d.name} (${d.speed.round()} km/h)',
@@ -551,8 +591,6 @@ class _TrackingScreenState extends State<TrackingScreen> {
                     onChanged: (val) => setState(() => _selectedDeviceId = val),
                   ),
                   const SizedBox(height: 10),
-
-                  // Period presets
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
@@ -567,7 +605,10 @@ class _TrackingScreenState extends State<TrackingScreen> {
                           Padding(
                             padding: const EdgeInsets.only(right: 6),
                             child: ChoiceChip(
-                              label: Text(p.$2, style: const TextStyle(fontSize: 11)),
+                              label: Text(
+                                p.$2,
+                                style: const TextStyle(fontSize: 11),
+                              ),
                               selected: _periodPreset == p.$1,
                               onSelected: (_) {
                                 if (p.$1 == 'custom') {
@@ -581,7 +622,6 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       ],
                     ),
                   ),
-
                   if (_periodPreset == 'custom')
                     Padding(
                       padding: const EdgeInsets.only(top: 6),
@@ -590,14 +630,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
                         child: Text(
                           'Du ${DateFormat('dd/MM/yyyy').format(_customFrom)} au ${DateFormat('dd/MM/yyyy').format(_customTo)} (23:59:59)',
                           style: const TextStyle(
-                            color: AppTheme2026.electricCyan,
+                            color: AppColors2026.cyanNeon,
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
                     ),
-
                   const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
@@ -628,7 +667,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       child: Text(
                         _errorMessage!,
                         style: const TextStyle(
-                          color: AppTheme2026.amberGold,
+                          color: AppColors2026.amberSolar,
                           fontSize: 11,
                         ),
                       ),
@@ -647,8 +686,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
             child: SpatialGlassCard(
               padding: const EdgeInsets.all(14),
               borderRadius: 24,
-              borderColor: state.traceurColor.withValues(alpha: 0.55),
-              glowColor: state.traceurColor,
+              borderColor: state.tracerColor.withOpacity(0.55),
+              glowColor: state.tracerColor,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -656,18 +695,18 @@ class _TrackingScreenState extends State<TrackingScreen> {
                     children: [
                       NeonBadge(
                         label: 'LECTEUR VIDÉO TRAJECTOIRE',
-                        color: state.traceurColor,
+                        color: state.tracerColor,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          '${stats.distanceKm.toStringAsFixed(2)} km • Max ${stats.maxSpeedKmh.round()} km/h • ${_stops.length} arrêts',
+                          '${stats.distanceKm.toStringAsFixed(1)} km • Max ${stats.maxSpeed} km/h • ${_stops.length} arrêts',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: AppTheme2026.textSecondaryDark,
+                            color: AppColors2026.textSecondary,
                           ),
                         ),
                       ),
@@ -686,16 +725,16 @@ class _TrackingScreenState extends State<TrackingScreen> {
                           child: Container(
                             padding: const EdgeInsets.all(6),
                             decoration: BoxDecoration(
-                              color: AppTheme2026.crimsonAlert.withValues(alpha: 0.2),
+                              color: AppColors2026.roseLaser.withOpacity(0.2),
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: AppTheme2026.crimsonAlert.withValues(alpha: 0.5),
+                                color: AppColors2026.roseLaser.withOpacity(0.5),
                               ),
                             ),
                             child: const Icon(
                               LucideIcons.x,
                               size: 15,
-                              color: AppTheme2026.crimsonAlert,
+                              color: AppColors2026.roseLaser,
                             ),
                           ),
                         ),
@@ -706,9 +745,9 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   Row(
                     children: [
                       IconButton(
-                        onPressed: () => _toggleVideoPlayback(state.playbackSpeed),
+                        onPressed: _toggleVideoPlayback,
                         style: IconButton.styleFrom(
-                          backgroundColor: state.traceurColor,
+                          backgroundColor: state.tracerColor,
                           foregroundColor: Colors.black,
                         ),
                         icon: Icon(
@@ -732,10 +771,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
                         child: Slider(
                           value: safeIdx.toDouble(),
                           min: 0,
-                          max: (_routePoints.length - 1).clamp(1, 999999).toDouble(),
-                          activeColor: state.traceurColor,
+                          max: (_routePoints.length - 1)
+                              .clamp(1, 999999)
+                              .toDouble(),
+                          activeColor: state.tracerColor,
                           onChanged: (v) {
-                            final idx = v.round().clamp(0, _routePoints.length - 1);
+                            final idx =
+                                v.round().clamp(0, _routePoints.length - 1);
                             setState(() => _playerIndex = idx);
                             final pt = _routePoints[idx];
                             _mapController.move(
@@ -745,14 +787,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
                           },
                         ),
                       ),
-                      // Speed Multiplier Cycle Button
                       InkWell(
                         onTap: () {
                           const speeds = [1.0, 2.0, 4.0, 8.0];
                           final next = speeds[
-                              (speeds.indexOf(state.playbackSpeed) + 1) %
+                              (speeds.indexOf(_playbackSpeed) + 1) %
                                   speeds.length];
-                          state.setTraceurSettings(speed: next);
+                          setState(() => _playbackSpeed = next);
                         },
                         child: Container(
                           padding: const EdgeInsets.symmetric(
@@ -764,7 +805,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            '${state.playbackSpeed.toInt()}x',
+                            '${_playbackSpeed.toInt()}x',
                             style: const TextStyle(
                               fontWeight: FontWeight.w900,
                               fontSize: 11,
@@ -779,10 +820,10 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Point ${safeIdx + 1}/${_routePoints.length} • ${currentPt.timestamp}',
+                          'Point ${safeIdx + 1}/${_routePoints.length} • ${DateFormat('dd/MM HH:mm:ss').format(currentPt.dateTime)}',
                           style: const TextStyle(
                             fontSize: 10,
-                            color: AppTheme2026.textSecondaryDark,
+                            color: AppColors2026.textSecondary,
                           ),
                         ),
                         Text(
@@ -790,7 +831,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w900,
-                            color: state.traceurColor,
+                            color: state.tracerColor,
                           ),
                         ),
                       ],

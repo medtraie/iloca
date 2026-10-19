@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/config/app_config.dart';
 import 'core/theme/app_theme_2026.dart';
@@ -16,7 +15,7 @@ Future<void> main() async {
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: AppTheme2026.obsidianBg,
+      systemNavigationBarColor: AppColors2026.abyss,
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
@@ -24,7 +23,7 @@ Future<void> main() async {
   // Initialize Supabase with Web-shared project credentials and Realtime WebSockets
   await Supabase.initialize(
     url: AppConfig.supabaseUrl,
-    anonKey: AppConfig.supabaseAnonKey,
+    anonKey: AppConfig.supabasePublishableKey,
     realtimeClientOptions: const RealtimeClientOptions(
       eventsPerSecond: 20,
     ),
@@ -33,27 +32,44 @@ Future<void> main() async {
   runApp(const IlocaSpatialApp2026());
 }
 
-class IlocaSpatialApp2026 extends StatelessWidget {
+class IlocaSpatialApp2026 extends StatefulWidget {
   const IlocaSpatialApp2026({super.key});
 
   @override
+  State<IlocaSpatialApp2026> createState() => _IlocaSpatialApp2026State();
+}
+
+class _IlocaSpatialApp2026State extends State<IlocaSpatialApp2026> {
+  late final AppStateProvider _appState;
+
+  @override
+  void initState() {
+    super.initState();
+    _appState = AppStateProvider()..initialize();
+  }
+
+  @override
+  void dispose() {
+    _appState.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => AppStateProvider()..initialize(),
-      child: Consumer<AppStateProvider>(
-        builder: (context, state, _) {
-          return MaterialApp(
-            title: AppConfig.appName,
-            debugShowCheckedModeBanner: false,
-            themeMode: state.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-            darkTheme: AppTheme2026.darkTheme(),
-            theme: AppTheme2026.lightTheme(),
-            home: state.isAuthenticated
-                ? const MainSpatialShell()
-                : const LoginScreen(),
-          );
-        },
-      ),
+    return ListenableBuilder(
+      listenable: _appState,
+      builder: (context, _) {
+        return MaterialApp(
+          title: 'iLOCA SFT 2026',
+          debugShowCheckedModeBanner: false,
+          themeMode: _appState.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+          darkTheme: AppTheme2026.darkSpatialTheme,
+          theme: AppTheme2026.lightPearlTheme,
+          home: _appState.isAuthenticated
+              ? MainSpatialShell(appState: _appState)
+              : LoginScreen(appState: _appState),
+        );
+      },
     );
   }
 }
