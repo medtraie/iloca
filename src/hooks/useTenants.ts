@@ -85,6 +85,14 @@ export const useTenants = () => {
 
   useEffect(() => {
     fetchTenants();
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail || detail.table === 'clients') {
+        fetchTenants();
+      }
+    };
+    window.addEventListener('iloca:realtime-sync', handler);
+    return () => window.removeEventListener('iloca:realtime-sync', handler);
   }, []);
 
   return {

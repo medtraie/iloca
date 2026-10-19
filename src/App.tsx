@@ -25,8 +25,9 @@ import Login from "./pages/Login";
 import AdminDashboard from "./pages/AdminDashboard";
 import { CommandPalette } from "./components/CommandPalette";
 import { AnimatePresence, motion } from "framer-motion";
-import { ReactNode, lazy, Suspense } from "react";
+import { ReactNode, lazy, Suspense, useEffect } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { realtimeSyncService } from "./services/realtimeSyncService";
 
 const FleetMap = lazy(() => import("./pages/FleetMap"));
 const Tracking = lazy(() => import("./pages/Tracking"));
@@ -158,6 +159,10 @@ function DashboardOrAdmin() {
 }
 
 const App = () => {
+  useEffect(() => {
+    realtimeSyncService.init(queryClient);
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>

@@ -161,3 +161,22 @@ CREATE POLICY "Allow all access to app_settings" ON public.app_settings FOR ALL 
 
 DROP POLICY IF EXISTS "Allow all access to treasury settings" ON public.treasury_settings;
 CREATE POLICY "Allow all access to treasury settings" ON public.treasury_settings FOR ALL USING (true) WITH CHECK (true);
+
+-- 4. ACTIVER SUPABASE REALTIME SUR TOUTES LES TABLES (SYNCHRONISATION INSTANTANEE WEB <-> FLUTTER ANDROID/IOS)
+DO $$
+DECLARE
+  t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'vehicles', 'clients', 'contracts', 'payments',
+    'expenses', 'miscellaneous_expenses', 'repairs',
+    'invoices', 'app_settings', 'gpswox_settings'
+  ]
+  LOOP
+    BEGIN
+      EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE public.%I', t);
+    EXCEPTION WHEN duplicate_object OR undefined_table THEN
+      NULL;
+    END;
+  END LOOP;
+END $$;

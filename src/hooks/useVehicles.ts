@@ -164,6 +164,14 @@ export const useVehicles = () => {
 
   useEffect(() => {
     fetchVehicles();
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail || detail.table === 'vehicles' || detail.table === 'contracts') {
+        fetchVehicles();
+      }
+    };
+    window.addEventListener('iloca:realtime-sync', handler);
+    return () => window.removeEventListener('iloca:realtime-sync', handler);
   }, []);
 
   return {

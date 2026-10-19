@@ -1,0 +1,70 @@
+name: Build iLOCA 2026 Flutter (Android APK & iOS)
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'iloca_flutter/**'
+      - '.github/workflows/flutter_mobile_build.yml'
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    name: Build Android APK (Flutter 2026)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: iloca_flutter
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter Stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Scaffold Missing Platform Runner Files & Get Dependencies
+        run: |
+          flutter create . --project-name iloca_flutter --org com.sft.iloca --platforms=android,ios
+          flutter pub get
+
+      - name: Build Release APK
+        run: flutter build apk --release
+
+      - name: Upload Android Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: iLOCA-2026-Android-Release-APK
+          path: iloca_flutter/build/app/outputs/flutter-apk/app-release.apk
+
+  build-ios:
+    name: Build iOS Unsigned IPA (Flutter 2026)
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: iloca_flutter
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter Stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Scaffold Missing Platform Runner Files & Get Dependencies
+        run: |
+          flutter create . --project-name iloca_flutter --org com.sft.iloca --platforms=android,ios
+          flutter pub get
+
+      - name: Build iOS Release (No Codesign)
+        run: flutter build ios --release --no-codesign

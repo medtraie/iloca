@@ -205,6 +205,11 @@ export const useDashboardStats = () => {
 
   useEffect(() => {
     fetchStats();
+    const handler = () => {
+      fetchStats();
+    };
+    window.addEventListener('iloca:realtime-sync', handler);
+    return () => window.removeEventListener('iloca:realtime-sync', handler);
   }, []);
 
   return {
