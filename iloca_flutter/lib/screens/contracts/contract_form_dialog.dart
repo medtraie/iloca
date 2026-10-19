@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/theme/app_theme_2026.dart';
 import '../../core/widgets/spatial_glass_widgets.dart';
@@ -1716,14 +1716,24 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
               Expanded(
                 child: DropdownButtonFormField<String>(
                   value: _paymentMethod,
+                  isExpanded: true,
                   decoration: const InputDecoration(
                     labelText: 'Mode de Règlement *',
                     isDense: true,
                   ),
                   items: const [
-                    DropdownMenuItem(value: 'Espèces', child: Text('Espèces')),
-                    DropdownMenuItem(value: 'Virement', child: Text('Virement')),
-                    DropdownMenuItem(value: 'Chèque', child: Text('Chèque')),
+                    DropdownMenuItem(
+                      value: 'Espèces',
+                      child: Text('Espèces', overflow: TextOverflow.ellipsis),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Virement',
+                      child: Text('Virement', overflow: TextOverflow.ellipsis),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Chèque',
+                      child: Text('Chèque', overflow: TextOverflow.ellipsis),
+                    ),
                   ],
                   onChanged: _isReadOnly
                       ? null
@@ -1759,12 +1769,16 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        '${fmt.format(_totalPrice)} DH',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors2026.cyanBright,
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '${fmt.format(_totalPrice)} DH',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors2026.cyanBright,
+                          ),
                         ),
                       ),
                     ],
@@ -1800,16 +1814,20 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        _remaining <= 0
-                            ? '0 DH (Soldé)'
-                            : '${fmt.format(_remaining)} DH',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                          color: _remaining > 0
-                              ? AppColors2026.roseLaser
-                              : AppColors2026.emeraldBright,
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          _remaining <= 0
+                              ? '0 DH (Soldé)'
+                              : '${fmt.format(_remaining)} DH',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: _remaining > 0
+                                ? AppColors2026.roseLaser
+                                : AppColors2026.emeraldBright,
+                          ),
                         ),
                       ),
                     ],
@@ -1825,6 +1843,7 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
             value: ['ouvert', 'ferme', 'draft', 'signed'].contains(_status)
                 ? _status
                 : 'ouvert',
+            isExpanded: true,
             decoration: const InputDecoration(
               labelText: 'Statut du Contrat',
               prefixIcon: Icon(LucideIcons.checkCircle2, size: 16),
@@ -1833,19 +1852,19 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
             items: const [
               DropdownMenuItem(
                 value: 'ouvert',
-                child: Text('Ouvert (En circulation)'),
+                child: Text('Ouvert (En circulation)', overflow: TextOverflow.ellipsis),
               ),
               DropdownMenuItem(
                 value: 'ferme',
-                child: Text('Fermé (Clôturé / Véhicule restitué)'),
+                child: Text('Fermé (Clôturé / Véhicule restitué)', overflow: TextOverflow.ellipsis),
               ),
               DropdownMenuItem(
                 value: 'signed',
-                child: Text('Signé électroniquement'),
+                child: Text('Signé électroniquement', overflow: TextOverflow.ellipsis),
               ),
               DropdownMenuItem(
                 value: 'draft',
-                child: Text('Brouillon / En attente'),
+                child: Text('Brouillon / En attente', overflow: TextOverflow.ellipsis),
               ),
             ],
             onChanged: _isReadOnly
@@ -2068,7 +2087,7 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
   }
 }
 
-/// Interactive Vehicle Inspection Diagram (Matches Web `VehicleDiagram.tsx`)
+/// Interactive Vehicle Inspection Diagram (100% Matches Web `VehicleDiagram.tsx`)
 class VehicleDiagramInteractiveWidget extends StatelessWidget {
   final String title;
   final List<DamagePointModel> damages;
@@ -2112,21 +2131,22 @@ class VehicleDiagramInteractiveWidget extends StatelessWidget {
         LayoutBuilder(
           builder: (context, constraints) {
             final width = constraints.maxWidth;
-            const height = 170.0;
+            // The image original size is 243x219 -> Aspect ratio ~ 1.11
+            final height = (width / 1.11).clamp(200.0, 320.0);
 
             return GestureDetector(
               onTapUp: readOnly
                   ? null
                   : (details) {
                       final local = details.localPosition;
-                      final xPct = ((local.dx / width) * 100).clamp(2.0, 98.0);
-                      final yPct = ((local.dy / height) * 100).clamp(4.0, 96.0);
+                      final xPct = ((local.dx / width) * 100).clamp(1.0, 99.0);
+                      final yPct = ((local.dy / height) * 100).clamp(1.0, 99.0);
                       final next = [
                         ...damages,
                         DamagePointModel(
-                          id: 'dmg_${DateTime.now().microsecondsSinceEpoch}',
-                          x: xPct,
-                          y: yPct,
+                          id: 'damage_${DateTime.now().millisecondsSinceEpoch}_${damages.length}',
+                          x: double.parse(xPct.toStringAsFixed(1)),
+                          y: double.parse(yPct.toStringAsFixed(1)),
                         ),
                       ];
                       onChanged(next);
@@ -2135,167 +2155,93 @@ class VehicleDiagramInteractiveWidget extends StatelessWidget {
                 width: width,
                 height: height,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0D1627),
+                  color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white24, width: 1.2),
-                ),
-                child: Stack(
-                  children: [
-                    // Custom Top-Down Vehicle Inspection Blueprint
-                    Positioned.fill(
-                      child: CustomPaint(
-                        painter: _CarBlueprintPainter(),
-                      ),
+                  border: Border.all(
+                    color: AppColors2026.cyanNeon.withOpacity(0.55),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors2026.cyanNeon.withOpacity(0.12),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4),
                     ),
-                    // Damage Points (Tap red marker to remove it)
-                    ...damages.map((pt) {
-                      final left = (pt.x / 100.0) * width - 11;
-                      final top = (pt.y / 100.0) * height - 11;
-                      return Positioned(
-                        left: left,
-                        top: top,
-                        child: GestureDetector(
-                          onTap: readOnly
-                              ? null
-                              : () {
-                                  onChanged(
-                                    damages
-                                        .where((d) => d.id != pt.id)
-                                        .toList(),
-                                  );
-                                },
-                          child: Container(
-                            width: 22,
-                            height: 22,
-                            decoration: BoxDecoration(
-                              color: AppColors2026.roseLaser,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors2026.roseLaser.withOpacity(0.7),
-                                  blurRadius: 8,
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(15),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Exact high-quality vehicle diagram from Web App
+                      Image.asset(
+                        'assets/images/vehicle_diagram.png',
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
+                      ),
+
+                      // Interactive Damage Markers (Matching Web VehicleDiagram.tsx exactly)
+                      ...damages.map((pt) {
+                        return Positioned(
+                          left: (pt.x / 100.0) * width - 10,
+                          top: (pt.y / 100.0) * height - 10,
+                          child: GestureDetector(
+                            onTap: readOnly
+                                ? null
+                                : () {
+                                    onChanged(
+                                      damages
+                                          .where((d) => d.id != pt.id)
+                                          .toList(),
+                                    );
+                                  },
+                            child: Container(
+                              width: 20,
+                              height: 20,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEF4444),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 2),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color(0x99EF4444),
+                                    blurRadius: 6,
+                                  ),
+                                ],
+                              ),
+                              child: const Center(
+                                child: Icon(
+                                  LucideIcons.x,
+                                  size: 10,
+                                  color: Colors.white,
                                 ),
-                              ],
-                            ),
-                            child: const Center(
-                              child: Icon(
-                                LucideIcons.x,
-                                size: 11,
-                                color: Colors.white,
                               ),
                             ),
                           ),
-                        ),
-                      );
-                    }),
-                  ],
+                        );
+                      }),
+                    ],
+                  ),
                 ),
               ),
             );
           },
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         const Center(
           child: Text(
             'Touchez le véhicule pour marquer un dommage • Touchez un point rouge pour le supprimer',
-            style: TextStyle(fontSize: 10, color: AppColors2026.textMuted),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 10,
+              color: AppColors2026.textMuted,
+            ),
           ),
         ),
       ],
     );
   }
-}
-
-class _CarBlueprintPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final stroke = Paint()
-      ..color = AppColors2026.cyanNeon.withOpacity(0.55)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0;
-
-    final fill = Paint()
-      ..color = AppColors2026.cyanNeon.withOpacity(0.07)
-      ..style = PaintingStyle.fill;
-
-    final w = size.width;
-    final h = size.height;
-    final cx = w / 2;
-    final cy = h / 2;
-
-    final carWidth = (w * 0.68).clamp(180.0, 320.0);
-    final carHeight = h * 0.62;
-    final rect = Rect.fromCenter(
-      center: Offset(cx, cy),
-      width: carWidth,
-      height: carHeight,
-    );
-
-    // Outer body rounded rect
-    final bodyRRect = RRect.fromRectAndRadius(rect, const Radius.circular(28));
-    canvas.drawRRect(bodyRRect, fill);
-    canvas.drawRRect(bodyRRect, stroke);
-
-    // Cabin / Roof
-    final cabinRect = Rect.fromCenter(
-      center: Offset(cx, cy),
-      width: carWidth * 0.52,
-      height: carHeight * 0.74,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(cabinRect, const Radius.circular(14)),
-      stroke,
-    );
-
-    // Wheels (4 corners)
-    final wheelPaint = Paint()
-      ..color = Colors.white54
-      ..style = PaintingStyle.fill;
-    final wheelW = carWidth * 0.14;
-    final wheelH = 10.0;
-
-    // Front-left, Front-right, Rear-left, Rear-right
-    for (final dx in [-carWidth * 0.28, carWidth * 0.28]) {
-      for (final dy in [-carHeight * 0.52, carHeight * 0.52]) {
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromCenter(
-              center: Offset(cx + dx, cy + dy),
-              width: wheelW,
-              height: wheelH,
-            ),
-            const Radius.circular(4),
-          ),
-          wheelPaint,
-        );
-      }
-    }
-
-    // Labels AVANT / ARRIÈRE / GAUCHE / DROITE
-    void drawLabel(String text, Offset pos) {
-      final tp = TextPainter(
-        text: TextSpan(
-          text: text,
-          style: const TextStyle(
-            color: Colors.white54,
-            fontSize: 9,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        textDirection: ui.TextDirection.ltr,
-      )..layout();
-      tp.paint(canvas, pos - Offset(tp.width / 2, tp.height / 2));
-    }
-
-    drawLabel('AVANT', Offset(rect.left - 24, cy));
-    drawLabel('ARRIÈRE', Offset(rect.right + 26, cy));
-    drawLabel('CÔTÉ GAUCHE', Offset(cx, rect.top - 14));
-    drawLabel('CÔTÉ DROIT', Offset(cx, rect.bottom + 14));
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 /// Interactive Fuel Gauge Widget (Matches Web `FuelGauge.tsx`)

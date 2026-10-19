@@ -105,7 +105,7 @@ class AppTheme2026 {
         elevation: 0,
         centerTitle: false,
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: AppColors2026.obsidian.withOpacity(0.82),
         elevation: 0,
         shape: RoundedRectangleBorder(

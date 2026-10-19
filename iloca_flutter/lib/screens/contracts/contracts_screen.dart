@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_theme_2026.dart';
 import '../../core/widgets/spatial_glass_widgets.dart';
@@ -1487,125 +1487,250 @@ class _ContractSpatialCard extends StatelessWidget {
             ),
           ),
 
-          const Divider(height: 18, color: Colors.white12),
+          const Divider(height: 16, color: Colors.white12),
 
-          // Financial Summary + Action Toolbar
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Total TTC : ${currencyFmt.format(c.effectiveTotalAmount.round())} DH',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors2026.emeraldBright,
-                    ),
-                  ),
-                  Text(
-                    c.remainingAmount > 0
-                        ? 'Avance: ${currencyFmt.format(c.advancePayment.round())} DH • Reste: ${currencyFmt.format(c.remainingAmount.round())} DH'
-                        : 'Entièrement réglé (${currencyFmt.format(c.advancePayment.round())} DH)',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: c.remainingAmount > 0
-                          ? AppColors2026.roseLaser
-                          : AppColors2026.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-              // Quick Action Buttons matching Web ContractsTable
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    tooltip: 'Détails du contrat (Lecture)',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: onViewDetails,
-                    icon: const Icon(LucideIcons.eye,
-                        size: 17, color: AppColors2026.cyanBright),
-                  ),
-                  IconButton(
-                    tooltip: 'Formulaire de Contrat Complet (Modifier)',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: onEditForm,
-                    icon: const Icon(LucideIcons.edit3,
-                        size: 17, color: Colors.white),
-                  ),
-                  IconButton(
-                    tooltip: 'Aperçu Papier Officiel SFTLOCATION',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: onPreviewPaper,
-                    icon: const Icon(LucideIcons.printer,
-                        size: 17, color: AppColors2026.amberSolar),
-                  ),
-                  IconButton(
-                    tooltip: 'Partager sur WhatsApp',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: onShareWhatsApp,
-                    icon: const Icon(LucideIcons.share2,
-                        size: 17, color: AppColors2026.emeraldBright),
-                  ),
-                  PopupMenuButton<String>(
-                    icon: const Icon(LucideIcons.moreVertical, size: 17),
-                    color: AppColors2026.obsidianElevated,
-                    onSelected: (action) {
-                      if (action == 'call') onCall();
-                      if (action == 'toggle') onToggleClose();
-                      if (action == 'delete') onDelete();
-                    },
-                    itemBuilder: (ctx) => [
-                      if (c.customerPhone.isNotEmpty)
-                        const PopupMenuItem(
-                          value: 'call',
-                          child: Row(
-                            children: [
-                              Icon(LucideIcons.phone,
-                                  size: 15, color: AppColors2026.emeraldBright),
-                              SizedBox(width: 8),
-                              Text('Appeler le client'),
-                            ],
-                          ),
-                        ),
-                      PopupMenuItem(
-                        value: 'toggle',
-                        child: Row(
-                          children: [
-                            Icon(
-                              c.isClosed
-                                  ? LucideIcons.rotateCcw
-                                  : LucideIcons.checkCircle2,
-                              size: 15,
-                              color: AppColors2026.cyanBright,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(c.isClosed
-                                ? 'Réouvrir le contrat'
-                                : 'Clôturer le contrat'),
-                          ],
+          // 1. Structured Financial Telemetry Box (Total TTC | Avance | Reste)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.04),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'TOTAL TTC',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors2026.textSecondary,
                         ),
                       ),
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: Row(
-                          children: [
-                            Icon(LucideIcons.trash2,
-                                size: 15, color: AppColors2026.roseLaser),
-                            SizedBox(width: 8),
-                            Text(
-                              'Supprimer définitivement',
-                              style: TextStyle(color: AppColors2026.roseLaser),
-                            ),
-                          ],
+                      const SizedBox(height: 2),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '${currencyFmt.format(c.effectiveTotalAmount.round())} DH',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors2026.emeraldBright,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                ],
+                ),
+                Container(width: 1, height: 24, color: Colors.white12),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'AVANCE',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors2026.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '${currencyFmt.format(c.advancePayment.round())} DH',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(width: 1, height: 24, color: Colors.white12),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'RESTE',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors2026.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          c.remainingAmount > 0
+                              ? '${currencyFmt.format(c.remainingAmount.round())} DH'
+                              : '0 DH (Soldé)',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                            color: c.remainingAmount > 0
+                                ? AppColors2026.roseLaser
+                                : AppColors2026.emeraldBright,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // 2. Clean, Organized Action Bar (Zero Overflow)
+          Row(
+            children: [
+              // Primary Action: Modifier
+              Expanded(
+                child: SizedBox(
+                  height: 36,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors2026.violetElectric.withOpacity(0.22),
+                      foregroundColor: Colors.white,
+                      side: BorderSide(color: AppColors2026.violetElectric.withOpacity(0.55)),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: onEditForm,
+                    icon: const Icon(LucideIcons.edit3, size: 14),
+                    label: const Text(
+                      'Modifier',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Secondary Action: Détails
+              Expanded(
+                child: SizedBox(
+                  height: 36,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors2026.cyanBright,
+                      side: BorderSide(color: AppColors2026.cyanBright.withOpacity(0.45)),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: onViewDetails,
+                    icon: const Icon(LucideIcons.eye, size: 14),
+                    label: const Text(
+                      'Détails',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              // Quick WhatsApp Share Button
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors2026.emeraldNeon.withOpacity(0.16),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors2026.emeraldNeon.withOpacity(0.35)),
+                ),
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  tooltip: 'Partager sur WhatsApp',
+                  onPressed: onShareWhatsApp,
+                  icon: const Icon(LucideIcons.share2, size: 16, color: AppColors2026.emeraldBright),
+                ),
+              ),
+              const SizedBox(width: 6),
+              // Quick Official Paper Preview Button
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors2026.amberSolar.withOpacity(0.16),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors2026.amberSolar.withOpacity(0.35)),
+                ),
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  tooltip: 'Aperçu Contrat Officiel',
+                  onPressed: onPreviewPaper,
+                  icon: const Icon(LucideIcons.printer, size: 16, color: AppColors2026.amberSolar),
+                ),
+              ),
+              const SizedBox(width: 4),
+              // More Actions Menu
+              Container(
+                width: 34,
+                height: 36,
+                alignment: Alignment.center,
+                child: PopupMenuButton<String>(
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(LucideIcons.moreVertical, size: 17, color: AppColors2026.textSecondary),
+                  color: AppColors2026.obsidianElevated,
+                  onSelected: (action) {
+                    if (action == 'call') onCall();
+                    if (action == 'toggle') onToggleClose();
+                    if (action == 'delete') onDelete();
+                  },
+                  itemBuilder: (ctx) => [
+                    if (c.customerPhone.isNotEmpty)
+                      const PopupMenuItem(
+                        value: 'call',
+                        child: Row(
+                          children: [
+                            Icon(LucideIcons.phone, size: 15, color: AppColors2026.emeraldBright),
+                            SizedBox(width: 8),
+                            Text('Appeler le client'),
+                          ],
+                        ),
+                      ),
+                    PopupMenuItem(
+                      value: 'toggle',
+                      child: Row(
+                        children: [
+                          Icon(
+                            c.isClosed ? LucideIcons.rotateCcw : LucideIcons.checkCircle2,
+                            size: 15,
+                            color: AppColors2026.cyanBright,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(c.isClosed ? 'Réouvrir le contrat' : 'Clôturer le contrat'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(LucideIcons.trash2, size: 15, color: AppColors2026.roseLaser),
+                          SizedBox(width: 8),
+                          Text(
+                            'Supprimer définitivement',
+                            style: TextStyle(color: AppColors2026.roseLaser),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
