@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/theme/app_theme_2026.dart';
+import '../../core/widgets/vehicle_image_preview.dart';
 import '../../models/app_models.dart';
 import '../../providers/app_state_provider.dart';
 
@@ -21,9 +23,9 @@ const List<String> kPopularNationalities = [
 
 /// 100% Web Parity Client Form (Matching TenantFormDialog.tsx & CustomerFormDialog.tsx)
 /// Features 3 steps:
-/// 1. Profil & Contact (Nom, Prénom, Tél, Date de Naissance, Adresse Maroc, Adresse Étranger, Type Conducteur)
-/// 2. Documents Officiels (CIN, Validité CIN, N° Permis, Validité Permis, N° Passeport, Nationalité)
-/// 3. Justificatifs & Photos (Scans/Photos de CIN, Permis, Passeport, Photo Profil)
+/// 1. Profil & Contact (Nom, Prénom, Tél/WhatsApp, Date de Naissance, Adresse, Nationalité, Type)
+/// 2. Pièces d'Identité & Permis (CIN, Validité CIN, N° Permis, Validité Permis, N° Passeport)
+/// 3. Scans Numériques & Pièces Justificatives (Scan CIN, Scan Permis, Scan Passeport, Photo Profil avec Caméra et Galerie)
 class ClientFormDialog extends StatefulWidget {
   final AppStateProvider appState;
   final ClientModel? client;
@@ -58,6 +60,11 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
   late String _nationality;
   late String _customerType;
 
+  String? _cinImageUrl;
+  String? _permisImageUrl;
+  String? _passportImageUrl;
+  String? _avatarUrl;
+
   final Map<String, String> _errors = {};
 
   @override
@@ -81,6 +88,11 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
         ? 'Marocaine'
         : c!.nationality;
     _customerType = c?.customerType ?? 'Locataire Principal';
+
+    _cinImageUrl = c?.cinImageUrl;
+    _permisImageUrl = c?.licenseImageUrl;
+    _passportImageUrl = c?.passportImageUrl;
+    _avatarUrl = c?.avatarUrl;
   }
 
   @override
@@ -105,6 +117,14 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
       setState(() => _errors['nom'] = 'Le nom de famille est obligatoire');
       return false;
     }
+    if (_prenomCtrl.text.trim().isEmpty) {
+      setState(() => _errors['prenom'] = 'Le prénom est obligatoire');
+      return false;
+    }
+    if (_phoneCtrl.text.trim().isEmpty) {
+      setState(() => _errors['phone'] = 'Le numéro de téléphone est obligatoire');
+      return false;
+    }
     return true;
   }
 
@@ -114,7 +134,107 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
       setState(() => _errors['cin'] = 'CIN ou Passeport requis');
       return false;
     }
+    if (_permisCtrl.text.trim().isEmpty) {
+      setState(() => _errors['permis'] = 'Le numéro de permis est obligatoire');
+      return false;
+    }
     return true;
+  }
+
+  Future<void> _pickDocumentImage({
+    required String docKey,
+    required ImageSource source,
+  }) async {
+    final base64Image = await VehicleImagePreview.pickAndCompressImage(
+      source: source,
+      maxWidth: 900,
+      quality: 75,
+    );
+    if (base64Image != null) {
+      setState(() {
+        if (docKey == 'cin') _cinImageUrl = base64Image;
+        if (docKey == 'permis') _permisImageUrl = base64Image;
+        if (docKey == 'passeport') _passportImageUrl = base64Image;
+        if (docKey == 'avatar') _avatarUrl = base64Image;
+      });
+    }
+  }
+
+  void _showDocPickerSheet(String docKey, String docTitle) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors2026.obsidianSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'AJOUTER : $docTitle',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors2026.cyanNeon.withOpacity(0.16),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(LucideIcons.camera,
+                      color: AppColors2026.cyanBright, size: 20),
+                ),
+                title: const Text('Prendre une photo (Caméra)',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: const Text('Numériser le document directement',
+                    style: TextStyle(fontSize: 12, color: Colors.white54)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickDocumentImage(docKey: docKey, source: ImageSource.camera);
+                },
+              ),
+              const Divider(color: Colors.white12),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors2026.emeraldNeon.withOpacity(0.16),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(LucideIcons.image,
+                      color: AppColors2026.emeraldNeon, size: 20),
+                ),
+                title: const Text('Choisir depuis la galerie',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: const Text('Sélectionner depuis les fichiers du téléphone',
+                    style: TextStyle(fontSize: 12, color: Colors.white54)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickDocumentImage(docKey: docKey, source: ImageSource.gallery);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _handleSave() async {
@@ -145,6 +265,10 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
         passportNumber: _passportCtrl.text.trim().toUpperCase(),
         nationality: _nationality.trim().isEmpty ? 'Marocaine' : _nationality,
         customerType: _customerType,
+        cinImageUrl: _cinImageUrl,
+        licenseImageUrl: _permisImageUrl,
+        passportImageUrl: _passportImageUrl,
+        avatarUrl: _avatarUrl,
         createdAt: widget.client?.createdAt ?? now,
         updatedAt: now,
       );
@@ -157,8 +281,8 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
             backgroundColor: AppColors2026.obsidianElevated,
             content: Text(
               widget.client == null
-                  ? 'Client créé avec succès et synchronisé.'
-                  : 'Fiche client mise à jour avec succès.',
+                  ? 'Client créé avec succès et synchronisé avec le Web.'
+                  : 'Fiche client mise à jour et synchronisée avec le Web.',
               style: const TextStyle(
                   color: AppColors2026.cyanNeon, fontWeight: FontWeight.bold),
             ),
@@ -207,7 +331,7 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                         color: AppColors2026.cyanNeon.withOpacity(0.5)),
                   ),
                   child: const Text(
-                    'CRM 2026',
+                    'CRM ONBOARDING 2026',
                     style: TextStyle(
                       fontSize: 9,
                       fontWeight: FontWeight.w900,
@@ -229,7 +353,7 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
             ),
             const SizedBox(height: 2),
             Text(
-              isEdit ? 'Modifier le Client' : 'Nouveau Client / Locataire',
+              isEdit ? 'Modifier la Fiche Client' : 'Nouveau Client / Locataire',
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
             ),
           ],
@@ -280,7 +404,7 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                 children: [
                   _buildStepTab(
                     step: 1,
-                    title: 'Identité & Contact',
+                    title: 'Profil & Contact',
                     icon: LucideIcons.user,
                   ),
                   const SizedBox(width: 6),
@@ -292,7 +416,7 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                   const SizedBox(width: 6),
                   _buildStepTab(
                     step: 3,
-                    title: 'Documents & Type',
+                    title: 'Scans & Photos',
                     icon: LucideIcons.shieldCheck,
                   ),
                 ],
@@ -307,7 +431,7 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                     ? _buildStep1Identity()
                     : _activeStep == 2
                         ? _buildStep2Documents()
-                        : _buildStep3Options(),
+                        : _buildStep3Scans(),
               ),
             ),
 
@@ -366,7 +490,7 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                             borderRadius: BorderRadius.circular(12)),
                       ),
                       icon: const Icon(LucideIcons.check, size: 16),
-                      label: const Text('Terminer & Enregistrer',
+                      label: const Text('Enregistrer le Client',
                           style: TextStyle(fontWeight: FontWeight.w900)),
                     ),
                 ],
@@ -443,8 +567,123 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _buildSectionTitle('Type de Locataire *', LucideIcons.users),
+        const SizedBox(height: 8),
+
+        // Type selection toggle cards (Identical to Web)
+        Row(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: () =>
+                    setState(() => _customerType = 'Locataire Principal'),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _customerType == 'Locataire Principal'
+                        ? AppColors2026.cyanNeon.withOpacity(0.18)
+                        : Colors.white.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _customerType == 'Locataire Principal'
+                          ? AppColors2026.cyanNeon
+                          : Colors.white12,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        LucideIcons.user,
+                        size: 16,
+                        color: _customerType == 'Locataire Principal'
+                            ? AppColors2026.cyanBright
+                            : AppColors2026.textMuted,
+                      ),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Locataire Principal',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w900, fontSize: 12),
+                            ),
+                            Text(
+                              'Signataire contrat',
+                              style: TextStyle(
+                                  fontSize: 10, color: Colors.white54),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (_customerType == 'Locataire Principal')
+                        const Icon(LucideIcons.check,
+                            size: 14, color: AppColors2026.cyanNeon),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: GestureDetector(
+                onTap: () =>
+                    setState(() => _customerType = 'Chauffeur secondaire'),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _customerType == 'Chauffeur secondaire'
+                        ? AppColors2026.violetElectric.withOpacity(0.18)
+                        : Colors.white.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _customerType == 'Chauffeur secondaire'
+                          ? AppColors2026.violetElectric
+                          : Colors.white12,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        LucideIcons.userCheck,
+                        size: 16,
+                        color: _customerType == 'Chauffeur secondaire'
+                            ? AppColors2026.violetElectric
+                            : AppColors2026.textMuted,
+                      ),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Chauffeur Adjoint',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w900, fontSize: 12),
+                            ),
+                            Text(
+                              'Conducteur 2',
+                              style: TextStyle(
+                                  fontSize: 10, color: Colors.white54),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (_customerType == 'Chauffeur secondaire')
+                        const Icon(LucideIcons.check,
+                            size: 14, color: AppColors2026.violetElectric),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 16),
         _buildSectionTitle(
-            'Informations Personnelles & Contact', LucideIcons.user),
+            'Informations Personnelles & Coordonnées', LucideIcons.user),
         const SizedBox(height: 12),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -453,7 +692,7 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
               child: _buildTextField(
                 controller: _nomCtrl,
                 label: 'Nom de famille *',
-                hint: 'Ex: BENNANI',
+                hint: 'Ex: BENALI',
                 icon: LucideIcons.user,
                 errorText: _errors['nom'],
               ),
@@ -462,23 +701,26 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
             Expanded(
               child: _buildTextField(
                 controller: _prenomCtrl,
-                label: 'Prénom',
-                hint: 'Ex: Amine',
+                label: 'Prénom *',
+                hint: 'Ex: Mohamed',
                 icon: LucideIcons.userCheck,
+                errorText: _errors['prenom'],
               ),
             ),
           ],
         ),
         const SizedBox(height: 12),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: _buildTextField(
                 controller: _phoneCtrl,
-                label: 'Téléphone',
-                hint: '+212 600-000000',
+                label: 'Numéro de Téléphone / WhatsApp *',
+                hint: '06 12 34 56 78',
                 icon: LucideIcons.phone,
                 keyboardType: TextInputType.phone,
+                errorText: _errors['phone'],
               ),
             ),
             const SizedBox(width: 10),
@@ -492,87 +734,9 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
             ),
           ],
         ),
-        const SizedBox(height: 16),
-        _buildSectionTitle('Adresses', LucideIcons.mapPin),
-        const SizedBox(height: 12),
-        _buildTextField(
-          controller: _addressMoroccoCtrl,
-          label: 'Adresse au Maroc',
-          hint: 'N°, Rue, Quartier, Ville...',
-          icon: LucideIcons.mapPin,
-        ),
-        const SizedBox(height: 12),
-        _buildTextField(
-          controller: _addressForeignCtrl,
-          label: 'Adresse à l\'Étranger (si applicable)',
-          hint: 'Pays, Ville, Adresse...',
-          icon: LucideIcons.globe,
-        ),
-      ],
-    );
-  }
 
-  Widget _buildStep2Documents() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildSectionTitle(
-            'Documents Officiels & Nationalité', LucideIcons.idCard),
-        const SizedBox(height: 12),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: _buildTextField(
-                controller: _cinCtrl,
-                label: 'N° CIN *',
-                hint: 'Ex: AB123456',
-                icon: LucideIcons.creditCard,
-                errorText: _errors['cin'],
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _buildTextField(
-                controller: _cinDateCtrl,
-                label: 'Date délivrance / validité CIN',
-                hint: 'YYYY-MM-DD',
-                icon: LucideIcons.calendar,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _buildTextField(
-                controller: _permisCtrl,
-                label: 'N° Permis de conduire',
-                hint: 'Ex: 01/123456',
-                icon: LucideIcons.award,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _buildTextField(
-                controller: _permisDateCtrl,
-                label: 'Date validité Permis',
-                hint: 'YYYY-MM-DD',
-                icon: LucideIcons.calendar,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        _buildTextField(
-          controller: _passportCtrl,
-          label: 'N° de Passeport (Étrangers / MRE)',
-          hint: 'Ex: EF987654',
-          icon: LucideIcons.bookOpen,
-        ),
         const SizedBox(height: 16),
-        _buildSectionTitle('Nationalité', LucideIcons.globe),
+        _buildSectionTitle('Nationalité du Locataire', LucideIcons.globe),
         const SizedBox(height: 8),
         Wrap(
           spacing: 6,
@@ -592,68 +756,144 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
             );
           }).toList(),
         ),
+
+        const SizedBox(height: 16),
+        _buildSectionTitle(
+            'Adresses de Résidence', LucideIcons.mapPin),
+        const SizedBox(height: 12),
+        _buildTextField(
+          controller: _addressMoroccoCtrl,
+          label: 'Adresse au Maroc',
+          hint: 'Ex: 12 Rue Hassan II, Casablanca',
+          icon: LucideIcons.mapPin,
+        ),
+        const SizedBox(height: 10),
+        _buildTextField(
+          controller: _addressForeignCtrl,
+          label: 'Adresse à l\'Étranger (si applicable)',
+          hint: 'Pays, Ville, Adresse...',
+          icon: LucideIcons.globe,
+        ),
       ],
     );
   }
 
-  Widget _buildStep3Options() {
+  Widget _buildStep2Documents() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionTitle('Rôle & Catégorie Conducteur', LucideIcons.shieldCheck),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.04),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white12),
-          ),
-          child: Column(
-            children: [
-              RadioListTile<String>(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                value: 'Locataire Principal',
-                groupValue: _customerType,
-                activeColor: AppColors2026.cyanNeon,
-                title: const Text(
-                  'Locataire Principal',
-                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
-                ),
-                subtitle: const Text(
-                  'Titulaire du contrat et responsable juridique de la location.',
-                  style: TextStyle(fontSize: 11, color: AppColors2026.textMuted),
-                ),
-                onChanged: (val) {
-                  if (val != null) setState(() => _customerType = val);
-                },
-              ),
-              const Divider(color: Colors.white10),
-              RadioListTile<String>(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                value: 'Chauffeur secondaire',
-                groupValue: _customerType,
-                activeColor: AppColors2026.violetElectric,
-                title: const Text(
-                  'Chauffeur Secondaire / Conducteur Adjoint',
-                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
-                ),
-                subtitle: const Text(
-                  'Conducteur autorisé mentionné au contrat avec copie du permis.',
-                  style: TextStyle(fontSize: 11, color: AppColors2026.textMuted),
-                ),
-                onChanged: (val) {
-                  if (val != null) setState(() => _customerType = val);
-                },
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 20),
         _buildSectionTitle(
-            'Récapitulatif Fiche Client', LucideIcons.fileSpreadsheet),
+            'Pièces d\'Identité & Permis de Conduire', LucideIcons.creditCard),
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: _buildTextField(
+                controller: _cinCtrl,
+                label: 'Numéro CIN *',
+                hint: 'Ex: AB123456',
+                icon: LucideIcons.creditCard,
+                errorText: _errors['cin'],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _buildTextField(
+                controller: _cinDateCtrl,
+                label: 'Validité / Délivrance CIN',
+                hint: 'YYYY-MM-DD',
+                icon: LucideIcons.calendar,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: _buildTextField(
+                controller: _permisCtrl,
+                label: 'Numéro de Permis de Conduire *',
+                hint: 'Ex: 12/345678',
+                icon: LucideIcons.award,
+                errorText: _errors['permis'],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _buildTextField(
+                controller: _permisDateCtrl,
+                label: 'Date délivrance Permis',
+                hint: 'YYYY-MM-DD',
+                icon: LucideIcons.calendar,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _buildTextField(
+          controller: _passportCtrl,
+          label: 'Numéro de Passeport (Clients étrangers / MRE)',
+          hint: 'Ex: FA1234567',
+          icon: LucideIcons.bookOpen,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStep3Scans() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle(
+            'Scans Numériques & Pièces Justificatives', LucideIcons.shieldCheck),
+        const SizedBox(height: 6),
+        const Text(
+          'Capturez avec la caméra du téléphone ou importez depuis la galerie. Ces documents sont synchronisés avec la fiche web du client.',
+          style: TextStyle(fontSize: 11, color: AppColors2026.textMuted),
+        ),
+        const SizedBox(height: 16),
+
+        // Grid of 4 Document Cards: CIN, Permis, Passeport, Photo Profil
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: 0.9,
+          children: [
+            _buildDocCard(
+              title: 'SCAN CIN',
+              imageUrl: _cinImageUrl,
+              onPick: () => _showDocPickerSheet('cin', 'Carte Nationale (CIN)'),
+              onRemove: () => setState(() => _cinImageUrl = null),
+            ),
+            _buildDocCard(
+              title: 'SCAN PERMIS',
+              imageUrl: _permisImageUrl,
+              onPick: () => _showDocPickerSheet('permis', 'Permis de Conduire'),
+              onRemove: () => setState(() => _permisImageUrl = null),
+            ),
+            _buildDocCard(
+              title: 'SCAN PASSEPORT',
+              imageUrl: _passportImageUrl,
+              onPick: () => _showDocPickerSheet('passeport', 'Passeport'),
+              onRemove: () => setState(() => _passportImageUrl = null),
+            ),
+            _buildDocCard(
+              title: 'PHOTO PROFIL',
+              imageUrl: _avatarUrl,
+              onPick: () => _showDocPickerSheet('avatar', 'Photo du Client'),
+              onRemove: () => setState(() => _avatarUrl = null),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 20),
+        _buildSectionTitle('Aperçu Fiche Client', LucideIcons.clipboardList),
         const SizedBox(height: 10),
         Container(
           padding: const EdgeInsets.all(14),
@@ -690,6 +930,92 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildDocCard({
+    required String title,
+    required String? imageUrl,
+    required VoidCallback onPick,
+    required VoidCallback onRemove,
+  }) {
+    final hasImage = imageUrl != null && imageUrl.isNotEmpty;
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: hasImage
+              ? AppColors2026.cyanNeon.withOpacity(0.5)
+              : Colors.white12,
+        ),
+      ),
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white70,
+                ),
+              ),
+              if (hasImage)
+                GestureDetector(
+                  onTap: onRemove,
+                  child: const Icon(LucideIcons.trash2,
+                      size: 14, color: AppColors2026.roseLaser),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: GestureDetector(
+              onTap: onPick,
+              child: hasImage
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: VehicleImagePreview(
+                        imageData: imageUrl,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                      ),
+                    )
+                  : Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.03),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: Colors.white10,
+                          style: BorderStyle.solid,
+                        ),
+                      ),
+                      child: const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(LucideIcons.camera,
+                              size: 24, color: AppColors2026.cyanBright),
+                          SizedBox(height: 6),
+                          Text(
+                            'Numériser',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

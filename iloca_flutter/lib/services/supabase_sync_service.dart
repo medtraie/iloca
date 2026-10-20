@@ -114,6 +114,7 @@ class SupabaseSyncService {
             .single();
         return ClientModel.fromJson(Map<String, dynamic>.from(res));
       } else {
+        // If creating new client, omit id if empty so Supabase Postgres generates UUID automatically
         final res = await _sb
             .from('clients')
             .insert(payload)
@@ -139,6 +140,10 @@ class SupabaseSyncService {
         birthDate: client.birthDate,
         nationality: client.nationality,
         customerType: client.customerType,
+        cinImageUrl: client.cinImageUrl,
+        licenseImageUrl: client.licenseImageUrl,
+        passportImageUrl: client.passportImageUrl,
+        avatarUrl: client.avatarUrl,
         createdAt: now,
         updatedAt: now,
       );

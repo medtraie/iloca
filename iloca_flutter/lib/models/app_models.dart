@@ -13,9 +13,14 @@ class ClientModel {
   final String licenseNumber;
   final String licenseDelivered;
   final String passportNumber;
+  final String passportDelivered;
   final String birthDate;
   final String nationality;
   final String customerType; // 'Locataire Principal' | 'Chauffeur secondaire'
+  final String? cinImageUrl;
+  final String? licenseImageUrl;
+  final String? passportImageUrl;
+  final String? avatarUrl;
   final String createdAt;
   final String updatedAt;
 
@@ -31,9 +36,14 @@ class ClientModel {
     this.licenseNumber = '',
     this.licenseDelivered = '',
     this.passportNumber = '',
+    this.passportDelivered = '',
     this.birthDate = '',
     this.nationality = 'Marocaine',
     this.customerType = 'Locataire Principal',
+    this.cinImageUrl,
+    this.licenseImageUrl,
+    this.passportImageUrl,
+    this.avatarUrl,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -63,6 +73,8 @@ class ClientModel {
           (row['license_delivered'] ?? row['datePermis'] ?? '').toString(),
       passportNumber:
           (row['passport_number'] ?? row['passeport'] ?? '').toString(),
+      passportDelivered:
+          (row['passport_delivered'] ?? '').toString(),
       birthDate:
           (row['birth_date'] ?? row['dateNaissance'] ?? '').toString(),
       nationality:
@@ -71,6 +83,10 @@ class ClientModel {
               row['type'] == 'Chauffeur secondaire'
           ? 'Chauffeur secondaire'
           : 'Locataire Principal',
+      cinImageUrl: row['cin_image_url'] ?? row['cinImageUrl'],
+      licenseImageUrl: row['license_image_url'] ?? row['permisImageUrl'],
+      passportImageUrl: row['passport_image_url'] ?? row['passeportImageUrl'],
+      avatarUrl: row['avatar_url'] ?? row['tenantImageUrl'],
       createdAt: (row['created_at'] ?? row['createdAt'] ?? now).toString(),
       updatedAt: (row['updated_at'] ?? row['updatedAt'] ?? now).toString(),
     );
@@ -94,10 +110,16 @@ class ClientModel {
           licenseDelivered.trim().isEmpty ? null : licenseDelivered.trim(),
       'passport_number':
           passportNumber.trim().isEmpty ? null : passportNumber.trim(),
+      'passport_delivered':
+          passportDelivered.trim().isEmpty ? null : passportDelivered.trim(),
       'birth_date': birthDate.trim().isEmpty ? null : birthDate.trim(),
       'nationality':
           nationality.trim().isEmpty ? 'Marocaine' : nationality.trim(),
       'customer_type': customerType,
+      'cin_image_url': cinImageUrl,
+      'license_image_url': licenseImageUrl,
+      'passport_image_url': passportImageUrl,
+      'avatar_url': avatarUrl,
     };
   }
 
@@ -107,6 +129,51 @@ class ClientModel {
         'created_at': createdAt,
         'updated_at': updatedAt,
       };
+
+  ClientModel copyWith({
+    String? lastName,
+    String? firstName,
+    String? addressMorocco,
+    String? addressForeign,
+    String? phone,
+    String? cin,
+    String? cinDelivered,
+    String? licenseNumber,
+    String? licenseDelivered,
+    String? passportNumber,
+    String? passportDelivered,
+    String? birthDate,
+    String? nationality,
+    String? customerType,
+    String? cinImageUrl,
+    String? licenseImageUrl,
+    String? passportImageUrl,
+    String? avatarUrl,
+  }) {
+    return ClientModel(
+      id: id,
+      lastName: lastName ?? this.lastName,
+      firstName: firstName ?? this.firstName,
+      addressMorocco: addressMorocco ?? this.addressMorocco,
+      addressForeign: addressForeign ?? this.addressForeign,
+      phone: phone ?? this.phone,
+      cin: cin ?? this.cin,
+      cinDelivered: cinDelivered ?? this.cinDelivered,
+      licenseNumber: licenseNumber ?? this.licenseNumber,
+      licenseDelivered: licenseDelivered ?? this.licenseDelivered,
+      passportNumber: passportNumber ?? this.passportNumber,
+      passportDelivered: passportDelivered ?? this.passportDelivered,
+      birthDate: birthDate ?? this.birthDate,
+      nationality: nationality ?? this.nationality,
+      customerType: customerType ?? this.customerType,
+      cinImageUrl: cinImageUrl ?? this.cinImageUrl,
+      licenseImageUrl: licenseImageUrl ?? this.licenseImageUrl,
+      passportImageUrl: passportImageUrl ?? this.passportImageUrl,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      createdAt: createdAt,
+      updatedAt: DateTime.now().toIso8601String(),
+    );
+  }
 }
 
 /// 2. Vehicle Model (100% compatible with Supabase `public.vehicles`)
