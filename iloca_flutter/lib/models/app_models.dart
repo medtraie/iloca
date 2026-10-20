@@ -124,6 +124,8 @@ class VehicleModel {
   final String status; // 'disponible' | 'loue' | 'maintenance'
   final double departureMileage;
   final bool hasGps;
+  final List<String> photos;
+  final List<String> documents;
   final String createdAt;
   final String updatedAt;
 
@@ -141,6 +143,8 @@ class VehicleModel {
     this.status = 'disponible',
     this.departureMileage = 0,
     this.hasGps = true,
+    this.photos = const [],
+    this.documents = const [],
     required this.createdAt,
     required this.updatedAt,
   });
@@ -149,12 +153,22 @@ class VehicleModel {
       ? 'Véhicule SFT'
       : '$brand $model'.trim();
 
+  String? get mainPhoto => photos.isNotEmpty ? photos.first : null;
+
   factory VehicleModel.fromJson(Map<String, dynamic> row) {
     final now = DateTime.now().toIso8601String();
     double parseNum(dynamic val, [double fallback = 0]) {
       if (val == null) return fallback;
       final n = double.tryParse(val.toString());
       return n ?? fallback;
+    }
+
+    List<String> parseList(dynamic val) {
+      if (val == null) return [];
+      if (val is List) {
+        return val.map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
+      }
+      return [];
     }
 
     return VehicleModel(
@@ -176,6 +190,8 @@ class VehicleModel {
       departureMileage:
           parseNum(row['departure_mileage'] ?? row['km_depart'], 0),
       hasGps: row['has_gps'] == true || row['gps_installed'] == true,
+      photos: parseList(row['photos_urls'] ?? row['photos']),
+      documents: parseList(row['documents_urls'] ?? row['documents']),
       createdAt: (row['created_at'] ?? now).toString(),
       updatedAt: (row['updated_at'] ?? now).toString(),
     );
@@ -194,7 +210,8 @@ class VehicleModel {
       'daily_rate': dailyRate,
       'status': status.trim().isEmpty ? 'disponible' : status.trim(),
       'departure_mileage': departureMileage,
-      'has_gps': hasGps,
+      'photos_urls': photos,
+      'documents_urls': documents,
     };
   }
 
@@ -205,7 +222,11 @@ class VehicleModel {
         'updated_at': updatedAt,
       };
 
-  VehicleModel copyWith({String? status}) {
+  VehicleModel copyWith({
+    String? status,
+    List<String>? photos,
+    List<String>? documents,
+  }) {
     return VehicleModel(
       id: id,
       brand: brand,
@@ -220,6 +241,8 @@ class VehicleModel {
       status: status ?? this.status,
       departureMileage: departureMileage,
       hasGps: hasGps,
+      photos: photos ?? this.photos,
+      documents: documents ?? this.documents,
       createdAt: createdAt,
       updatedAt: DateTime.now().toIso8601String(),
     );

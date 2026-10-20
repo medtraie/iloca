@@ -3,11 +3,16 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/theme/app_theme_2026.dart';
 import '../../core/widgets/spatial_glass_widgets.dart';
+import '../../core/widgets/vehicle_image_preview.dart';
 import '../../models/app_models.dart';
 import '../../providers/app_state_provider.dart';
 import 'vehicle_form_dialog.dart';
 
 /// 3. VÉHICULES SCREEN — 100% Web Parity (Vehicles.tsx + VehicleFormDialog.tsx)
+/// Features:
+/// - Real-time Supabase sync with public.vehicles (Bidirectional Web & Mobile)
+/// - Vehicle HD Photo Gallery preview & Studio Photo capture
+/// - Quick stats and search filter bar
 class VehiclesScreen extends StatefulWidget {
   final AppStateProvider appState;
 
@@ -56,7 +61,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
           ],
         ),
         content: Text(
-          'Êtes-vous sûr de vouloir supprimer définitivement ${vehicle.fullName} (${vehicle.registration}) du parc automobile ?',
+          'Êtes-vous sûr de vouloir supprimer définitivement ${vehicle.fullName} (${vehicle.registration}) du parc automobile ? Cette action sera également répercutée sur le Web.',
           style: const TextStyle(fontSize: 13, color: AppColors2026.textSecondary),
         ),
         actions: [
@@ -138,6 +143,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
           onPressed: () => _openVehicleForm(),
           backgroundColor: AppColors2026.emeraldNeon,
           foregroundColor: AppColors2026.abyss,
+          elevation: 6,
           icon: const Icon(LucideIcons.plus, size: 18),
           label: const Text(
             'Ajouter un Véhicule',
@@ -215,7 +221,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
             ),
           ),
 
-          // Vehicles List
+          // Vehicles List with HD Photos
           Expanded(
             child: filtered.isEmpty
                 ? Center(
@@ -242,123 +248,286 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                     itemBuilder: (ctx, i) {
                       final v = filtered[i];
                       final stColor = _statusColor(v.status);
+                      final hasPhoto = v.photos.isNotEmpty;
 
                       return SpatialGlassCard(
-                        margin: const EdgeInsets.only(bottom: 12),
+                        margin: const EdgeInsets.only(bottom: 14),
+                        padding: const EdgeInsets.all(0),
                         borderColor: stColor.withOpacity(0.35),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(11),
-                                  decoration: BoxDecoration(
-                                    color: stColor.withOpacity(0.16),
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                        color: stColor.withOpacity(0.4)),
+                            // Top Photo Banner (If photo exists, show HD preview; else sleek icon card)
+                            if (hasPhoto)
+                              Stack(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: const BorderRadius.vertical(
+                                        top: Radius.circular(20)),
+                                    child: SizedBox(
+                                      height: 150,
+                                      width: double.infinity,
+                                      child: VehicleImagePreview(
+                                        imageData: v.photos.first,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
                                   ),
-                                  child: Icon(LucideIcons.car,
-                                      color: stColor, size: 22),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        v.fullName,
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w900,
+                                  // Gradient Overlay
+                                  Positioned.fill(
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        borderRadius:
+                                            const BorderRadius.vertical(
+                                                top: Radius.circular(20)),
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topCenter,
+                                          end: Alignment.bottomCenter,
+                                          colors: [
+                                            Colors.black.withOpacity(0.4),
+                                            Colors.transparent,
+                                            Colors.black.withOpacity(0.8),
+                                          ],
                                         ),
                                       ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        'Matricule : ${v.registration.isEmpty ? "—" : v.registration} • Année ${v.year}',
+                                    ),
+                                  ),
+                                  // Status Badge
+                                  Positioned(
+                                    top: 10,
+                                    right: 10,
+                                    child: NeonBadge(
+                                      label: _statusLabel(v.status),
+                                      color: stColor,
+                                      pulsing: v.status.toLowerCase() ==
+                                          'disponible',
+                                    ),
+                                  ),
+                                  // Photo count badge if multi-photos
+                                  if (v.photos.length > 1)
+                                    Positioned(
+                                      top: 10,
+                                      left: 10,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 7, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black54,
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(LucideIcons.camera,
+                                                size: 11,
+                                                color: Colors.white),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              '${v.photos.length} photos',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  // Title on bottom of photo
+                                  Positioned(
+                                    bottom: 10,
+                                    left: 14,
+                                    right: 14,
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            v.fullName,
+                                            style: const TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w900,
+                                              color: Colors.white,
+                                              shadows: [
+                                                Shadow(
+                                                  color: Colors.black,
+                                                  blurRadius: 6,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                        Text(
+                                          '${currencyFmt.format(v.dailyRate.round())} DH/j',
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w900,
+                                            color: AppColors2026.cyanNeon,
+                                            shadows: [
+                                              Shadow(
+                                                color: Colors.black,
+                                                blurRadius: 6,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                            // Vehicle Specs & Actions Container
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (!hasPhoto) ...[
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(10),
+                                          decoration: BoxDecoration(
+                                            color: stColor.withOpacity(0.16),
+                                            borderRadius:
+                                                BorderRadius.circular(14),
+                                            border: Border.all(
+                                                color: stColor.withOpacity(0.4)),
+                                          ),
+                                          child: Icon(LucideIcons.car,
+                                              color: stColor, size: 20),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                v.fullName,
+                                                style: const TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.w900,
+                                                ),
+                                              ),
+                                              Text(
+                                                'Matricule : ${v.registration.isEmpty ? "—" : v.registration}',
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  color: AppColors2026
+                                                      .textSecondary,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        NeonBadge(
+                                          label: _statusLabel(v.status),
+                                          color: stColor,
+                                          pulsing: v.status.toLowerCase() ==
+                                              'disponible',
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                  ] else
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: Text(
+                                        'Matricule : ${v.registration.isEmpty ? "Non immatriculé" : v.registration} • Année ${v.year} • ${v.color}',
                                         style: const TextStyle(
-                                          fontSize: 11,
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w600,
                                           color: AppColors2026.textSecondary,
                                         ),
                                       ),
+                                    ),
+
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 6,
+                                    children: [
+                                      _SpecPill(
+                                        icon: LucideIcons.fuel,
+                                        text: v.fuelType,
+                                      ),
+                                      _SpecPill(
+                                        icon: LucideIcons.settings2,
+                                        text: v.gearbox,
+                                      ),
+                                      _SpecPill(
+                                        icon: LucideIcons.gauge,
+                                        text:
+                                            '${currencyFmt.format(v.mileage.round())} km',
+                                      ),
+                                      if (v.hasGps)
+                                        const _SpecPill(
+                                          icon: LucideIcons.radio,
+                                          text: 'GPS Actif',
+                                          color: AppColors2026.amberSolar,
+                                        ),
                                     ],
                                   ),
-                                ),
-                                NeonBadge(
-                                  label: _statusLabel(v.status),
-                                  color: stColor,
-                                  pulsing:
-                                      v.status.toLowerCase() == 'disponible',
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 6,
-                              children: [
-                                _SpecPill(
-                                  icon: LucideIcons.fuel,
-                                  text: v.fuelType,
-                                ),
-                                _SpecPill(
-                                  icon: LucideIcons.settings2,
-                                  text: v.gearbox,
-                                ),
-                                _SpecPill(
-                                  icon: LucideIcons.gauge,
-                                  text:
-                                      '${currencyFmt.format(v.mileage.round())} km',
-                                ),
-                                if (v.hasGps)
-                                  const _SpecPill(
-                                    icon: LucideIcons.radio,
-                                    text: 'GPS Actif',
-                                    color: AppColors2026.amberSolar,
-                                  ),
-                              ],
-                            ),
-                            const Divider(height: 18, color: Colors.white12),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Flexible(
-                                  child: FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      '${currencyFmt.format(v.dailyRate.round())} DH / jour',
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w900,
-                                        color: AppColors2026.emeraldBright,
+                                  const Divider(height: 18, color: Colors.white12),
+
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      if (!hasPhoto)
+                                        Text(
+                                          '${currencyFmt.format(v.dailyRate.round())} DH / jour',
+                                          style: const TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w900,
+                                            color: AppColors2026.emeraldBright,
+                                          ),
+                                        )
+                                      else
+                                        Text(
+                                          'Disponibilité : ${_statusLabel(v.status)}',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w800,
+                                            color: stColor,
+                                          ),
+                                        ),
+                                      Row(
+                                        children: [
+                                          TextButton.icon(
+                                            onPressed: () => _openVehicleForm(v),
+                                            style: TextButton.styleFrom(
+                                              foregroundColor:
+                                                  AppColors2026.cyanBright,
+                                            ),
+                                            icon: const Icon(LucideIcons.edit3,
+                                                size: 14),
+                                            label: const Text('Modifier',
+                                                style: TextStyle(
+                                                    fontWeight:
+                                                        FontWeight.bold)),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          IconButton(
+                                            tooltip: 'Supprimer',
+                                            onPressed: () => _confirmDelete(v),
+                                            icon: const Icon(
+                                              LucideIcons.trash2,
+                                              size: 16,
+                                              color: AppColors2026.roseLaser,
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    ),
+                                    ],
                                   ),
-                                ),
-                                Row(
-                                  children: [
-                                    IconButton(
-                                      tooltip: 'Modifier',
-                                      onPressed: () => _openVehicleForm(v),
-                                      icon: const Icon(LucideIcons.edit3,
-                                          size: 16,
-                                          color: AppColors2026.cyanBright),
-                                    ),
-                                    IconButton(
-                                      tooltip: 'Supprimer',
-                                      onPressed: () => _confirmDelete(v),
-                                      icon: const Icon(
-                                        LucideIcons.trash2,
-                                        size: 16,
-                                        color: AppColors2026.roseLaser,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ],
                         ),

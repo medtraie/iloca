@@ -190,6 +190,7 @@ class SupabaseSyncService {
 
   static Future<VehicleModel> saveVehicle(VehicleModel vehicle, {bool isEdit = false}) async {
     final payload = vehicle.toSupabasePayload();
+    // Do not enforce user_id if null to allow shared fleet visibility across Web & Mobile
     final userId = _sb.auth.currentUser?.id;
     if (userId != null) {
       payload['user_id'] = userId;
@@ -205,6 +206,7 @@ class SupabaseSyncService {
             .single();
         return VehicleModel.fromJson(Map<String, dynamic>.from(res));
       } else {
+        // If id is empty, don't supply id field to let Supabase Postgres generate UUID automatically
         final res = await _sb
             .from('vehicles')
             .insert(payload)
@@ -213,7 +215,29 @@ class SupabaseSyncService {
         return VehicleModel.fromJson(Map<String, dynamic>.from(res));
       }
     } catch (e) {
-      debugPrint('[SupabaseSync] saveVehicle fallback: $e');
+      debugPrint('[SupabaseSync] saveVehicle error: $e');
+      // If error occurred (e.g. offline), generate UUID and store locally
+      if (vehicle.id.isEmpty) {
+        return VehicleModel(
+          id: _uuid.v4(),
+          brand: vehicle.brand,
+          model: vehicle.model,
+          registration: vehicle.registration,
+          year: vehicle.year,
+          fuelType: vehicle.fuelType,
+          gearbox: vehicle.gearbox,
+          mileage: vehicle.mileage,
+          color: vehicle.color,
+          dailyRate: vehicle.dailyRate,
+          status: vehicle.status,
+          departureMileage: vehicle.departureMileage,
+          hasGps: vehicle.hasGps,
+          photos: vehicle.photos,
+          documents: vehicle.documents,
+          createdAt: DateTime.now().toIso8601String(),
+          updatedAt: DateTime.now().toIso8601String(),
+        );
+      }
       return vehicle;
     }
   }

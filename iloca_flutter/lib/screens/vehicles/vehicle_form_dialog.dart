@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/theme/app_theme_2026.dart';
+import '../../core/widgets/vehicle_image_preview.dart';
 import '../../models/app_models.dart';
 import '../../providers/app_state_provider.dart';
 
@@ -36,9 +38,9 @@ const List<String> kGearboxes = [
 
 /// 100% Web Parity Vehicle Form Dialog (Matching VehicleFormDialog.tsx)
 /// Features 3 steps:
-/// 1. Informations Générales (Marque, Modèle, Matricule, Année, Couleur, Statut, Tracker GPS)
-/// 2. Télémétrie & Tarification (Tarif Journalier DH, Carburant, Boîte, Kilométrage actuel, KM départ)
-/// 3. Documents & Récapitulatif (Carte grise, Assurance, Contrôle technique & Récap)
+/// 1. Informations Générales (Marque, Modèle, Matricule, Année, Couleur, Statut)
+/// 2. Télémétrie & Tarification (Tarif Journalier DH, Carburant, Boîte, Kilométrage)
+/// 3. Studio Photo HD & Couverture (Prise de photo via Caméra, Importation Galerie, Multi-photos, Couverture principale)
 class VehicleFormDialog extends StatefulWidget {
   final AppStateProvider appState;
   final VehicleModel? vehicle;
@@ -70,6 +72,7 @@ class _VehicleFormDialogState extends State<VehicleFormDialog> {
   late String _gearbox;
   late String _status;
   late bool _hasGps;
+  List<String> _photos = [];
 
   final Map<String, String> _errors = {};
 
@@ -94,6 +97,7 @@ class _VehicleFormDialogState extends State<VehicleFormDialog> {
     _gearbox = v?.gearbox ?? 'Automatique';
     _status = v?.status ?? 'disponible';
     _hasGps = v?.hasGps ?? true;
+    _photos = List<String>.from(v?.photos ?? []);
   }
 
   @override
@@ -132,6 +136,96 @@ class _VehicleFormDialogState extends State<VehicleFormDialog> {
     return true;
   }
 
+  Future<void> _pickImage(ImageSource source) async {
+    final base64Image = await VehicleImagePreview.pickAndCompressImage(
+      source: source,
+      maxWidth: 900,
+      quality: 75,
+    );
+    if (base64Image != null) {
+      setState(() {
+        _photos.add(base64Image);
+      });
+    }
+  }
+
+  void _showImagePickerOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors2026.obsidianSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'STUDIO PHOTO - AJOUTER UNE PHOTO',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors2026.cyanNeon.withOpacity(0.16),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(LucideIcons.camera,
+                      color: AppColors2026.cyanBright, size: 20),
+                ),
+                title: const Text('Prendre une photo (Caméra)',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: const Text('Prenez directement une photo du véhicule',
+                    style: TextStyle(fontSize: 12, color: Colors.white54)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickImage(ImageSource.camera);
+                },
+              ),
+              const Divider(color: Colors.white12),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors2026.emeraldNeon.withOpacity(0.16),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(LucideIcons.image,
+                      color: AppColors2026.emeraldNeon, size: 20),
+                ),
+                title: const Text('Choisir depuis la galerie',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: const Text('Sélectionnez une image existante du téléphone',
+                    style: TextStyle(fontSize: 12, color: Colors.white54)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickImage(ImageSource.gallery);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _handleSave() async {
     if (!_validateStep1()) {
       setState(() => _activeStep = 1);
@@ -160,6 +254,8 @@ class _VehicleFormDialogState extends State<VehicleFormDialog> {
             double.tryParse(_departureMileageCtrl.text.trim()) ?? 0,
         status: _status,
         hasGps: _hasGps,
+        photos: _photos,
+        documents: widget.vehicle?.documents ?? const [],
         createdAt: widget.vehicle?.createdAt ?? now,
         updatedAt: now,
       );
@@ -172,8 +268,8 @@ class _VehicleFormDialogState extends State<VehicleFormDialog> {
             backgroundColor: AppColors2026.obsidianElevated,
             content: Text(
               widget.vehicle == null
-                  ? 'Véhicule ajouté au parc avec succès.'
-                  : 'Véhicule mis à jour avec succès.',
+                  ? 'Véhicule ajouté au parc et synchronisé avec le Web.'
+                  : 'Véhicule mis à jour et synchronisé avec succès.',
               style: const TextStyle(
                   color: AppColors2026.emeraldBright,
                   fontWeight: FontWeight.bold),
@@ -307,8 +403,8 @@ class _VehicleFormDialogState extends State<VehicleFormDialog> {
                   const SizedBox(width: 6),
                   _buildStepTab(
                     step: 3,
-                    title: 'Statut & GPS',
-                    icon: LucideIcons.shieldCheck,
+                    title: 'Studio Photo HD',
+                    icon: LucideIcons.image,
                   ),
                 ],
               ),
@@ -322,7 +418,7 @@ class _VehicleFormDialogState extends State<VehicleFormDialog> {
                     ? _buildStep1CarInfo()
                     : _activeStep == 2
                         ? _buildStep2Telemetry(currencyFmt)
-                        : _buildStep3StatusGps(),
+                        : _buildStep3StudioPhotos(),
               ),
             ),
 
@@ -537,6 +633,34 @@ class _VehicleFormDialogState extends State<VehicleFormDialog> {
           hint: 'Ex: Noir Métallisé, Blanc Nacré...',
           icon: LucideIcons.palette,
         ),
+        const SizedBox(height: 16),
+        _buildSectionTitle('Statut Opérationnel Initial', LucideIcons.activity),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          value: _status,
+          isExpanded: true,
+          decoration: const InputDecoration(
+            labelText: 'État du Véhicule',
+            prefixIcon: Icon(LucideIcons.checkCircle2, size: 16),
+          ),
+          items: const [
+            DropdownMenuItem(
+              value: 'disponible',
+              child: Text('🟢 Disponible (Prêt à louer)'),
+            ),
+            DropdownMenuItem(
+              value: 'loue',
+              child: Text('🔵 En Location (Actuellement loué)'),
+            ),
+            DropdownMenuItem(
+              value: 'maintenance',
+              child: Text('🟡 En Atelier / Maintenance'),
+            ),
+          ],
+          onChanged: (v) {
+            if (v != null) setState(() => _status = v);
+          },
+        ),
       ],
     );
   }
@@ -678,99 +802,217 @@ class _VehicleFormDialogState extends State<VehicleFormDialog> {
     );
   }
 
-  Widget _buildStep3StatusGps() {
+  Widget _buildStep3StudioPhotos() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionTitle(
-            'Statut Opérationnel du Véhicule', LucideIcons.activity),
-        const SizedBox(height: 12),
-        DropdownButtonFormField<String>(
-          value: _status,
-          isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'État du Véhicule',
-            prefixIcon: Icon(LucideIcons.checkCircle2, size: 16),
-          ),
-          items: const [
-            DropdownMenuItem(
-              value: 'disponible',
-              child: Text('🟢 Disponible (Prêt à louer)'),
-            ),
-            DropdownMenuItem(
-              value: 'loue',
-              child: Text('🔵 En Location (Actuellement loué)'),
-            ),
-            DropdownMenuItem(
-              value: 'maintenance',
-              child: Text('🟡 En Atelier / Maintenance'),
-            ),
-          ],
-          onChanged: (v) {
-            if (v != null) setState(() => _status = v);
-          },
-        ),
-        const SizedBox(height: 16),
-        _buildSectionTitle('Télématique GPSWOX', LucideIcons.radio),
-        const SizedBox(height: 12),
-
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: _hasGps
-                ? AppColors2026.amberSolar.withOpacity(0.08)
-                : Colors.white.withOpacity(0.04),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: _hasGps
-                  ? AppColors2026.amberSolar.withOpacity(0.4)
-                  : Colors.white12,
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: _hasGps
-                      ? AppColors2026.amberSolar.withOpacity(0.2)
-                      : Colors.white10,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildSectionTitle(
+                'Studio Photo HD & Couverture', LucideIcons.camera),
+            ElevatedButton.icon(
+              onPressed: _showImagePickerOptions,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors2026.cyanNeon,
+                foregroundColor: AppColors2026.abyss,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  LucideIcons.radio,
-                  size: 20,
-                  color: _hasGps
-                      ? AppColors2026.amberSolar
-                      : AppColors2026.textMuted,
+              ),
+              icon: const Icon(LucideIcons.plus, size: 15),
+              label: const Text(
+                'Ajouter Photo',
+                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Prenez une photo en direct ou chargez depuis la galerie. La première photo servira de couverture principale (Web & Mobile).',
+          style: TextStyle(fontSize: 11, color: AppColors2026.textMuted),
+        ),
+        const SizedBox(height: 14),
+
+        if (_photos.isEmpty)
+          GestureDetector(
+            onTap: _showImagePickerOptions,
+            child: Container(
+              height: 160,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.03),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: AppColors2026.cyanNeon.withOpacity(0.3),
+                  style: BorderStyle.solid,
                 ),
               ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Boîtier Tracker GPS Installé',
-                      style:
-                          TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors2026.cyanNeon.withOpacity(0.12),
+                      shape: BoxShape.circle,
                     ),
-                    Text(
-                      'Active la télémétrie en temps réel et le suivi GPSWOX.',
-                      style: TextStyle(
-                          fontSize: 11, color: AppColors2026.textSecondary),
+                    child: const Icon(LucideIcons.camera,
+                        size: 28, color: AppColors2026.cyanBright),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Prendre une photo ou Importer',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Appareil photo • Galerie',
+                    style: TextStyle(fontSize: 11, color: Colors.white54),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Main cover photo highlight
+              Stack(
+                children: [
+                  Container(
+                    height: 180,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                          color: AppColors2026.emeraldNeon.withOpacity(0.5)),
                     ),
-                  ],
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: VehicleImagePreview(
+                        imageData: _photos.first,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 10,
+                    left: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors2026.obsidianSurface.withOpacity(0.85),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                            color: AppColors2026.emeraldNeon.withOpacity(0.5)),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(LucideIcons.star,
+                              size: 12, color: AppColors2026.amberSolar),
+                          SizedBox(width: 4),
+                          Text(
+                            'PHOTO PRINCIPALE',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors2026.emeraldNeon,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: IconButton(
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.black54,
+                        padding: const EdgeInsets.all(6),
+                      ),
+                      icon: const Icon(LucideIcons.trash2,
+                          size: 16, color: AppColors2026.roseLaser),
+                      onPressed: () => setState(() => _photos.removeAt(0)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+
+              // Thumbnail list for extra photos
+              if (_photos.length > 1) ...[
+                const Text(
+                  'PHOTOS SECONDAIRES',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors2026.textMuted,
+                    letterSpacing: 0.5,
+                  ),
                 ),
-              ),
-              Switch(
-                value: _hasGps,
-                activeColor: AppColors2026.amberSolar,
-                onChanged: (val) => setState(() => _hasGps = val),
-              ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 80,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _photos.length - 1,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (ctx, idx) {
+                      final photoIndex = idx + 1;
+                      return Stack(
+                        children: [
+                          Container(
+                            width: 80,
+                            height: 80,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.white24),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: VehicleImagePreview(
+                                imageData: _photos[photoIndex],
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: GestureDetector(
+                              onTap: () => setState(
+                                  () => _photos.removeAt(photoIndex)),
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: const BoxDecoration(
+                                  color: Colors.black87,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(LucideIcons.x,
+                                    size: 12, color: Colors.white),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
             ],
           ),
-        ),
 
         const SizedBox(height: 20),
         _buildSectionTitle('Aperçu Fiche Flotte', LucideIcons.clipboardList),
@@ -798,7 +1040,7 @@ class _VehicleFormDialogState extends State<VehicleFormDialog> {
                     fontSize: 12, color: AppColors2026.textSecondary),
               ),
               Text(
-                'Tarif : ${_dailyRateCtrl.text} DH/j • ${_fuelType} • ${_gearbox}',
+                'Tarif : ${_dailyRateCtrl.text} DH/j • $_fuelType • $_gearbox',
                 style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
