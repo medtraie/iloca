@@ -398,41 +398,23 @@ class _ContractsScreenState extends State<ContractsScreen> {
       backgroundColor: Colors.transparent,
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 90),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            FloatingActionButton.small(
-              heroTag: 'contracts_ops_drawer_btn',
-              onPressed: _openOperationsDrawer,
-              backgroundColor: AppColors2026.obsidianElevated,
-              foregroundColor: AppColors2026.cyanBright,
-              tooltip: 'Centre d\'Opérations',
-              child: Badge(
-                isLabelVisible: overdueCount > 0,
-                label: Text('$overdueCount'),
-                backgroundColor: AppColors2026.roseLaser,
-                child: const Icon(LucideIcons.activity, size: 18),
-              ),
-            ),
-            const SizedBox(width: 10),
-            FloatingActionButton.extended(
-              heroTag: 'new_contract_full_btn',
-              onPressed: () =>
-                  _openContractForm(mode: ContractFormMode.create),
-              backgroundColor: AppColors2026.violetElectric,
-              foregroundColor: Colors.white,
-              icon: const Icon(LucideIcons.filePlus2, size: 18),
-              label: const Text(
-                'Nouveau Contrat',
-                style: TextStyle(fontWeight: FontWeight.w900),
-              ),
-            ),
-          ],
+        child: FloatingActionButton.extended(
+          heroTag: 'new_contract_full_btn',
+          onPressed: () =>
+              _openContractForm(mode: ContractFormMode.create),
+          backgroundColor: AppColors2026.violetElectric,
+          foregroundColor: Colors.white,
+          elevation: 6,
+          icon: const Icon(LucideIcons.filePlus2, size: 18),
+          label: const Text(
+            'Nouveau Contrat',
+            style: TextStyle(fontWeight: FontWeight.w900),
+          ),
         ),
       ),
       body: Column(
         children: [
-          // Top Action & View Mode Bar
+          // Top Action Bar with Integrated Operations Alert Badge & View Modes
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
             child: Column(
@@ -470,6 +452,32 @@ class _ContractsScreenState extends State<ContractsScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
+
+                    // Centre d'Opérations & Alertes Button (Cleanly integrated in header)
+                    IconButton(
+                      tooltip: 'Centre d\'Opérations & Alertes Contrats',
+                      onPressed: _openOperationsDrawer,
+                      style: IconButton.styleFrom(
+                        backgroundColor: overdueCount > 0
+                            ? AppColors2026.roseLaser.withOpacity(0.18)
+                            : Colors.white.withOpacity(0.05),
+                      ),
+                      icon: Badge(
+                        isLabelVisible: overdueCount > 0,
+                        label: Text('$overdueCount'),
+                        backgroundColor: AppColors2026.roseLaser,
+                        child: Icon(
+                          LucideIcons.bell,
+                          size: 17,
+                          color: overdueCount > 0
+                              ? AppColors2026.roseLaser
+                              : AppColors2026.textSecondary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+
+                    // Analytics toggle button
                     IconButton(
                       tooltip: _showAnalytics
                           ? 'Masquer les statistiques'
@@ -490,6 +498,8 @@ class _ContractsScreenState extends State<ContractsScreen> {
                       ),
                     ),
                     const SizedBox(width: 4),
+
+                    // Supabase Refresh button
                     IconButton(
                       tooltip: 'Actualiser Supabase',
                       onPressed: () => widget.appState.refreshAllData(),

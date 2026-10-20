@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_theme_2026.dart';
 import '../../core/widgets/spatial_glass_widgets.dart';
 import '../../models/app_models.dart';
 import '../../providers/app_state_provider.dart';
+import 'client_form_dialog.dart';
 
-/// 2. CLIENTS SCREEN (Gestion Locataires & Chauffeurs 2026)
+/// 2. CLIENTS SCREEN — 100% Web Parity (Customers.tsx + CustomerFormDialog.tsx)
 class ClientsScreen extends StatefulWidget {
   final AppStateProvider appState;
 
@@ -18,246 +20,89 @@ class ClientsScreen extends StatefulWidget {
 class _ClientsScreenState extends State<ClientsScreen> {
   String _search = '';
   String _typeFilter = 'all'; // 'all' | 'Locataire Principal' | 'Chauffeur secondaire'
+  String _nationalityFilter = 'all';
 
   void _openClientForm([ClientModel? existing]) {
-    final lastNameCtrl = TextEditingController(text: existing?.lastName ?? '');
-    final firstNameCtrl = TextEditingController(text: existing?.firstName ?? '');
-    final phoneCtrl = TextEditingController(text: existing?.phone ?? '');
-    final cinCtrl = TextEditingController(text: existing?.cin ?? '');
-    final cinDateCtrl = TextEditingController(text: existing?.cinDelivered ?? '');
-    final licenseCtrl = TextEditingController(text: existing?.licenseNumber ?? '');
-    final licenseDateCtrl =
-        TextEditingController(text: existing?.licenseDelivered ?? '');
-    final passportCtrl =
-        TextEditingController(text: existing?.passportNumber ?? '');
-    final addressCtrl =
-        TextEditingController(text: existing?.addressMorocco ?? '');
-    final nationalityCtrl =
-        TextEditingController(text: existing?.nationality ?? 'Marocaine');
-    String customerType = existing?.customerType ?? 'Locataire Principal';
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setSheetState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 16,
-                bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 44,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.white24,
-                          borderRadius: BorderRadius.circular(99),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          existing == null
-                              ? 'NOUVEAU CLIENT / LOCATAIRE'
-                              : 'MODIFIER LE CLIENT',
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.4,
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          icon: const Icon(LucideIcons.x, size: 18),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: lastNameCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Nom *',
-                              prefixIcon: Icon(LucideIcons.user, size: 16),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextField(
-                            controller: firstNameCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Prénom',
-                              prefixIcon: Icon(LucideIcons.userCheck, size: 16),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: phoneCtrl,
-                            keyboardType: TextInputType.phone,
-                            decoration: const InputDecoration(
-                              labelText: 'Téléphone',
-                              prefixIcon: Icon(LucideIcons.phone, size: 16),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextField(
-                            controller: nationalityCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Nationalité',
-                              prefixIcon: Icon(LucideIcons.globe, size: 16),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: cinCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'N° CIN',
-                              prefixIcon: Icon(LucideIcons.creditCard, size: 16),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextField(
-                            controller: cinDateCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Date validité CIN',
-                              prefixIcon: Icon(LucideIcons.calendar, size: 16),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: licenseCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'N° Permis',
-                              prefixIcon: Icon(LucideIcons.award, size: 16),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextField(
-                            controller: passportCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Passeport',
-                              prefixIcon: Icon(LucideIcons.bookOpen, size: 16),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: addressCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Adresse complète',
-                        prefixIcon: Icon(LucideIcons.mapPin, size: 16),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      value: customerType,
-                      decoration: const InputDecoration(
-                        labelText: 'Catégorie du conducteur',
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'Locataire Principal',
-                          child: Text('Locataire Principal'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Chauffeur secondaire',
-                          child: Text('Chauffeur secondaire'),
-                        ),
-                      ],
-                      onChanged: (v) {
-                        if (v != null) setSheetState(() => customerType = v);
-                      },
-                    ),
-                    const SizedBox(height: 18),
-                    ElevatedButton.icon(
-                      onPressed: () async {
-                        if (lastNameCtrl.text.trim().isEmpty) return;
-                        final now = DateTime.now().toIso8601String();
-                        final model = ClientModel(
-                          id: existing?.id ?? '',
-                          lastName: lastNameCtrl.text.trim(),
-                          firstName: firstNameCtrl.text.trim(),
-                          phone: phoneCtrl.text.trim(),
-                          cin: cinCtrl.text.trim(),
-                          cinDelivered: cinDateCtrl.text.trim(),
-                          licenseNumber: licenseCtrl.text.trim(),
-                          licenseDelivered: licenseDateCtrl.text.trim(),
-                          passportNumber: passportCtrl.text.trim(),
-                          addressMorocco: addressCtrl.text.trim(),
-                          nationality: nationalityCtrl.text.trim(),
-                          customerType: customerType,
-                          createdAt: existing?.createdAt ?? now,
-                          updatedAt: now,
-                        );
-                        Navigator.pop(ctx);
-                        await widget.appState.saveClient(
-                          model,
-                          isEdit: existing != null,
-                        );
-                      },
-                      icon: const Icon(LucideIcons.checkCircle2, size: 18),
-                      label: Text(
-                        existing == null
-                            ? 'ENREGISTRER & SYNCHRONISER'
-                            : 'METTRE À JOUR EN TEMPS RÉEL',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (ctx) => ClientFormDialog(
+          appState: widget.appState,
+          client: existing,
+        ),
+      ),
     );
+  }
+
+  Future<void> _callClient(String phone) async {
+    final clean = phone.replaceAll(RegExp(r'[^0-9+]'), '');
+    if (clean.isEmpty) return;
+    final uri = Uri.parse('tel:$clean');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    }
+  }
+
+  Future<void> _confirmDelete(ClientModel client) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors2026.obsidianSurface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: AppColors2026.roseLaser.withOpacity(0.4)),
+        ),
+        title: const Row(
+          children: [
+            Icon(LucideIcons.alertTriangle,
+                color: AppColors2026.roseLaser, size: 20),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Supprimer le client ?',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Êtes-vous sûr de vouloir supprimer définitivement le profil client de "${client.fullName}" ?',
+          style: const TextStyle(fontSize: 13, color: AppColors2026.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors2026.roseLaser,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await widget.appState.deleteClient(client.id);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final allClients = widget.appState.clients;
+    final allContracts = widget.appState.contracts;
+
     final filtered = allClients.where((c) {
-      if (_typeFilter != 'all' && c.customerType != _typeFilter) return false;
+      if (_typeFilter != 'all' && c.customerType != _typeFilter) {
+        return false;
+      }
+      if (_nationalityFilter != 'all' &&
+          c.nationality.toLowerCase() != _nationalityFilter.toLowerCase()) {
+        return false;
+      }
       if (_search.trim().isNotEmpty) {
         final q = _search.toLowerCase();
         return c.fullName.toLowerCase().contains(q) ||
@@ -268,13 +113,22 @@ class _ClientsScreenState extends State<ClientsScreen> {
       return true;
     }).toList();
 
+    final totalCount = allClients.length;
+    final activeRentersCount = allClients.where((c) {
+      return allContracts.any((k) =>
+          k.isActive &&
+          (k.clientId == c.id ||
+              k.customerName.toLowerCase() == c.fullName.toLowerCase()));
+    }).length;
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 92),
+        padding: const EdgeInsets.only(bottom: 90),
         child: FloatingActionButton.extended(
+          heroTag: 'new_client_fab_btn',
           onPressed: () => _openClientForm(),
-          backgroundColor: AppColors2026.emeraldNeon,
+          backgroundColor: AppColors2026.cyanNeon,
           foregroundColor: AppColors2026.abyss,
           icon: const Icon(LucideIcons.userPlus, size: 18),
           label: const Text(
@@ -285,48 +139,62 @@ class _ClientsScreenState extends State<ClientsScreen> {
       ),
       body: Column(
         children: [
-          // Top Search & Filter Bar
+          // Filter & Search Header
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
             child: Column(
               children: [
-                TextField(
-                  onChanged: (v) => setState(() => _search = v),
-                  decoration: InputDecoration(
-                    hintText:
-                        'Rechercher client par nom, CIN, permis, téléphone...',
-                    prefixIcon: const Icon(LucideIcons.search, size: 18),
-                    suffixIcon: _search.isNotEmpty
-                        ? IconButton(
-                            onPressed: () => setState(() => _search = ''),
-                            icon: const Icon(LucideIcons.x, size: 16),
-                          )
-                        : null,
+                // Search Bar
+                SizedBox(
+                  height: 42,
+                  child: TextField(
+                    onChanged: (v) => setState(() => _search = v),
+                    style: const TextStyle(fontSize: 13),
+                    decoration: InputDecoration(
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 0),
+                      hintText: 'Rechercher nom, prénom, CIN, tél ou permis...',
+                      prefixIcon: const Icon(LucideIcons.search, size: 16),
+                      suffixIcon: _search.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(LucideIcons.x, size: 14),
+                              onPressed: () => setState(() => _search = ''),
+                            )
+                          : null,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
+
+                // Quick Filter Chips (All, Locataire Principal, Chauffeur Secondaire)
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
                       _FilterPill(
-                        label: 'Tous (${allClients.length})',
+                        label: 'Tous ($totalCount)',
                         selected: _typeFilter == 'all',
                         onTap: () => setState(() => _typeFilter = 'all'),
                       ),
                       const SizedBox(width: 8),
                       _FilterPill(
-                        label: 'Locataires Principaux',
-                        selected: _typeFilter == 'Locataire Principal',
-                        onTap: () => setState(
-                            () => _typeFilter = 'Locataire Principal'),
+                        label: 'En Location ($activeRentersCount)',
+                        selected: _typeFilter == 'active_rental',
+                        onTap: () => setState(() => _typeFilter = 'active_rental'),
                       ),
                       const SizedBox(width: 8),
                       _FilterPill(
-                        label: 'Chauffeurs Secondaires',
+                        label: 'Locataires Principaux',
+                        selected: _typeFilter == 'Locataire Principal',
+                        onTap: () =>
+                            setState(() => _typeFilter = 'Locataire Principal'),
+                      ),
+                      const SizedBox(width: 8),
+                      _FilterPill(
+                        label: 'Chauffeurs Adjoints',
                         selected: _typeFilter == 'Chauffeur secondaire',
-                        onTap: () => setState(
-                            () => _typeFilter = 'Chauffeur secondaire'),
+                        onTap: () =>
+                            setState(() => _typeFilter = 'Chauffeur secondaire'),
                       ),
                     ],
                   ),
@@ -338,47 +206,68 @@ class _ClientsScreenState extends State<ClientsScreen> {
           // Clients List
           Expanded(
             child: filtered.isEmpty
-                ? const Center(
-                    child: Text(
-                      'Aucun client trouvé.',
-                      style: TextStyle(color: AppColors2026.textSecondary),
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(LucideIcons.users,
+                            size: 44, color: AppColors2026.textMuted),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Aucun client trouvé',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors2026.textSecondary,
+                          ),
+                        ),
+                      ],
                     ),
                   )
                 : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 130),
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
                     itemCount: filtered.length,
                     itemBuilder: (ctx, i) {
                       final client = filtered[i];
-                      final clientContracts = widget.appState.contracts
-                          .where((cnt) =>
-                              cnt.customerCin == client.cin &&
-                                  client.cin.isNotEmpty ||
-                              cnt.customerName.toLowerCase() ==
+                      final clientContracts = allContracts
+                          .where((c) =>
+                              c.clientId == client.id ||
+                              c.customerName.toLowerCase() ==
                                   client.fullName.toLowerCase())
                           .toList();
                       final hasActiveRental =
-                          clientContracts.any((cnt) => cnt.isActive);
+                          clientContracts.any((c) => c.isActive);
 
                       return SpatialGlassCard(
                         margin: const EdgeInsets.only(bottom: 12),
                         borderColor: hasActiveRental
                             ? AppColors2026.emeraldNeon.withOpacity(0.4)
-                            : Colors.white.withOpacity(0.1),
+                            : Colors.white10,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               children: [
-                                CircleAvatar(
-                                  radius: 22,
-                                  backgroundColor:
-                                      AppColors2026.cyanNeon.withOpacity(0.2),
+                                Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color: AppColors2026.cyanNeon
+                                        .withOpacity(0.14),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: AppColors2026.cyanNeon
+                                          .withOpacity(0.4),
+                                    ),
+                                  ),
+                                  alignment: Alignment.center,
                                   child: Text(
-                                    client.fullName
-                                        .substring(0, 1)
-                                        .toUpperCase(),
+                                    client.lastName.isNotEmpty
+                                        ? client.lastName[0].toUpperCase()
+                                        : 'C',
                                     style: const TextStyle(
                                       fontWeight: FontWeight.w900,
+                                      fontSize: 16,
                                       color: AppColors2026.cyanBright,
                                     ),
                                   ),
@@ -396,6 +285,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
                                           fontWeight: FontWeight.w900,
                                         ),
                                       ),
+                                      const SizedBox(height: 2),
                                       Text(
                                         '${client.customerType} • ${client.nationality}',
                                         style: const TextStyle(
@@ -421,7 +311,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
                             ),
                             const SizedBox(height: 12),
                             Wrap(
-                              spacing: 12,
+                              spacing: 8,
                               runSpacing: 6,
                               children: [
                                 if (client.cin.isNotEmpty)
@@ -446,25 +336,44 @@ class _ClientsScreenState extends State<ClientsScreen> {
                                   ),
                               ],
                             ),
-                            const Divider(height: 20, color: Colors.white12),
+                            const Divider(height: 18, color: Colors.white12),
                             Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                TextButton.icon(
-                                  onPressed: () => _openClientForm(client),
-                                  icon: const Icon(LucideIcons.edit3, size: 15),
-                                  label: const Text('Modifier'),
-                                ),
-                                const SizedBox(width: 8),
-                                TextButton.icon(
-                                  onPressed: () =>
-                                      widget.appState.deleteClient(client.id),
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: AppColors2026.roseLaser,
-                                  ),
-                                  icon:
-                                      const Icon(LucideIcons.trash2, size: 15),
-                                  label: const Text('Supprimer'),
+                                if (client.phone.isNotEmpty)
+                                  IconButton(
+                                    tooltip: 'Appeler le client',
+                                    onPressed: () => _callClient(client.phone),
+                                    icon: const Icon(LucideIcons.phoneCall,
+                                        size: 16,
+                                        color: AppColors2026.emeraldBright),
+                                  )
+                                else
+                                  const SizedBox.shrink(),
+                                Row(
+                                  children: [
+                                    TextButton.icon(
+                                      onPressed: () => _openClientForm(client),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: AppColors2026.cyanBright,
+                                      ),
+                                      icon: const Icon(LucideIcons.edit3,
+                                          size: 14),
+                                      label: const Text('Modifier',
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.bold)),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    IconButton(
+                                      tooltip: 'Supprimer',
+                                      onPressed: () => _confirmDelete(client),
+                                      icon: const Icon(
+                                        LucideIcons.trash2,
+                                        size: 16,
+                                        color: AppColors2026.roseLaser,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -496,11 +405,11 @@ class _FilterPill extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
           color: selected
               ? AppColors2026.cyanNeon
-              : Colors.white.withOpacity(0.06),
+              : Colors.white.withOpacity(0.05),
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
             color: selected ? AppColors2026.cyanNeon : Colors.white12,
@@ -527,20 +436,32 @@ class _InfoTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 13, color: AppColors2026.cyanBright),
-        const SizedBox(width: 5),
-        Text(
-          text,
-          style: const TextStyle(
-            fontSize: 12,
-            color: AppColors2026.textPrimary,
-            fontWeight: FontWeight.w600,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: AppColors2026.cyanBright),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors2026.textSecondary,
+              ),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

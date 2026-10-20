@@ -5,8 +5,9 @@ import '../../core/theme/app_theme_2026.dart';
 import '../../core/widgets/spatial_glass_widgets.dart';
 import '../../models/app_models.dart';
 import '../../providers/app_state_provider.dart';
+import 'vehicle_form_dialog.dart';
 
-/// 3. VÉHICULES SCREEN (Parc Automobile Spatial 2026)
+/// 3. VÉHICULES SCREEN — 100% Web Parity (Vehicles.tsx + VehicleFormDialog.tsx)
 class VehiclesScreen extends StatefulWidget {
   final AppStateProvider appState;
 
@@ -21,297 +22,87 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
   String _statusFilter = 'all'; // 'all' | 'disponible' | 'loue' | 'maintenance'
 
   void _openVehicleForm([VehicleModel? existing]) {
-    final brandCtrl = TextEditingController(text: existing?.brand ?? '');
-    final modelCtrl = TextEditingController(text: existing?.model ?? '');
-    final regCtrl = TextEditingController(text: existing?.registration ?? '');
-    final yearCtrl =
-        TextEditingController(text: (existing?.year ?? 2025).toString());
-    final rateCtrl =
-        TextEditingController(text: (existing?.dailyRate ?? 350).round().toString());
-    final mileageCtrl =
-        TextEditingController(text: (existing?.mileage ?? 0).round().toString());
-    final colorCtrl = TextEditingController(text: existing?.color ?? 'Noir');
-    String fuel = existing?.fuelType ?? 'Diesel';
-    String gearbox = existing?.gearbox ?? 'Automatique';
-    String status = existing?.status ?? 'disponible';
-    bool hasGps = existing?.hasGps ?? true;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setSheetState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 16,
-                bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 44,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.white24,
-                          borderRadius: BorderRadius.circular(99),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          existing == null
-                              ? 'AJOUTER UN VÉHICULE AU PARC'
-                              : 'MODIFIER LE VÉHICULE',
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          icon: const Icon(LucideIcons.x, size: 18),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: brandCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Marque * (ex: Dacia)',
-                              prefixIcon: Icon(LucideIcons.car, size: 16),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextField(
-                            controller: modelCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Modèle (ex: Logan)',
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: regCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Immatriculation *',
-                              prefixIcon: Icon(LucideIcons.hash, size: 16),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextField(
-                            controller: yearCtrl,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: 'Année',
-                              prefixIcon: Icon(LucideIcons.calendar, size: 16),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: rateCtrl,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: 'Prix / Jour (DH)',
-                              prefixIcon: Icon(LucideIcons.dollarSign, size: 16),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextField(
-                            controller: mileageCtrl,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: 'Kilométrage (km)',
-                              prefixIcon: Icon(LucideIcons.gauge, size: 16),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: fuel,
-                            decoration:
-                                const InputDecoration(labelText: 'Carburant'),
-                            items: const [
-                              DropdownMenuItem(
-                                  value: 'Diesel', child: Text('Diesel')),
-                              DropdownMenuItem(
-                                  value: 'Essence', child: Text('Essence')),
-                              DropdownMenuItem(
-                                  value: 'Hybride', child: Text('Hybride')),
-                              DropdownMenuItem(
-                                  value: 'Électrique',
-                                  child: Text('Électrique')),
-                            ],
-                            onChanged: (v) {
-                              if (v != null) setSheetState(() => fuel = v);
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: gearbox,
-                            decoration:
-                                const InputDecoration(labelText: 'Boîte'),
-                            items: const [
-                              DropdownMenuItem(
-                                  value: 'Automatique',
-                                  child: Text('Automatique')),
-                              DropdownMenuItem(
-                                  value: 'Manuelle', child: Text('Manuelle')),
-                            ],
-                            onChanged: (v) {
-                              if (v != null) setSheetState(() => gearbox = v);
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: status,
-                            decoration:
-                                const InputDecoration(labelText: 'État'),
-                            items: const [
-                              DropdownMenuItem(
-                                  value: 'disponible',
-                                  child: Text('Disponible')),
-                              DropdownMenuItem(
-                                  value: 'loue', child: Text('Loué')),
-                              DropdownMenuItem(
-                                  value: 'maintenance',
-                                  child: Text('En Maintenance')),
-                            ],
-                            onChanged: (v) {
-                              if (v != null) setSheetState(() => status = v);
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextField(
-                            controller: colorCtrl,
-                            decoration:
-                                const InputDecoration(labelText: 'Couleur'),
-                          ),
-                        ),
-                      ],
-                    ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text(
-                        'Équipé d\'un Traceur GPSWOX',
-                        style: TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w700),
-                      ),
-                      value: hasGps,
-                      activeColor: AppColors2026.cyanNeon,
-                      onChanged: (v) => setSheetState(() => hasGps = v),
-                    ),
-                    const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      onPressed: () async {
-                        if (brandCtrl.text.trim().isEmpty) return;
-                        final now = DateTime.now().toIso8601String();
-                        final model = VehicleModel(
-                          id: existing?.id ?? '',
-                          brand: brandCtrl.text.trim(),
-                          model: modelCtrl.text.trim(),
-                          registration: regCtrl.text.trim(),
-                          year: int.tryParse(yearCtrl.text) ?? 2025,
-                          fuelType: fuel,
-                          gearbox: gearbox,
-                          mileage: double.tryParse(mileageCtrl.text) ?? 0,
-                          color: colorCtrl.text.trim(),
-                          dailyRate: double.tryParse(rateCtrl.text) ?? 300,
-                          status: status,
-                          hasGps: hasGps,
-                          createdAt: existing?.createdAt ?? now,
-                          updatedAt: now,
-                        );
-                        Navigator.pop(ctx);
-                        await widget.appState.saveVehicle(
-                          model,
-                          isEdit: existing != null,
-                        );
-                      },
-                      icon: const Icon(LucideIcons.checkCircle2, size: 18),
-                      label: Text(
-                        existing == null
-                            ? 'AJOUTER & SYNCHRONISER'
-                            : 'ENREGISTRER LES MODIFICATIONS',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (ctx) => VehicleFormDialog(
+          appState: widget.appState,
+          vehicle: existing,
+        ),
+      ),
     );
   }
 
-  Color _statusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'disponible':
-        return AppColors2026.emeraldNeon;
-      case 'loue':
-        return AppColors2026.cyanNeon;
-      case 'maintenance':
-        return AppColors2026.roseLaser;
-      default:
-        return AppColors2026.amberSolar;
+  Future<void> _confirmDelete(VehicleModel vehicle) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors2026.obsidianSurface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: AppColors2026.roseLaser.withOpacity(0.4)),
+        ),
+        title: const Row(
+          children: [
+            Icon(LucideIcons.alertTriangle,
+                color: AppColors2026.roseLaser, size: 20),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Retirer le véhicule ?',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Êtes-vous sûr de vouloir supprimer définitivement ${vehicle.fullName} (${vehicle.registration}) du parc automobile ?',
+          style: const TextStyle(fontSize: 13, color: AppColors2026.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors2026.roseLaser,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await widget.appState.deleteVehicle(vehicle.id);
     }
   }
 
-  String _statusLabel(String status) {
-    switch (status.toLowerCase()) {
+  Color _statusColor(String s) {
+    switch (s.toLowerCase()) {
+      case 'disponible':
+        return AppColors2026.emeraldNeon;
+      case 'loue':
+        return AppColors2026.violetElectric;
+      case 'maintenance':
+        return AppColors2026.amberSolar;
+      default:
+        return AppColors2026.roseLaser;
+    }
+  }
+
+  String _statusLabel(String s) {
+    switch (s.toLowerCase()) {
       case 'disponible':
         return 'Disponible';
       case 'loue':
-        return 'Loué';
+        return 'En Location';
       case 'maintenance':
         return 'Maintenance';
       default:
-        return status;
+        return 'Hors Service';
     }
   }
 
@@ -319,62 +110,84 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
   Widget build(BuildContext context) {
     final currencyFmt = NumberFormat('#,##0', 'fr_FR');
     final all = widget.appState.vehicles;
+
     final filtered = all.where((v) {
-      if (_statusFilter != 'all' && v.status.toLowerCase() != _statusFilter) {
+      if (_statusFilter != 'all' &&
+          v.status.toLowerCase() != _statusFilter.toLowerCase()) {
         return false;
       }
       if (_search.trim().isNotEmpty) {
         final q = _search.toLowerCase();
         return v.fullName.toLowerCase().contains(q) ||
-            v.registration.toLowerCase().contains(q);
+            v.registration.toLowerCase().contains(q) ||
+            v.color.toLowerCase().contains(q);
       }
       return true;
     }).toList();
 
+    final dispCount = all.where((v) => v.status == 'disponible').length;
+    final rentedCount = all.where((v) => v.status == 'loue').length;
+    final maintCount = all.where((v) => v.status == 'maintenance').length;
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 92),
+        padding: const EdgeInsets.only(bottom: 90),
         child: FloatingActionButton.extended(
+          heroTag: 'new_vehicle_fab_btn',
           onPressed: () => _openVehicleForm(),
-          backgroundColor: AppColors2026.cyanNeon,
+          backgroundColor: AppColors2026.emeraldNeon,
           foregroundColor: AppColors2026.abyss,
           icon: const Icon(LucideIcons.plus, size: 18),
           label: const Text(
-            'Ajouter Véhicule',
+            'Ajouter un Véhicule',
             style: TextStyle(fontWeight: FontWeight.w900),
           ),
         ),
       ),
       body: Column(
         children: [
+          // Filter & Search Header
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
             child: Column(
               children: [
-                TextField(
-                  onChanged: (v) => setState(() => _search = v),
-                  decoration: const InputDecoration(
-                    hintText:
-                        'Rechercher véhicule par marque, modèle ou matricule...',
-                    prefixIcon: Icon(LucideIcons.search, size: 18),
+                // Search Bar
+                SizedBox(
+                  height: 42,
+                  child: TextField(
+                    onChanged: (v) => setState(() => _search = v),
+                    style: const TextStyle(fontSize: 13),
+                    decoration: InputDecoration(
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 0),
+                      hintText: 'Rechercher marque, modèle, matricule, couleur...',
+                      prefixIcon: const Icon(LucideIcons.search, size: 16),
+                      suffixIcon: _search.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(LucideIcons.x, size: 14),
+                              onPressed: () => setState(() => _search = ''),
+                            )
+                          : null,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
+
+                // Status Filter Chips
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
                       _StatusChip(
-                        label: 'Tout (${all.length})',
+                        label: 'Tous (${all.length})',
                         selected: _statusFilter == 'all',
-                        color: AppColors2026.cyanNeon,
+                        color: AppColors2026.cyanBright,
                         onTap: () => setState(() => _statusFilter = 'all'),
                       ),
                       const SizedBox(width: 8),
                       _StatusChip(
-                        label:
-                            'Disponibles (${widget.appState.availableVehiclesCount})',
+                        label: 'Disponibles ($dispCount)',
                         selected: _statusFilter == 'disponible',
                         color: AppColors2026.emeraldNeon,
                         onTap: () =>
@@ -382,17 +195,16 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                       ),
                       const SizedBox(width: 8),
                       _StatusChip(
-                        label: 'Loués (${widget.appState.rentedVehiclesCount})',
+                        label: 'En Location ($rentedCount)',
                         selected: _statusFilter == 'loue',
                         color: AppColors2026.violetElectric,
                         onTap: () => setState(() => _statusFilter = 'loue'),
                       ),
                       const SizedBox(width: 8),
                       _StatusChip(
-                        label:
-                            'Atelier (${widget.appState.maintenanceVehiclesCount})',
+                        label: 'Atelier ($maintCount)',
                         selected: _statusFilter == 'maintenance',
-                        color: AppColors2026.roseLaser,
+                        color: AppColors2026.amberSolar,
                         onTap: () =>
                             setState(() => _statusFilter = 'maintenance'),
                       ),
@@ -402,16 +214,30 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
               ],
             ),
           ),
+
+          // Vehicles List
           Expanded(
             child: filtered.isEmpty
-                ? const Center(
-                    child: Text(
-                      'Aucun véhicule dans cette catégorie.',
-                      style: TextStyle(color: AppColors2026.textSecondary),
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(LucideIcons.car,
+                            size: 44, color: AppColors2026.textMuted),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Aucun véhicule dans cette catégorie',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors2026.textSecondary,
+                          ),
+                        ),
+                      ],
                     ),
                   )
                 : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 130),
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
                     itemCount: filtered.length,
                     itemBuilder: (ctx, i) {
                       final v = filtered[i];
@@ -449,10 +275,11 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                                           fontWeight: FontWeight.w900,
                                         ),
                                       ),
+                                      const SizedBox(height: 2),
                                       Text(
-                                        'Matricule : ${v.registration.isEmpty ? "—" : v.registration} • Modèle ${v.year}',
+                                        'Matricule : ${v.registration.isEmpty ? "—" : v.registration} • Année ${v.year}',
                                         style: const TextStyle(
-                                          fontSize: 12,
+                                          fontSize: 11,
                                           color: AppColors2026.textSecondary,
                                         ),
                                       ),
@@ -467,9 +294,10 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 14),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 6,
                               children: [
                                 _SpecPill(
                                   icon: LucideIcons.fuel,
@@ -488,39 +316,45 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                                   const _SpecPill(
                                     icon: LucideIcons.radio,
                                     text: 'GPS Actif',
-                                    color: AppColors2026.emeraldNeon,
+                                    color: AppColors2026.amberSolar,
                                   ),
                               ],
                             ),
-                            const Divider(height: 20, color: Colors.white12),
+                            const Divider(height: 18, color: Colors.white12),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(
-                                  '${currencyFmt.format(v.dailyRate.round())} DH / jour',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w900,
-                                    color: AppColors2026.cyanBright,
+                                Flexible(
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      '${currencyFmt.format(v.dailyRate.round())} DH / jour',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w900,
+                                        color: AppColors2026.emeraldBright,
+                                      ),
+                                    ),
                                   ),
                                 ),
                                 Row(
                                   children: [
                                     IconButton(
+                                      tooltip: 'Modifier',
                                       onPressed: () => _openVehicleForm(v),
                                       icon: const Icon(LucideIcons.edit3,
-                                          size: 17),
-                                      tooltip: 'Modifier',
+                                          size: 16,
+                                          color: AppColors2026.cyanBright),
                                     ),
                                     IconButton(
-                                      onPressed: () =>
-                                          widget.appState.deleteVehicle(v.id),
+                                      tooltip: 'Supprimer',
+                                      onPressed: () => _confirmDelete(v),
                                       icon: const Icon(
                                         LucideIcons.trash2,
-                                        size: 17,
+                                        size: 16,
                                         color: AppColors2026.roseLaser,
                                       ),
-                                      tooltip: 'Supprimer',
                                     ),
                                   ],
                                 ),
@@ -556,7 +390,7 @@ class _StatusChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
           color: selected ? color : Colors.white.withOpacity(0.05),
           borderRadius: BorderRadius.circular(999),
@@ -580,20 +414,17 @@ class _SpecPill extends StatelessWidget {
   final String text;
   final Color? color;
 
-  const _SpecPill({
-    required this.icon,
-    required this.text,
-    this.color,
-  });
+  const _SpecPill({required this.icon, required this.text, this.color});
 
   @override
   Widget build(BuildContext context) {
     final c = color ?? AppColors2026.textSecondary;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(10),
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white10),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -604,8 +435,8 @@ class _SpecPill extends StatelessWidget {
             text,
             style: TextStyle(
               fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: color ?? Colors.white,
+              fontWeight: FontWeight.w600,
+              color: c,
             ),
           ),
         ],
