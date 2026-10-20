@@ -93,9 +93,35 @@ class _VehicleFormDialogState extends State<VehicleFormDialog> {
     _departureMileageCtrl = TextEditingController(
         text: (v?.departureMileage ?? 0).round().toString());
 
-    _fuelType = v?.fuelType ?? 'Diesel';
-    _gearbox = v?.gearbox ?? 'Automatique';
-    _status = v?.status ?? 'disponible';
+    String normFuel(String? f) {
+      if (f == null || f.isEmpty) return 'Diesel';
+      final lower = f.trim().toLowerCase();
+      if (lower.contains('diesel') || lower.contains('gazole')) return 'Diesel';
+      if (lower.contains('essence')) return 'Essence';
+      if (lower.contains('hybr')) return 'Hybride';
+      if (lower.contains('elect') || lower.contains('élect')) return 'Electrique';
+      return 'Diesel';
+    }
+
+    String normGearbox(String? g) {
+      if (g == null || g.isEmpty) return 'Automatique';
+      final lower = g.trim().toLowerCase();
+      if (lower.contains('manu')) return 'Manuelle';
+      if (lower.contains('auto')) return 'Automatique';
+      return 'Automatique';
+    }
+
+    String normStatus(String? s) {
+      if (s == null || s.isEmpty) return 'disponible';
+      final lower = s.trim().toLowerCase();
+      if (lower.contains('loue') || lower.contains('rent')) return 'loue';
+      if (lower.contains('maint') || lower.contains('atelier')) return 'maintenance';
+      return 'disponible';
+    }
+
+    _fuelType = normFuel(v?.fuelType);
+    _gearbox = normGearbox(v?.gearbox);
+    _status = normStatus(v?.status);
     _hasGps = v?.hasGps ?? true;
     _photos = List<String>.from(v?.photos ?? []);
   }
@@ -637,7 +663,9 @@ class _VehicleFormDialogState extends State<VehicleFormDialog> {
         _buildSectionTitle('Statut Opérationnel Initial', LucideIcons.activity),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: _status,
+          value: const ['disponible', 'loue', 'maintenance'].contains(_status)
+              ? _status
+              : 'disponible',
           isExpanded: true,
           decoration: const InputDecoration(
             labelText: 'État du Véhicule',
@@ -731,7 +759,7 @@ class _VehicleFormDialogState extends State<VehicleFormDialog> {
           children: [
             Expanded(
               child: DropdownButtonFormField<String>(
-                value: _fuelType,
+                value: kFuelTypes.contains(_fuelType) ? _fuelType : 'Diesel',
                 isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Carburant',
@@ -751,7 +779,7 @@ class _VehicleFormDialogState extends State<VehicleFormDialog> {
             const SizedBox(width: 10),
             Expanded(
               child: DropdownButtonFormField<String>(
-                value: _gearbox,
+                value: kGearboxes.contains(_gearbox) ? _gearbox : 'Automatique',
                 isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Boîte',
