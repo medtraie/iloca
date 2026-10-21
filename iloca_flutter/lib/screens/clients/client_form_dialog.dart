@@ -84,9 +84,8 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
     _permisDateCtrl = TextEditingController(text: c?.licenseDelivered ?? '');
     _passportCtrl = TextEditingController(text: c?.passportNumber ?? '');
 
-    _nationality = (c?.nationality ?? 'Marocaine').trim().isEmpty
-        ? 'Marocaine'
-        : c!.nationality;
+    final rawNat = c?.nationality?.trim();
+    _nationality = (rawNat != null && rawNat.isNotEmpty) ? rawNat : 'Marocaine';
     _customerType = c?.customerType ?? 'Locataire Principal';
 
     _cinImageUrl = c?.cinImageUrl;

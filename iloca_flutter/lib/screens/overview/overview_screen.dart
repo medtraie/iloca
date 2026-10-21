@@ -186,33 +186,38 @@ class _OverviewScreenState extends State<OverviewScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  const NeonBadge(
-                    label: 'COCKPIT CENTRAL 2026',
-                    color: AppColors2026.emeraldNeon,
-                    pulsing: true,
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.06),
-                      borderRadius: BorderRadius.circular(6),
+              Flexible(
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    const NeonBadge(
+                      label: 'COCKPIT 2026',
+                      color: AppColors2026.emeraldNeon,
+                      pulsing: true,
                     ),
-                    child: Text(
-                      app.isSyncing ? 'SYNC...' : 'CLOUD SYNC',
-                      style: const TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors2026.cyanBright,
-                        letterSpacing: 0.5,
+                    Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        app.isSyncing ? 'SYNC...' : 'CLOUD SYNC',
+                        style: const TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors2026.cyanBright,
+                          letterSpacing: 0.5,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               Text(
                 DateFormat('dd MMM • HH:mm').format(app.lastSyncTime),
                 style: const TextStyle(
@@ -373,7 +378,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
           physics: const NeverScrollableScrollPhysics(),
           mainAxisSpacing: 10,
           crossAxisSpacing: 10,
-          childAspectRatio: 1.25,
+          childAspectRatio: constraints.maxWidth > 640 ? 1.4 : 1.10,
           children: [
             // Revenue Card
             _BentoTile2026(
@@ -390,7 +395,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
             _BentoTile2026(
               title: "Occupation Flotte",
               value: "$occupancyRate%",
-              subtitle: "$rentedVeh loués sur $totalVehicles auto(s)",
+              subtitle: "$rentedVeh loués sur $totalVehicles",
               icon: LucideIcons.car,
               color: AppColors2026.cyanBright,
               badge: "$availableVeh libres",
@@ -461,29 +466,40 @@ class _OverviewScreenState extends State<OverviewScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: accentColor.withOpacity(0.16),
-                      borderRadius: BorderRadius.circular(10),
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                        color: accentColor.withOpacity(0.16),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(LucideIcons.calendarClock,
+                          size: 15, color: accentColor),
                     ),
-                    child: Icon(LucideIcons.calendarClock,
-                        size: 16, color: accentColor),
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'OPÉRATIONS & RESTITUTIONS DU JOUR',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.5,
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'OPÉRATIONS DU JOUR',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
                 onPressed: () => widget.appState.setActiveTab(3),
                 child: const Text('Voir Contrats',
                     style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
@@ -493,29 +509,32 @@ class _OverviewScreenState extends State<OverviewScreen> {
           const SizedBox(height: 12),
 
           // Mini Filters: Retours (x), Retards (x), Départs (x)
-          Row(
-            children: [
-              _OpsFilterChip(
-                label: "Restitutions (${todayReturns.length})",
-                selected: _opsFilter == 'returns',
-                color: AppColors2026.amberSolar,
-                onTap: () => setState(() => _opsFilter = 'returns'),
-              ),
-              const SizedBox(width: 6),
-              _OpsFilterChip(
-                label: "Retards (${overdueContracts.length})",
-                selected: _opsFilter == 'overdue',
-                color: AppColors2026.roseLaser,
-                onTap: () => setState(() => _opsFilter = 'overdue'),
-              ),
-              const SizedBox(width: 6),
-              _OpsFilterChip(
-                label: "Départs (${todayDepartures.length})",
-                selected: _opsFilter == 'departures',
-                color: AppColors2026.cyanBright,
-                onTap: () => setState(() => _opsFilter = 'departures'),
-              ),
-            ],
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _OpsFilterChip(
+                  label: "Restitutions (${todayReturns.length})",
+                  selected: _opsFilter == 'returns',
+                  color: AppColors2026.amberSolar,
+                  onTap: () => setState(() => _opsFilter = 'returns'),
+                ),
+                const SizedBox(width: 6),
+                _OpsFilterChip(
+                  label: "Retards (${overdueContracts.length})",
+                  selected: _opsFilter == 'overdue',
+                  color: AppColors2026.roseLaser,
+                  onTap: () => setState(() => _opsFilter = 'overdue'),
+                ),
+                const SizedBox(width: 6),
+                _OpsFilterChip(
+                  label: "Départs (${todayDepartures.length})",
+                  selected: _opsFilter == 'departures',
+                  color: AppColors2026.cyanBright,
+                  onTap: () => setState(() => _opsFilter = 'departures'),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
 
@@ -588,13 +607,18 @@ class _OverviewScreenState extends State<OverviewScreen> {
                     if (c.customerPhone.isNotEmpty) ...[
                       IconButton(
                         tooltip: 'Message WhatsApp',
+                        padding: const EdgeInsets.all(6),
+                        constraints: const BoxConstraints(),
                         onPressed: () =>
                             _openWhatsApp(c.customerPhone, whatsappMsg),
                         icon: const Icon(LucideIcons.messageCircle,
                             size: 16, color: AppColors2026.emeraldNeon),
                       ),
+                      const SizedBox(width: 4),
                       IconButton(
                         tooltip: 'Appeler',
+                        padding: const EdgeInsets.all(6),
+                        constraints: const BoxConstraints(),
                         onPressed: () => _callPhone(c.customerPhone),
                         icon: const Icon(LucideIcons.phone,
                             size: 16, color: AppColors2026.cyanBright),
@@ -628,29 +652,40 @@ class _OverviewScreenState extends State<OverviewScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppColors2026.cyanBright.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(10),
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                        color: AppColors2026.cyanBright.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(LucideIcons.gauge,
+                          size: 15, color: AppColors2026.cyanBright),
                     ),
-                    child: const Icon(LucideIcons.gauge,
-                        size: 16, color: AppColors2026.cyanBright),
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'DISPONIBILITÉ & OCCUPATION DU PARC',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.5,
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'DISPONIBILITÉ & PARC AUTO',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
                 onPressed: () => widget.appState.setActiveTab(2),
                 child: const Text('Parc Auto',
                     style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
@@ -785,28 +820,35 @@ class _OverviewScreenState extends State<OverviewScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'COURBE D\'ÉVOLUTION DU CHIFFRE D\'AFFAIRES',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors2026.textSecondary,
-                      letterSpacing: 0.5,
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'ÉVOLUTION DU C.A.',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors2026.textSecondary,
+                        letterSpacing: 0.5,
+                      ),
                     ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Trajectoire & Croissance Mensuelle',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
+                    SizedBox(height: 2),
+                    Text(
+                      'Trajectoire Mensuelle',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               NeonBadge(
                 label: '${currencyFmt.format(widget.appState.monthlyRevenue.round())} DH',
                 color: AppColors2026.emeraldNeon,
@@ -909,22 +951,33 @@ class _OverviewScreenState extends State<OverviewScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Row(
-                children: [
-                  Icon(LucideIcons.radio,
-                      color: AppColors2026.amberSolar, size: 16),
-                  SizedBox(width: 8),
-                  Text(
-                    'TÉLÉMÉTRIE GPS LIVE & TRACEURS',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.5,
+              const Expanded(
+                child: Row(
+                  children: [
+                    Icon(LucideIcons.radio,
+                        color: AppColors2026.amberSolar, size: 16),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'TÉLÉMÉTRIE GPS LIVE',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
                 onPressed: () => app.setActiveTab(5),
                 child: const Text('Ouvrir Carte',
                     style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
@@ -1052,15 +1105,24 @@ class _OverviewScreenState extends State<OverviewScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'DERNIERS DOSSIERS CONTRATS',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.5,
+              const Expanded(
+                child: Text(
+                  'DERNIERS DOSSIERS CONTRATS',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
+                  ),
                 ),
               ),
               TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
                 onPressed: () => app.setActiveTab(3),
                 child: const Text('Voir tout',
                     style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
@@ -1112,23 +1174,31 @@ class _OverviewScreenState extends State<OverviewScreen> {
                         children: [
                           Text(
                             '${c.customerName} • ${c.vehicle}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                                 fontSize: 13, fontWeight: FontWeight.w800),
                           ),
                           Text(
                             '${c.contractNumber} • Du ${c.startDate} au ${c.endDate}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                                 fontSize: 11, color: AppColors2026.textSecondary),
                           ),
                         ],
                       ),
                     ),
-                    Text(
-                      '${currencyFmt.format(c.totalAmount.round())} DH',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors2026.cyanBright,
+                    const SizedBox(width: 8),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        '${currencyFmt.format(c.totalAmount.round())} DH',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors2026.cyanBright,
+                        ),
                       ),
                     ),
                   ],
@@ -1258,6 +1328,7 @@ class _BentoTile2026 extends StatelessWidget {
             ),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 FittedBox(
                   fit: BoxFit.scaleDown,
@@ -1265,7 +1336,7 @@ class _BentoTile2026 extends StatelessWidget {
                   child: Text(
                     value,
                     style: const TextStyle(
-                      fontSize: 17,
+                      fontSize: 18,
                       fontWeight: FontWeight.w900,
                       letterSpacing: -0.3,
                     ),
@@ -1277,11 +1348,24 @@ class _BentoTile2026 extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 10.5,
+                    fontSize: 11,
                     fontWeight: FontWeight.w700,
                     color: AppColors2026.textSecondary,
                   ),
                 ),
+                if (subtitle.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w600,
+                      color: color.withOpacity(0.9),
+                    ),
+                  ),
+                ],
               ],
             ),
           ],
@@ -1346,24 +1430,31 @@ class _FleetBreakdownRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Row(
-          children: [
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-                color: AppColors2026.textSecondary,
+        Expanded(
+          child: Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
               ),
-            ),
-          ],
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors2026.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
+        const SizedBox(width: 6),
         Text(
           '$count',
           style: const TextStyle(
@@ -1394,14 +1485,19 @@ class _FinSummaryRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: isBold ? 13 : 12,
-            fontWeight: isBold ? FontWeight.w900 : FontWeight.w600,
-            color: isBold ? Colors.white : AppColors2026.textSecondary,
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: isBold ? 13 : 12,
+              fontWeight: isBold ? FontWeight.w900 : FontWeight.w600,
+              color: isBold ? Colors.white : AppColors2026.textSecondary,
+            ),
           ),
         ),
+        const SizedBox(width: 8),
         Text(
           amount,
           style: TextStyle(
