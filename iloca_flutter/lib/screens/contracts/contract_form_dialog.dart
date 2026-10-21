@@ -658,6 +658,15 @@ class _ContractFormDialogState extends State<ContractFormDialog> {
           ),
         ),
       );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors2026.roseLaser,
+            content: Text('Erreur de synchronisation : $e'),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }

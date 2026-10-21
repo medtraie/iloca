@@ -329,9 +329,13 @@ class SupabaseSyncService {
         await updateVehicleStatus(saved.vehicleId, newVehStatus);
       }
       return saved;
-    } catch (e) {
-      debugPrint('[SupabaseSync] saveContract fallback: $e');
-      return contract;
+    } catch (e, stack) {
+      debugPrint('[SupabaseSync] saveContract error: $e\n$stack');
+      if (e.toString().contains('SocketException') ||
+          e.toString().contains('ClientException')) {
+        return contract;
+      }
+      rethrow;
     }
   }
 

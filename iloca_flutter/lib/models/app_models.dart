@@ -565,9 +565,19 @@ class ContractModel {
               rawData['cin'] ??
               '')
           .toString(),
-      clientId: (row['client_id'] ?? '').toString(),
+      clientId: (row['client_id'] ??
+              rawData['clientId'] ??
+              rawData['client_id'] ??
+              '')
+          .toString(),
       vehicle: (row['vehicle'] ?? rawData['vehicle'] ?? 'Véhicule').toString(),
-      vehicleId: (row['vehicle_id'] ?? row['vehicleId'] ?? '').toString(),
+      vehicleId: (row['vehicleid'] ??
+              row['vehicleId'] ??
+              row['vehicle_id'] ??
+              rawData['vehicleId'] ??
+              rawData['vehicle_id'] ??
+              '')
+          .toString(),
       startDate: (row['start_date'] ?? row['startDate'] ?? now.substring(0, 10))
           .toString(),
       endDate:
@@ -606,14 +616,36 @@ class ContractModel {
     final delivDmgJson = deliveryDamages.map((d) => d.toJson()).toList();
     final retDmgJson = returnDamages.map((d) => d.toJson()).toList();
 
+    final isUuid = RegExp(
+        r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
+    final validVehicleUuid = isUuid.hasMatch(vehicleId) ? vehicleId : null;
+
+    final contractDataPayload = {
+      ...contractData,
+      if (clientId.isNotEmpty) 'clientId': clientId,
+      if (vehicleId.isNotEmpty) 'vehicleId': vehicleId,
+      'contractSerie': contractNumber,
+      'customerName': customerName,
+      'customerPhone': customerPhone,
+      'cin': customerCin,
+      'vehicle': vehicle,
+      'dailyRate': dailyRate,
+      'advancePayment': advancePayment,
+      'paymentMethod': paymentMethod,
+      'originalAmount': totalAmount,
+      'delivery_fuel_level': deliveryFuelLevel,
+      'return_fuel_level': returnFuelLevel,
+      'delivery_damages': delivDmgJson,
+      'return_damages': retDmgJson,
+    };
+
     return {
       'contract_number': contractNumber,
       'customer_name': customerName,
       'customer_phone': customerPhone.isEmpty ? null : customerPhone,
       'customer_national_id': customerCin.isEmpty ? null : customerCin,
-      if (clientId.isNotEmpty) 'client_id': clientId,
       'vehicle': vehicle,
-      if (vehicleId.isNotEmpty) 'vehicle_id': vehicleId,
+      if (validVehicleUuid != null) 'vehicleid': validVehicleUuid,
       'start_date': startDate,
       'end_date': endDate,
       'daily_rate': dailyRate,
@@ -626,22 +658,7 @@ class ContractModel {
       'return_fuel_level': returnFuelLevel,
       'delivery_damages': delivDmgJson,
       'return_damages': retDmgJson,
-      'contract_data': {
-        ...contractData,
-        'contractSerie': contractNumber,
-        'customerName': customerName,
-        'customerPhone': customerPhone,
-        'cin': customerCin,
-        'vehicle': vehicle,
-        'dailyRate': dailyRate,
-        'advancePayment': advancePayment,
-        'paymentMethod': paymentMethod,
-        'originalAmount': totalAmount,
-        'delivery_fuel_level': deliveryFuelLevel,
-        'return_fuel_level': returnFuelLevel,
-        'delivery_damages': delivDmgJson,
-        'return_damages': retDmgJson,
-      },
+      'contract_data': contractDataPayload,
     };
   }
 
