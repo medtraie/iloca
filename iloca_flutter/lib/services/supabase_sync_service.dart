@@ -12,6 +12,7 @@ class SupabaseSyncService {
   static const _localVehiclesKey = 'iloca:vehicles:local';
   static const _localContractsKey = 'iloca:contracts:local';
   static const _localInvoicesKey = 'iloca:invoices:local';
+  static const _localExpensesKey = 'iloca:expenses:local';
 
   static SupabaseClient get _sb => Supabase.instance.client;
 
@@ -468,5 +469,121 @@ class SupabaseSyncService {
     } catch (_) {}
 
     return total;
+  }
+
+  // ===========================================================================
+  // EXPENSES CRUD
+  // ===========================================================================
+  static Future<List<ExpenseModel>> fetchExpenses() async {
+    final prefs = await SharedPreferences.getInstance();
+    final localJson = prefs.getString(_localExpensesKey);
+    List<ExpenseModel> localList = [];
+    if (localJson != null && localJson.isNotEmpty) {
+      try {
+        final list = jsonDecode(localJson) as List<dynamic>;
+        localList = list
+            .map((e) => ExpenseModel.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      } catch (e) {
+        debugPrint('[SupabaseSync] fetchExpenses local cache parse error: $e');
+      }
+    }
+
+    try {
+      final res = await _sb
+          .from('expenses')
+          .select('*')
+          .order('created_at', ascending: false);
+
+      final remoteList = (res as List<dynamic>)
+          .map((e) => ExpenseModel.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+
+      final remoteIds = remoteList.map((e) => e.id).toSet();
+      final combined = [
+        ...remoteList,
+        ...localList.where((e) => !remoteIds.contains(e.id)),
+      ];
+
+      await prefs.setString(
+        _localExpensesKey,
+        jsonEncode(combined.map((e) => e.toJson()).toList()),
+      );
+      return combined;
+    } catch (e) {
+      debugPrint('[SupabaseSync] fetchExpenses network error (using cache): $e');
+      return localList;
+    }
+  }
+
+  static Future<ExpenseModel> saveExpense(ExpenseModel expense) async {
+    final isEdit = expense.id.isNotEmpty && !expense.id.startsWith('temp_');
+    final now = DateTime.now().toIso8601String();
+    final generatedId = isEdit ? expense.id : _uuid.v4();
+
+    final payload = <String, dynamic>{
+      'vehicle_id': expense.vehicleId,
+      'type': expense.type,
+      'total_cost': expense.totalCost,
+      'start_date': expense.startDate,
+      'end_date': expense.endDate,
+      'period_months': expense.periodMonths < 1 ? 1 : expense.periodMonths,
+      'monthly_cost': expense.monthlyCost,
+      'document_url': expense.documentUrl,
+      'notes': expense.notes,
+      'tags': expense.tags,
+      'recurring_enabled': expense.recurringEnabled,
+      'recurring_frequency': expense.recurringFrequency,
+      'archived': expense.archived,
+      'parent_expense_id': expense.parentExpenseId,
+      'next_due_date': expense.nextDueDate ?? expense.endDate,
+      'updated_at': now,
+    };
+
+    final userId = _sb.auth.currentUser?.id;
+    if (userId != null) {
+      payload['user_id'] = userId;
+    }
+
+    try {
+      ExpenseModel saved;
+      if (isEdit) {
+        final res = await _sb
+            .from('expenses')
+            .update(payload)
+            .eq('id', expense.id)
+            .select('*')
+            .single();
+        saved = ExpenseModel.fromJson(Map<String, dynamic>.from(res));
+      } else {
+        payload['id'] = generatedId;
+        payload['created_at'] = expense.createdAt.isNotEmpty ? expense.createdAt : now;
+        final res = await _sb
+            .from('expenses')
+            .insert(payload)
+            .select('*')
+            .single();
+        saved = ExpenseModel.fromJson(Map<String, dynamic>.from(res));
+      }
+      return saved;
+    } catch (e, stack) {
+      debugPrint('[SupabaseSync] saveExpense error: $e\n$stack');
+      if (e.toString().contains('SocketException') ||
+          e.toString().contains('ClientException')) {
+        return expense.copyWith(
+          id: generatedId,
+          updatedAt: now,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  static Future<void> deleteExpense(String id) async {
+    try {
+      await _sb.from('expenses').delete().eq('id', id);
+    } catch (e) {
+      debugPrint('[SupabaseSync] deleteExpense error: $e');
+    }
   }
 }

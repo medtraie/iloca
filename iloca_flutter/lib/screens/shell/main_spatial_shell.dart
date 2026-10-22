@@ -8,6 +8,7 @@ import '../alerts/alerts_screen.dart';
 import '../auth/login_screen.dart';
 import '../clients/clients_screen.dart';
 import '../contracts/contracts_screen.dart';
+import '../expenses/expenses_screen.dart';
 import '../invoices/invoices_screen.dart';
 import '../overview/overview_screen.dart';
 import '../reports/reports_screen.dart';
@@ -64,6 +65,12 @@ class MainSpatialShell extends StatefulWidget {
       accentColor: AppColors2026.cyanBright,
     ),
     SpatialSectionMeta(
+      title: 'Dépenses',
+      subtitle: 'Charges Flotte, Vignettes, Assurances & Entretien',
+      icon: LucideIcons.wallet,
+      accentColor: AppColors2026.amberSolar,
+    ),
+    SpatialSectionMeta(
       title: 'Rapports',
       subtitle: 'Intelligence Financière & Rentabilité',
       icon: LucideIcons.barChart3,
@@ -94,6 +101,7 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
       VehiclesScreen(appState: widget.appState),
       ContractsScreen(appState: widget.appState),
       InvoicesScreen(appState: widget.appState),
+      ExpensesScreen(appState: widget.appState),
       ReportsScreen(appState: widget.appState),
       AlertsScreen(appState: widget.appState),
     ];
@@ -399,7 +407,7 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
                 itemBuilder: (context, index) {
                   final item = MainSpatialShell.sections[index];
                   final selected = index == currentIndex;
-                  final alertBadge = index == 6 && state.allAlerts.isNotEmpty
+                  final alertBadge = item.title == 'Alertes' && state.allAlerts.isNotEmpty
                       ? state.allAlerts.length
                       : 0;
 
@@ -510,7 +518,7 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
             itemBuilder: (context, index) {
               final item = MainSpatialShell.sections[index];
               final selected = index == currentIndex;
-              final alertBadge = index == 6 && state.allAlerts.isNotEmpty
+              final alertBadge = item.title == 'Alertes' && state.allAlerts.isNotEmpty
                   ? state.allAlerts.length
                   : 0;
 

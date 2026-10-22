@@ -44,8 +44,14 @@ class AppStateProvider extends ChangeNotifier {
   List<InvoiceModel> _invoices = [];
   List<InvoiceModel> get invoices => _invoices;
 
+  List<ExpenseModel> _expenses = [];
+  List<ExpenseModel> get expenses => _expenses;
+
   double _monthlyExpensesAndRepairs = 0;
-  double get monthlyExpensesAndRepairs => _monthlyExpensesAndRepairs;
+  double get monthlyExpensesAndRepairs {
+    if (_monthlyExpensesAndRepairs > 0) return _monthlyExpensesAndRepairs;
+    return totalMonthlyExpensesAverage;
+  }
 
   // Traceur Customizer State (Persisted)
   Color _tracerColor = AppColors2026.cyanNeon;
@@ -59,6 +65,44 @@ class AppStateProvider extends ChangeNotifier {
 
   bool _tracerGlow = true;
   bool get tracerGlow => _tracerGlow;
+
+  Future<void> setTracerColor(Color color) async {
+    _tracerColor = color;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('sft_tracer_color_int', color.toARGB32());
+    } catch (_) {}
+  }
+
+  Future<void> setTracerWeight(double weight) async {
+    _tracerWeight = weight;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble('sft_tracer_weight', weight);
+    } catch (_) {}
+  }
+
+  Future<void> setTracerSize(double size) async {
+    _tracerSize = size;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble('sft_tracer_size', size);
+    } catch (_) {}
+  }
+
+  Future<void> setTracerGlow(bool glow) async {
+    _tracerGlow = glow;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('sft_tracer_glow', glow);
+    } catch (_) {}
+  }
+
+  void setFastGpsPolling(bool fast) {}
 
   RealtimeChannel? _realtimeChannel;
 
@@ -132,6 +176,11 @@ class AppStateProvider extends ChangeNotifier {
         final list = jsonDecode(iJson) as List<dynamic>;
         _invoices = list.map((e) => InvoiceModel.fromJson(Map<String, dynamic>.from(e))).toList();
       }
+      final eJson = prefs.getString('cache_expenses');
+      if (eJson != null) {
+        final list = jsonDecode(eJson) as List<dynamic>;
+        _expenses = list.map((e) => ExpenseModel.fromJson(Map<String, dynamic>.from(e))).toList();
+      }
       _monthlyExpensesAndRepairs = prefs.getDouble('cache_monthly_expenses') ?? 0;
       _syncVehiclesWithActiveContracts();
     } catch (e) {
@@ -146,6 +195,7 @@ class AppStateProvider extends ChangeNotifier {
       await prefs.setString('cache_vehicles', jsonEncode(_vehicles.map((v) => v.toJson()).toList()));
       await prefs.setString('cache_contracts', jsonEncode(_contracts.map((c) => c.toJson()).toList()));
       await prefs.setString('cache_invoices', jsonEncode(_invoices.map((i) => i.toJson()).toList()));
+      await prefs.setString('cache_expenses', jsonEncode(_expenses.map((e) => e.toJson()).toList()));
       await prefs.setDouble('cache_monthly_expenses', _monthlyExpensesAndRepairs);
     } catch (_) {}
   }
@@ -192,6 +242,7 @@ class AppStateProvider extends ChangeNotifier {
           notifyListeners();
         },
         onFinanceChanged: () async {
+          _expenses = await SupabaseSyncService.fetchExpenses();
           _monthlyExpensesAndRepairs =
               await SupabaseSyncService.fetchMonthlyExpensesAndRepairs();
           _lastSyncTime = DateTime.now();
@@ -215,6 +266,7 @@ class AppStateProvider extends ChangeNotifier {
         SupabaseSyncService.fetchVehicles(),
         SupabaseSyncService.fetchContracts(),
         SupabaseSyncService.fetchInvoices(),
+        SupabaseSyncService.fetchExpenses(),
         SupabaseSyncService.fetchMonthlyExpensesAndRepairs(),
       ]).timeout(const Duration(seconds: 10));
 
@@ -222,7 +274,8 @@ class AppStateProvider extends ChangeNotifier {
       _vehicles = results[1] as List<VehicleModel>;
       _contracts = results[2] as List<ContractModel>;
       _invoices = results[3] as List<InvoiceModel>;
-      _monthlyExpensesAndRepairs = results[4] as double;
+      _expenses = results[4] as List<ExpenseModel>;
+      _monthlyExpensesAndRepairs = results[5] as double;
 
       _syncVehiclesWithActiveContracts();
       _lastSyncTime = DateTime.now();
@@ -422,6 +475,33 @@ class AppStateProvider extends ChangeNotifier {
     await SupabaseSyncService.deleteInvoice(id);
   }
 
+  Future<void> saveExpense(ExpenseModel expense, {bool isEdit = false}) async {
+    final saved = await SupabaseSyncService.saveExpense(expense);
+    if (isEdit) {
+      _expenses = _expenses.map((e) => e.id == saved.id ? saved : e).toList();
+    } else {
+      _expenses = [saved, ..._expenses.where((e) => e.id != saved.id)];
+    }
+    _lastSyncTime = DateTime.now();
+    _saveToLocalCache();
+    notifyListeners();
+  }
+
+  Future<void> deleteExpense(String id) async {
+    _expenses = _expenses.where((e) => e.id != id).toList();
+    _saveToLocalCache();
+    notifyListeners();
+    await SupabaseSyncService.deleteExpense(id);
+  }
+
+  double get totalExpensesAmount {
+    return _expenses.fold(0.0, (acc, e) => acc + e.totalCost);
+  }
+
+  double get totalMonthlyExpensesAverage {
+    return _expenses.fold(0.0, (acc, e) => acc + e.monthlyCost);
+  }
+
   // ===========================================================================
   // COMPUTED ANALYTICS & FLEET ALERTS (ZERO GPS - 100% OPERATIONAL)
   // ===========================================================================
@@ -531,6 +611,38 @@ class AppStateProvider extends ChangeNotifier {
           vehicleName: v.fullName,
           source: 'flotte',
         ));
+      }
+    }
+
+    // 6. Échéances des Charges Flotte (Assurance, Visite Tech, Vignette)
+    for (final exp in _expenses) {
+      if (!exp.archived && exp.endDate.isNotEmpty) {
+        final end = DateTime.tryParse(exp.endDate);
+        if (end != null) {
+          final daysLeft = end.difference(now).inDays;
+          final veh = _vehicles.where((v) => v.id == exp.vehicleId).firstOrNull?.fullName ?? 'Flotte BonaTours';
+          if (daysLeft < 0) {
+            computed.add(AlertItemModel(
+              id: 'exp_exp_${exp.id}',
+              severity: 'critical',
+              title: 'Échéance expirée : ${exp.typeLabel}',
+              message: '${exp.typeLabel} pour $veh a expiré depuis ${daysLeft.abs()} jour(s).',
+              date: exp.endDate,
+              vehicleName: veh,
+              source: 'finance',
+            ));
+          } else if (daysLeft <= 15) {
+            computed.add(AlertItemModel(
+              id: 'exp_soon_${exp.id}',
+              severity: 'warning',
+              title: 'Échéance imminente : ${exp.typeLabel}',
+              message: 'Renouvellement de ${exp.typeLabel} pour $veh dans $daysLeft jour(s).',
+              date: exp.endDate,
+              vehicleName: veh,
+              source: 'finance',
+            ));
+          }
+        }
       }
     }
 

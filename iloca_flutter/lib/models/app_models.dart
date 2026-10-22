@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../core/theme/app_theme_2026.dart';
 
 /// 1. Client / Tenant Model (100% compatible with Supabase `public.clients`)
 class ClientModel {
@@ -1036,5 +1038,203 @@ class InvoiceModel {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
+  }
+}
+
+
+/// 6. Expense Model (100% compatible with Supabase \public.expenses\ & Web \Expense\)
+class ExpenseModel {
+  final String id;
+  final String vehicleId;
+  final String type; // 'vignette' | 'assurance' | 'visite_technique' | 'gps' | 'credit' | 'reparation'
+  final double totalCost;
+  final String startDate;
+  final String endDate;
+  final int periodMonths;
+  final double monthlyCost;
+  final String? documentUrl;
+  final String? notes;
+  final List<String> tags;
+  final bool recurringEnabled;
+  final String recurringFrequency; // 'monthly' | 'quarterly' | 'yearly'
+  final bool archived;
+  final String? parentExpenseId;
+  final String? nextDueDate;
+  final String createdAt;
+  final String updatedAt;
+
+  const ExpenseModel({
+    required this.id,
+    required this.vehicleId,
+    required this.type,
+    required this.totalCost,
+    required this.startDate,
+    required this.endDate,
+    this.periodMonths = 1,
+    this.monthlyCost = 0.0,
+    this.documentUrl,
+    this.notes,
+    this.tags = const [],
+    this.recurringEnabled = false,
+    this.recurringFrequency = 'yearly',
+    this.archived = false,
+    this.parentExpenseId,
+    this.nextDueDate,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory ExpenseModel.fromJson(Map<String, dynamic> json) {
+    List<String> parsedTags = [];
+    if (json['tags'] is List) {
+      parsedTags = (json['tags'] as List).map((e) => e.toString()).toList();
+    }
+
+    final total = double.tryParse((json['total_cost'] ?? 0).toString()) ?? 0.0;
+    final months = int.tryParse((json['period_months'] ?? 1).toString()) ?? 1;
+    final fallbackMonthly = months > 0 ? (total / months) : total;
+    final monthly = json['monthly_cost'] != null
+        ? (double.tryParse(json['monthly_cost'].toString()) ?? fallbackMonthly)
+        : fallbackMonthly;
+
+    return ExpenseModel(
+      id: json['id']?.toString() ?? '',
+      vehicleId: json['vehicle_id']?.toString() ?? '',
+      type: json['type']?.toString() ?? 'reparation',
+      totalCost: total,
+      startDate: json['start_date']?.toString() ?? '',
+      endDate: json['end_date']?.toString() ?? '',
+      periodMonths: months < 1 ? 1 : months,
+      monthlyCost: monthly,
+      documentUrl: json['document_url']?.toString(),
+      notes: json['notes']?.toString(),
+      tags: parsedTags,
+      recurringEnabled: json['recurring_enabled'] == true,
+      recurringFrequency: json['recurring_frequency']?.toString() ?? 'yearly',
+      archived: json['archived'] == true,
+      parentExpenseId: json['parent_expense_id']?.toString(),
+      nextDueDate: json['next_due_date']?.toString(),
+      createdAt: json['created_at']?.toString() ?? DateTime.now().toIso8601String(),
+      updatedAt: json['updated_at']?.toString() ?? DateTime.now().toIso8601String(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'vehicle_id': vehicleId,
+      'type': type,
+      'total_cost': totalCost,
+      'start_date': startDate,
+      'end_date': endDate,
+      'period_months': periodMonths,
+      'monthly_cost': monthlyCost,
+      'document_url': documentUrl,
+      'notes': notes,
+      'tags': tags,
+      'recurring_enabled': recurringEnabled,
+      'recurring_frequency': recurringFrequency,
+      'archived': archived,
+      'parent_expense_id': parentExpenseId,
+      'next_due_date': nextDueDate,
+      'created_at': createdAt,
+      'updated_at': updatedAt,
+    };
+  }
+
+  ExpenseModel copyWith({
+    String? id,
+    String? vehicleId,
+    String? type,
+    double? totalCost,
+    String? startDate,
+    String? endDate,
+    int? periodMonths,
+    double? monthlyCost,
+    String? documentUrl,
+    String? notes,
+    List<String>? tags,
+    bool? recurringEnabled,
+    String? recurringFrequency,
+    bool? archived,
+    String? parentExpenseId,
+    String? nextDueDate,
+    String? createdAt,
+    String? updatedAt,
+  }) {
+    return ExpenseModel(
+      id: id ?? this.id,
+      vehicleId: vehicleId ?? this.vehicleId,
+      type: type ?? this.type,
+      totalCost: totalCost ?? this.totalCost,
+      startDate: startDate ?? this.startDate,
+      endDate: endDate ?? this.endDate,
+      periodMonths: periodMonths ?? this.periodMonths,
+      monthlyCost: monthlyCost ?? this.monthlyCost,
+      documentUrl: documentUrl ?? this.documentUrl,
+      notes: notes ?? this.notes,
+      tags: tags ?? this.tags,
+      recurringEnabled: recurringEnabled ?? this.recurringEnabled,
+      recurringFrequency: recurringFrequency ?? this.recurringFrequency,
+      archived: archived ?? this.archived,
+      parentExpenseId: parentExpenseId ?? this.parentExpenseId,
+      nextDueDate: nextDueDate ?? this.nextDueDate,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  String get typeLabel {
+    switch (type.toLowerCase()) {
+      case 'vignette':
+        return 'Vignette Fiscale';
+      case 'assurance':
+        return 'Assurance Flotte';
+      case 'visite_technique':
+        return 'Visite Technique';
+      case 'gps':
+        return 'Traceur & Télémétrie GPS';
+      case 'credit':
+        return 'Crédit / Leasing';
+      case 'reparation':
+      default:
+        return 'Entretien & Réparation';
+    }
+  }
+
+  Color get typeColor {
+    switch (type.toLowerCase()) {
+      case 'vignette':
+        return AppColors2026.amberSolar;
+      case 'assurance':
+        return AppColors2026.cyanNeon;
+      case 'visite_technique':
+        return AppColors2026.violetElectric;
+      case 'gps':
+        return AppColors2026.emeraldNeon;
+      case 'credit':
+        return AppColors2026.blueRoyal;
+      case 'reparation':
+      default:
+        return AppColors2026.roseLaser;
+    }
+  }
+
+  IconData get typeIcon {
+    switch (type.toLowerCase()) {
+      case 'vignette':
+        return LucideIcons.stamp;
+      case 'assurance':
+        return LucideIcons.shieldCheck;
+      case 'visite_technique':
+        return LucideIcons.wrench;
+      case 'gps':
+        return LucideIcons.radio;
+      case 'credit':
+        return LucideIcons.creditCard;
+      case 'reparation':
+      default:
+        return LucideIcons.hammer;
+    }
   }
 }

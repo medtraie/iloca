@@ -62,25 +62,33 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // 2026 Futuristic Brand Emblem
+                    // 2026 Futuristic Brand Emblem with Official BonaTours App Icon
                     Container(
-                      width: 78,
-                      height: 78,
+                      width: 86,
+                      height: 86,
+                      padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
                         gradient: AppColors2026.cyanEmeraldGradient,
                         borderRadius: BorderRadius.circular(26),
                         boxShadow: [
                           BoxShadow(
-                            color: AppColors2026.cyanNeon.withOpacity(0.45),
+                            color: AppColors2026.cyanNeon.withOpacity(0.5),
                             blurRadius: 32,
                             spreadRadius: 2,
                           ),
                         ],
                       ),
-                      child: const Icon(
-                        LucideIcons.car,
-                        size: 38,
-                        color: AppColors2026.abyss,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(22),
+                        child: Image.asset(
+                          'assets/images/bounatours_icon.png',
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            LucideIcons.car,
+                            size: 40,
+                            color: AppColors2026.abyss,
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 18),
