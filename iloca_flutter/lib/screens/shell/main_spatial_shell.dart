@@ -146,12 +146,6 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
     );
     if (confirm == true) {
       await state.logout();
-      if (context.mounted) {
-        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => LoginScreen(appState: state)),
-          (route) => false,
-        );
-      }
     }
   }
 

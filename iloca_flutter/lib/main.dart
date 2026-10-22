@@ -20,7 +20,7 @@ Future<void> main() async {
     ),
   );
 
-  // Initialize Supabase with Web-shared project credentials safely (Non-blocking)
+  // Initialize Supabase with Web-shared project credentials safely
   try {
     await Supabase.initialize(
       url: AppConfig.supabaseUrl,
@@ -28,7 +28,7 @@ Future<void> main() async {
       realtimeClientOptions: const RealtimeClientOptions(
         eventsPerSecond: 20,
       ),
-    ).timeout(const Duration(seconds: 4));
+    );
   } catch (e) {
     debugPrint('[Main] Supabase startup note: $e');
   }
@@ -64,15 +64,20 @@ class _IlocaSpatialApp2026State extends State<IlocaSpatialApp2026> {
       listenable: _appState,
       builder: (context, _) {
         return MaterialApp(
-          key: ValueKey('app_auth_${_appState.isAuthenticated}'),
           title: 'bonatours',
           debugShowCheckedModeBanner: false,
           themeMode: ThemeMode.dark,
           darkTheme: AppTheme2026.darkSpatialTheme,
           theme: AppTheme2026.darkSpatialTheme,
           home: _appState.isAuthenticated
-              ? MainSpatialShell(appState: _appState)
-              : LoginScreen(appState: _appState),
+              ? MainSpatialShell(
+                  key: const ValueKey('app_main_shell'),
+                  appState: _appState,
+                )
+              : LoginScreen(
+                  key: const ValueKey('app_login_screen'),
+                  appState: _appState,
+                ),
         );
       },
     );

@@ -13,8 +13,8 @@ class AppStateProvider extends ChangeNotifier {
   int _activeTabIndex = 0;
   int get activeTabIndex => _activeTabIndex;
 
-  // Auth State (Default: Authenticated as BonaTours Pro Operator)
-  bool _isAuthenticated = true;
+  // Auth State (Default: starts at LoginScreen on fresh install)
+  bool _isAuthenticated = false;
   bool get isAuthenticated => _isAuthenticated;
   String _userEmail = AppConfig.superAdminEmail;
   String get userEmail => _userEmail;
@@ -120,24 +120,20 @@ class AppStateProvider extends ChangeNotifier {
 
       // 2. Check Auth Session safely
       final savedAuth = prefs.getBool('iloca_authenticated');
-      try {
-        final session = Supabase.instance.client.auth.currentSession;
-        if (session?.user != null) {
-          _userEmail = session!.user.email ?? AppConfig.superAdminEmail;
-        }
-      } catch (e) {
-        debugPrint('[AppState] Supabase session check note: $e');
-      }
-
-      // If user explicitly logged out (savedAuth == false), stay logged out
-      if (savedAuth == false) {
-        _isAuthenticated = false;
-      } else {
-        // Authenticated as BonaTours Operator
+      if (savedAuth == true) {
         _isAuthenticated = true;
         _userEmail = prefs.getString('iloca_user_email') ?? AppConfig.superAdminEmail;
         _userName = prefs.getString('iloca_user_name') ?? 'Administrateur BonaTours';
-        await prefs.setBool('iloca_authenticated', true);
+      } else {
+        _isAuthenticated = false;
+      }
+      try {
+        final session = Supabase.instance.client.auth.currentSession;
+        if (session?.user != null) {
+          _userEmail = session!.user.email ?? _userEmail;
+        }
+      } catch (e) {
+        debugPrint('[AppState] Supabase session check note: $e');
       }
 
       // 3. Instant Cold-boot from Local Cache (0ms load time)
@@ -317,52 +313,55 @@ class AppStateProvider extends ChangeNotifier {
     if (cleanEmail.isEmpty) return false;
     final cleanPass = password.isEmpty ? '123456' : password;
 
-    final prefs = await SharedPreferences.getInstance();
+    // 1. Immediately activate authenticated session for instant 0ms transition
+    _isAuthenticated = true;
+    _userEmail = cleanEmail;
+    _userName = cleanEmail.contains('@')
+        ? cleanEmail.split('@').first.toUpperCase()
+        : 'BonaTours';
 
-    // 1. Attempt Supabase Server Authentication with a fast 2.5-second timeout
+    notifyListeners();
+
+    // 2. Persist state safely
     try {
-      final res = await Supabase.instance.client.auth
-          .signInWithPassword(
-            email: cleanEmail,
-            password: cleanPass,
-          )
-          .timeout(const Duration(milliseconds: 2500));
-
-      if (res.user != null) {
-        _isAuthenticated = true;
-        _userEmail = res.user!.email ?? cleanEmail;
-        _userName =
-            res.user!.userMetadata?['full_name']?.toString() ?? 'BonaTours';
-        await prefs.setBool('iloca_authenticated', true);
-        await prefs.setString('iloca_user_email', _userEmail);
-        await prefs.setString('iloca_user_name', _userName);
-        notifyListeners();
-        // Background sync with server without blocking UI
-        unawaited(refreshAllData());
-        _setupRealtimeSubscriptions();
-        return true;
-      }
-    } catch (e) {
-      debugPrint('[AppState] Supabase signIn note: $e');
-    }
-
-    // 2. Immediate Operator Access (Direct Server Sync in Background)
-    if (cleanEmail.isNotEmpty) {
-      _isAuthenticated = true;
-      _userEmail = cleanEmail;
-      _userName = cleanEmail.contains('@')
-          ? cleanEmail.split('@').first.toUpperCase()
-          : 'BonaTours';
+      final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('iloca_authenticated', true);
       await prefs.setString('iloca_user_email', _userEmail);
       await prefs.setString('iloca_user_name', _userName);
-      notifyListeners();
-      // Background sync with server without blocking UI
-      unawaited(refreshAllData());
-      _setupRealtimeSubscriptions();
-      return true;
+    } catch (e) {
+      debugPrint('[AppState] Persist login note: $e');
     }
-    return false;
+
+    // 3. Background server auth & parallel cloud sync (zero UI blocking)
+    unawaited(_performBackgroundAuthAndSync(cleanEmail, cleanPass));
+
+    return true;
+  }
+
+  Future<void> _performBackgroundAuthAndSync(String email, String password) async {
+    try {
+      final res = await Supabase.instance.client.auth
+          .signInWithPassword(email: email, password: password)
+          .timeout(const Duration(seconds: 4));
+      if (res.user != null) {
+        _userEmail = res.user!.email ?? email;
+        _userName = res.user!.userMetadata?['full_name']?.toString() ?? _userName;
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('iloca_user_email', _userEmail);
+          await prefs.setString('iloca_user_name', _userName);
+        } catch (_) {}
+      }
+    } catch (e) {
+      debugPrint('[AppState] Background auth note: $e');
+    }
+
+    try {
+      await refreshAllData();
+      _setupRealtimeSubscriptions();
+    } catch (e) {
+      debugPrint('[AppState] Background refresh error: $e');
+    }
   }
 
   Future<void> logout() async {

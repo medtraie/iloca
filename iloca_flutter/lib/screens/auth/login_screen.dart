@@ -26,23 +26,28 @@ class _LoginScreenState extends State<LoginScreen> {
     if (email.isEmpty) return;
     setState(() => _loading = true);
     final pwd = _passCtrl.text.isEmpty ? '123456' : _passCtrl.text;
-    final success = await widget.appState.login(email, pwd);
-    if (!mounted) return;
-    if (success) {
-      Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (_) => MainSpatialShell(appState: widget.appState),
-        ),
-        (route) => false,
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Échec de connexion. Vérifiez vos identifiants.'),
-          backgroundColor: AppColors2026.roseLaser,
-        ),
-      );
-      setState(() => _loading = false);
+    try {
+      final success = await widget.appState.login(email, pwd);
+      if (!mounted) return;
+      if (!success) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Veuillez entrer une adresse email valide.'),
+            backgroundColor: AppColors2026.roseLaser,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur de connexion : $e'),
+            backgroundColor: AppColors2026.roseLaser,
+          ),
+        );
+      }
     }
   }
 
