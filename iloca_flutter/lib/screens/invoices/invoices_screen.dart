@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../core/services/invoice_pdf_service.dart';
 import '../../core/theme/app_theme_2026.dart';
+import '../../core/utils/whatsapp_helper.dart';
 import '../../core/widgets/spatial_glass_widgets.dart';
 import '../../models/app_models.dart';
 import '../../providers/app_state_provider.dart';
@@ -48,10 +49,73 @@ Statut: ${inv.isPaid ? "PAYÉE" : "EN ATTENTE"}
 
 _Document officiel généré via BonaTours Cockpit._''';
 
-    final uri = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(message)}');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors2026.obsidianSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(LucideIcons.receipt, color: AppColors2026.cyanNeon, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Facture #${inv.invoiceNumber}',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              ListTile(
+                leading: const Icon(LucideIcons.messageSquare, color: AppColors2026.emeraldNeon),
+                title: const Text('Partager Résumé WhatsApp'),
+                subtitle: const Text('Envoi du récapitulatif par message'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  WhatsAppHelper.shareTextMessage(phone: '', message: message);
+                },
+              ),
+              ListTile(
+                leading: const Icon(LucideIcons.fileText, color: AppColors2026.cyanBright),
+                title: const Text('Partager PDF Facture'),
+                subtitle: const Text('Document PDF identique au Web'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final pdfBytes = await InvoicePdfService.generateInvoicePdf(inv);
+                  await WhatsAppHelper.sharePdf(
+                    bytes: pdfBytes,
+                    filename: 'Facture_${inv.invoiceNumber.replaceAll("/", "_")}.pdf',
+                    subject: 'Facture BonaTours #${inv.invoiceNumber}',
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(LucideIcons.printer, color: AppColors2026.amberSolar),
+                title: const Text('Télécharger / Imprimer PDF'),
+                subtitle: const Text('Sauvegarder ou imprimer le document'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final pdfBytes = await InvoicePdfService.generateInvoicePdf(inv);
+                  await WhatsAppHelper.printOrDownloadPdf(
+                    bytes: pdfBytes,
+                    filename: 'Facture_${inv.invoiceNumber.replaceAll("/", "_")}',
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _confirmDelete(InvoiceModel inv) async {
@@ -315,39 +379,46 @@ _Document officiel généré via BonaTours Cockpit._''';
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(7),
-                                decoration: BoxDecoration(
-                                  color: statusColor.withOpacity(0.14),
-                                  borderRadius: BorderRadius.circular(10),
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(7),
+                                  decoration: BoxDecoration(
+                                    color: statusColor.withOpacity(0.14),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Icon(LucideIcons.fileText, size: 16, color: statusColor),
                                 ),
-                                child: Icon(LucideIcons.fileText, size: 16, color: statusColor),
-                              ),
-                              const SizedBox(width: 10),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'FACTURE #${inv.invoiceNumber}',
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: 0.5,
-                                    ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'FACTURE #${inv.invoiceNumber}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                      Text(
+                                        inv.invoiceDate,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: AppColors2026.textSecondary,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  Text(
-                                    inv.invoiceDate,
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: AppColors2026.textSecondary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
+                                ),
+                              ],
+                            ),
                           ),
+                          const SizedBox(width: 8),
                           NeonBadge(
                             label: statusLabel,
                             color: statusColor,
@@ -411,45 +482,64 @@ _Document officiel généré via BonaTours Cockpit._''';
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'HT : ${currencyFmt.format(inv.totalHT.round())} DH • TVA : ${currencyFmt.format(inv.tva.round())} DH',
-                                style: const TextStyle(fontSize: 10, color: AppColors2026.textMuted),
-                              ),
-                              Text(
-                                '${currencyFmt.format(inv.totalTTC.round())} DH TTC',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w900,
-                                  color: AppColors2026.cyanBright,
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'HT : ${currencyFmt.format(inv.totalHT.round())} DH • TVA : ${currencyFmt.format(inv.tva.round())} DH',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 10, color: AppColors2026.textMuted),
                                 ),
-                              ),
-                            ],
+                                Text(
+                                  '${currencyFmt.format(inv.totalTTC.round())} DH TTC',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors2026.cyanBright,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
+                          const SizedBox(width: 4),
                           Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
+                              IconButton(
+                                tooltip: 'Télécharger / Imprimer PDF',
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.all(6),
+                                icon: const Icon(LucideIcons.printer, size: 16, color: AppColors2026.amberSolar),
+                                onPressed: () async {
+                                  final pdfBytes = await InvoicePdfService.generateInvoicePdf(inv);
+                                  await WhatsAppHelper.printOrDownloadPdf(
+                                    bytes: pdfBytes,
+                                    filename: 'Facture_${inv.invoiceNumber.replaceAll("/", "_")}',
+                                  );
+                                },
+                              ),
                               IconButton(
                                 tooltip: 'Partager WhatsApp',
                                 constraints: const BoxConstraints(),
-                                padding: const EdgeInsets.all(8),
+                                padding: const EdgeInsets.all(6),
                                 icon: const Icon(LucideIcons.share2, size: 16, color: AppColors2026.emeraldNeon),
                                 onPressed: () => _shareWhatsApp(inv),
                               ),
-                              const SizedBox(width: 4),
                               IconButton(
                                 tooltip: 'Modifier Facture',
                                 constraints: const BoxConstraints(),
-                                padding: const EdgeInsets.all(8),
+                                padding: const EdgeInsets.all(6),
                                 icon: const Icon(LucideIcons.edit3, size: 16, color: AppColors2026.cyanBright),
                                 onPressed: () => _openInvoiceForm(inv),
                               ),
-                              const SizedBox(width: 4),
                               IconButton(
                                 tooltip: 'Supprimer',
                                 constraints: const BoxConstraints(),
-                                padding: const EdgeInsets.all(8),
+                                padding: const EdgeInsets.all(6),
                                 icon: const Icon(LucideIcons.trash2, size: 16, color: AppColors2026.roseLaser),
                                 onPressed: () => _confirmDelete(inv),
                               ),

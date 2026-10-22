@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../core/services/contract_pdf_service.dart';
 import '../../core/theme/app_theme_2026.dart';
+import '../../core/utils/whatsapp_helper.dart';
 import '../../core/widgets/spatial_glass_widgets.dart';
 import '../../models/app_models.dart';
 import '../../providers/app_state_provider.dart';
@@ -677,7 +679,7 @@ class _ContractFormDialogState extends State<ContractFormDialog> {
     final d = c.contractData;
     final fmt = NumberFormat('#,##0', 'fr_FR');
     final text = '''
-📄 *CONTRAT DE LOCATION - SFTLOCATION*
+📄 *CONTRAT DE LOCATION - BONATOURS*
 ━━━━━━━━━━━━━━━━━━━━━━
 🔢 *N° Contrat (Série)* : #${c.contractNumber}
 📌 *Statut* : ${c.isClosed ? 'Fermé / Clôturé' : 'Ouvert / En cours'}
@@ -705,10 +707,78 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
 • Reste à Payer : ${fmt.format(c.remainingAmount)} DH
 • Mode de Règlement : ${c.paymentMethod}
 ━━━━━━━━━━━━━━━━━━━━━━
-📍 SFTLOCATION - 10 Av. des FAR, 3ème Étage Bureau N°308, Casablanca
-📞 Tél: 0522228704 • GSM: 06 62 59 63 07
+📍 BONATOURS - 10 Av. des FAR, 3ème Étage Bureau N°308, Casablanca
+📞 Tél: 05 22 22 87 04 • GSM: 06 62 59 63 07
 ''';
-    Share.share(text, subject: 'Contrat SFTLOCATION #${c.contractNumber}');
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors2026.obsidianSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(LucideIcons.fileText, color: AppColors2026.cyanNeon, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Contrat BonaTours #${c.contractNumber}',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              ListTile(
+                leading: const Icon(LucideIcons.messageSquare, color: AppColors2026.emeraldNeon),
+                title: const Text('Partager Résumé WhatsApp'),
+                subtitle: const Text('Envoi du récapitulatif par message'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  WhatsAppHelper.shareTextMessage(phone: c.customerPhone, message: text);
+                },
+              ),
+              ListTile(
+                leading: const Icon(LucideIcons.fileText, color: AppColors2026.cyanBright),
+                title: const Text('Partager PDF Contrat (WhatsApp / Autres)'),
+                subtitle: const Text('Document PDF officiel identique au Web'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final pdfBytes = await ContractPdfService.generateContractPdf(c);
+                  await WhatsAppHelper.sharePdf(
+                    bytes: pdfBytes,
+                    filename: 'Contrat_${c.contractNumber.replaceAll("/", "_")}.pdf',
+                    subject: 'Contrat BonaTours #${c.contractNumber}',
+                    phone: c.customerPhone,
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(LucideIcons.printer, color: AppColors2026.amberSolar),
+                title: const Text('Télécharger / Imprimer PDF Contrat'),
+                subtitle: const Text('Sauvegarder ou imprimer le contrat officiel'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final pdfBytes = await ContractPdfService.generateContractPdf(c);
+                  await WhatsAppHelper.printOrDownloadPdf(
+                    bytes: pdfBytes,
+                    filename: 'Contrat_${c.contractNumber.replaceAll("/", "_")}',
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _openPrintableContractPreview() {
@@ -2624,26 +2694,43 @@ class OfficialContractPaperPreviewSheet extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'APERÇU OFFICIEL DU CONTRAT',
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 14,
+                  const Expanded(
+                    child: Text(
+                      'APERÇU CONTRAT BONATOURS',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                   Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
+                      IconButton(
+                        tooltip: 'Télécharger / Imprimer PDF',
+                        onPressed: () async {
+                          final pdfBytes = await ContractPdfService.generateContractPdf(contract);
+                          await WhatsAppHelper.printOrDownloadPdf(
+                            bytes: pdfBytes,
+                            filename: 'Contrat_${contract.contractNumber.replaceAll("/", "_")}',
+                          );
+                        },
+                        icon: const Icon(LucideIcons.printer, color: Colors.black87, size: 18),
+                      ),
                       ElevatedButton.icon(
                         onPressed: onShare,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF10B981),
                           foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                         ),
-                        icon: const Icon(LucideIcons.share2, size: 15),
-                        label: const Text('Partager'),
+                        icon: const Icon(LucideIcons.share2, size: 14),
+                        label: const Text('Partager', style: TextStyle(fontSize: 12)),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 4),
                       IconButton(
                         onPressed: () => Navigator.pop(context),
                         icon: const Icon(LucideIcons.x, color: Colors.black),
@@ -2657,7 +2744,7 @@ class OfficialContractPaperPreviewSheet extends StatelessWidget {
                 child: Column(
                   children: [
                     Text(
-                      'SFTLOCATION — LOCATION DE VOITURES',
+                      'BONATOURS — LOCATION DE VOITURES',
                       style: TextStyle(
                         color: Colors.black,
                         fontWeight: FontWeight.w900,

@@ -79,30 +79,37 @@ Date : ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'INTELLIGENCE FINANCIÈRE & RAPPORTS',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors2026.cyanBright,
-                    letterSpacing: 0.7,
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'INTELLIGENCE FINANCIÈRE & RAPPORTS',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors2026.cyanBright,
+                      letterSpacing: 0.7,
+                    ),
                   ),
-                ),
-                Text(
-                  'Bilan & Rentabilité 2026',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
+                  Text(
+                    'Bilan & Rentabilité',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
+            const SizedBox(width: 8),
             ElevatedButton.icon(
               onPressed: _exportSummary,
-              icon: const Icon(LucideIcons.share2, size: 16),
+              icon: const Icon(LucideIcons.share2, size: 15),
               label: const Text('Exporter'),
             ),
           ],
@@ -115,9 +122,9 @@ Date : ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}
           crossAxisCount: 2,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-          childAspectRatio: 1.35,
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          childAspectRatio: 1.05,
           children: [
             BentoMetricTile(
               title: 'CA Global Cumulé',
@@ -141,29 +148,32 @@ Date : ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}
         const SizedBox(height: 16),
 
         // Sub-navigation Pills
-        Row(
-          children: [
-            _ReportTabButton(
-              label: 'Finance',
-              icon: LucideIcons.dollarSign,
-              selected: _subTab == 'finance',
-              onTap: () => setState(() => _subTab = 'finance'),
-            ),
-            const SizedBox(width: 8),
-            _ReportTabButton(
-              label: 'Par Véhicule',
-              icon: LucideIcons.car,
-              selected: _subTab == 'fleet',
-              onTap: () => setState(() => _subTab = 'fleet'),
-            ),
-            const SizedBox(width: 8),
-            _ReportTabButton(
-              label: 'Top Locataires',
-              icon: LucideIcons.users,
-              selected: _subTab == 'tenants',
-              onTap: () => setState(() => _subTab = 'tenants'),
-            ),
-          ],
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              _ReportTabButton(
+                label: 'Finance',
+                icon: LucideIcons.dollarSign,
+                selected: _subTab == 'finance',
+                onTap: () => setState(() => _subTab = 'finance'),
+              ),
+              const SizedBox(width: 8),
+              _ReportTabButton(
+                label: 'Par Véhicule',
+                icon: LucideIcons.car,
+                selected: _subTab == 'fleet',
+                onTap: () => setState(() => _subTab = 'fleet'),
+              ),
+              const SizedBox(width: 8),
+              _ReportTabButton(
+                label: 'Top Locataires',
+                icon: LucideIcons.users,
+                selected: _subTab == 'tenants',
+                onTap: () => setState(() => _subTab = 'tenants'),
+              ),
+            ],
+          ),
         ),
 
         const SizedBox(height: 14),
@@ -413,36 +423,38 @@ class _ReportTabButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: selected
-                ? AppColors2026.cyanNeon
-                : Colors.white.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(14),
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors2026.cyanNeon
+              : Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected ? AppColors2026.cyanNeon : Colors.white10,
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 14,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 14,
+              color: selected ? AppColors2026.abyss : Colors.white,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
                 color: selected ? AppColors2026.abyss : Colors.white,
               ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: selected ? AppColors2026.abyss : Colors.white,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

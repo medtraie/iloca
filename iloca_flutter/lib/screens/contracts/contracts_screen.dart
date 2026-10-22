@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../core/services/contract_pdf_service.dart';
 import '../../core/theme/app_theme_2026.dart';
+import '../../core/utils/whatsapp_helper.dart';
 import '../../core/widgets/spatial_glass_widgets.dart';
 import '../../models/app_models.dart';
 import '../../providers/app_state_provider.dart';
@@ -62,26 +64,87 @@ class _ContractsScreenState extends State<ContractsScreen> {
 
   Future<void> _shareContractWhatsApp(ContractModel c) async {
     final text = '''
-*SFTLOCATION - CONTRAT DE LOCATION*
-📄 *N° Contrat :* ${c.contractNumber}
+*BONATOURS - CONTRAT DE LOCATION*
+📄 *N° Contrat :* #${c.contractNumber}
 👤 *Locataire :* ${c.customerName} ${c.customerCin.isNotEmpty ? '(CIN: ${c.customerCin})' : ''}
 🚗 *Véhicule :* ${c.vehicle}
-📅 *Départ :* ${c.startDate}
-📅 *Retour :* ${c.effectiveEndDate} (${c.durationDays} jours${c.extensionDays > 0 ? ' dont +${c.extensionDays}j prol.' : ''})
+📅 *Période :* Du ${c.startDate} au ${c.effectiveEndDate} (${c.durationDays} jours${c.extensionDays > 0 ? ' dont +${c.extensionDays}j prol.' : ''})
 💰 *Total TTC :* ${c.effectiveTotalAmount.round()} DH (${c.dailyRate.round()} DH/j)
 ✅ *Avance :* ${c.advancePayment.round()} DH (${c.paymentMethod})
 🚩 *Reste à payer :* ${c.remainingAmount.round()} DH (${c.financialStatus.toUpperCase()})
 📌 *Statut :* ${c.isClosed ? 'CLÔTURÉ' : c.isOverdue ? 'EN RETARD (+${c.overdueDays}j)' : 'EN CIRCULATION'}
+
+_Merci pour votre confiance en BonaTours Location & Tours._
 '''.trim();
 
-    final cleanPhone = c.customerPhone.replaceAll(RegExp(r'[^0-9+]'), '');
-    final phoneParam = cleanPhone.isNotEmpty ? 'phone=$cleanPhone&' : '';
-    final uri = Uri.parse(
-      'https://wa.me/?${phoneParam}text=${Uri.encodeComponent(text)}',
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors2026.obsidianSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(LucideIcons.fileText, color: AppColors2026.cyanNeon, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Contrat de Location #${c.contractNumber}',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              ListTile(
+                leading: const Icon(LucideIcons.messageSquare, color: AppColors2026.emeraldNeon),
+                title: const Text('Partager Résumé WhatsApp'),
+                subtitle: const Text('Envoi direct des détails du contrat'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  WhatsAppHelper.shareTextMessage(phone: c.customerPhone, message: text);
+                },
+              ),
+              ListTile(
+                leading: const Icon(LucideIcons.fileText, color: AppColors2026.cyanBright),
+                title: const Text('Partager PDF Contrat (WhatsApp / Autres)'),
+                subtitle: const Text('Document PDF officiel identique au Web'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final pdfBytes = await ContractPdfService.generateContractPdf(c);
+                  await WhatsAppHelper.sharePdf(
+                    bytes: pdfBytes,
+                    filename: 'Contrat_${c.contractNumber.replaceAll("/", "_")}.pdf',
+                    subject: 'Contrat BonaTours #${c.contractNumber}',
+                    phone: c.customerPhone,
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(LucideIcons.printer, color: AppColors2026.amberSolar),
+                title: const Text('Télécharger / Imprimer PDF Contrat'),
+                subtitle: const Text('Sauvegarder ou imprimer le contrat officiel'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final pdfBytes = await ContractPdfService.generateContractPdf(c);
+                  await WhatsAppHelper.printOrDownloadPdf(
+                    bytes: pdfBytes,
+                    filename: 'Contrat_${c.contractNumber.replaceAll("/", "_")}',
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
     );
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
   }
 
   Future<void> _callCustomer(String phone) async {

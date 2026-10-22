@@ -352,8 +352,10 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
             ),
             const SizedBox(height: 2),
             Text(
-              isEdit ? 'Modifier la Fiche Client' : 'Nouveau Client / Locataire',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+              isEdit ? 'Modifier la Fiche Client' : 'Nouveau Client',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
             ),
           ],
         ),

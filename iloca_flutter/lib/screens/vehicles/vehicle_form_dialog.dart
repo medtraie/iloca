@@ -369,7 +369,9 @@ class _VehicleFormDialogState extends State<VehicleFormDialog> {
             const SizedBox(height: 2),
             Text(
               isEdit ? 'Modifier le Véhicule' : 'Ajouter un Véhicule',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
             ),
           ],
         ),

@@ -355,32 +355,29 @@ class _InvoiceFormDialogState extends State<InvoiceFormDialog> {
         ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppColors2026.cyanNeon.withOpacity(0.18),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: AppColors2026.cyanNeon.withOpacity(0.5)),
-                  ),
-                  child: const Text(
-                    'BONATOURS FACTURATION 2026',
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors2026.cyanNeon,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors2026.cyanNeon.withOpacity(0.18),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: AppColors2026.cyanNeon.withOpacity(0.5)),
+              ),
+              child: const Text(
+                'BONATOURS FACTURATION',
+                style: TextStyle(
+                  fontSize: 8.5,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors2026.cyanNeon,
+                  letterSpacing: 0.5,
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  isEdit ? 'Modifier Facture' : 'Nouvelle Facture',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
-                ),
-              ],
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              isEdit ? 'Modifier Facture' : 'Nouvelle Facture',
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
             ),
           ],
         ),
@@ -474,11 +471,10 @@ class _InvoiceFormDialogState extends State<InvoiceFormDialog> {
                   ),
                   const SizedBox(height: 12),
 
-                  // Numéro + Date + N° Client
+                  // Numéro + Date
                   Row(
                     children: [
                       Expanded(
-                        flex: 4,
                         child: TextFormField(
                           controller: _invoiceNumberCtrl,
                           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
@@ -492,7 +488,6 @@ class _InvoiceFormDialogState extends State<InvoiceFormDialog> {
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        flex: 4,
                         child: InkWell(
                           onTap: _selectDate,
                           child: IgnorePointer(
@@ -510,20 +505,18 @@ class _InvoiceFormDialogState extends State<InvoiceFormDialog> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        flex: 3,
-                        child: TextFormField(
-                          controller: _customerNumberCtrl,
-                          style: const TextStyle(fontSize: 13),
-                          decoration: InputDecoration(
-                            labelText: 'Réf Client',
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                        ),
-                      ),
                     ],
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: _customerNumberCtrl,
+                    style: const TextStyle(fontSize: 13),
+                    decoration: InputDecoration(
+                      labelText: 'Réf Client (Optionnel)',
+                      prefixIcon: const Icon(LucideIcons.tag, size: 14),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
                   ),
                   const SizedBox(height: 14),
 
@@ -613,11 +606,10 @@ class _InvoiceFormDialogState extends State<InvoiceFormDialog> {
                   ),
                   const SizedBox(height: 14),
 
-                  // Quantité + Unité + Prix unitaire HT
+                  // Quantité + Unité (UDM)
                   Row(
                     children: [
                       Expanded(
-                        flex: 3,
                         child: TextFormField(
                           controller: _quantityCtrl,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -631,32 +623,29 @@ class _InvoiceFormDialogState extends State<InvoiceFormDialog> {
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        flex: 2,
                         child: TextFormField(
                           controller: _unitCtrl,
                           style: const TextStyle(fontSize: 13),
                           decoration: InputDecoration(
-                            labelText: 'UDM',
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        flex: 4,
-                        child: TextFormField(
-                          controller: _unitPriceCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                          decoration: InputDecoration(
-                            labelText: 'Prix Unit. HT (DH)',
+                            labelText: 'Unité (ex: Jours)',
                             contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                           ),
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: _unitPriceCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    decoration: InputDecoration(
+                      labelText: 'Prix Unitaire HT (DH)',
+                      prefixIcon: const Icon(LucideIcons.banknote, size: 14),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
                   ),
                   const SizedBox(height: 12),
 
@@ -887,14 +876,17 @@ class _TotalRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: isBold ? 13 : 11.5,
-            fontWeight: isBold ? FontWeight.w900 : FontWeight.w600,
-            color: isBold ? Colors.white : AppColors2026.textSecondary,
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: isBold ? 13 : 11.5,
+              fontWeight: isBold ? FontWeight.w900 : FontWeight.w600,
+              color: isBold ? Colors.white : AppColors2026.textSecondary,
+            ),
           ),
         ),
+        const SizedBox(width: 8),
         Text(
           amount,
           style: TextStyle(
