@@ -8,6 +8,7 @@ import '../../core/widgets/spatial_glass_widgets.dart';
 import '../../models/app_models.dart';
 import '../../providers/app_state_provider.dart';
 import 'invoice_form_dialog.dart';
+import 'invoice_pdf_view_screen.dart';
 
 /// 100% Web Parity Factures Screen (Matching Factures.tsx + InvoicesTable.tsx)
 class InvoicesScreen extends StatefulWidget {
@@ -31,6 +32,14 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
           appState: widget.appState,
           existingInvoice: existing,
         ),
+      ),
+    );
+  }
+
+  void _openInvoicePdfPreview(InvoiceModel inv) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (ctx) => OfficialInvoicePdfViewScreen(invoice: inv),
       ),
     );
   }
@@ -369,6 +378,7 @@ _Document officiel généré via BonaTours Cockpit._''';
                 }
 
                 return SpatialGlassCard(
+                  onTap: () => _openInvoicePdfPreview(inv),
                   margin: const EdgeInsets.only(bottom: 12),
                   borderColor: statusColor.withOpacity(0.35),
                   padding: const EdgeInsets.all(14),

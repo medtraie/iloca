@@ -11,6 +11,7 @@ import '../../core/utils/whatsapp_helper.dart';
 import '../../core/widgets/spatial_glass_widgets.dart';
 import '../../models/app_models.dart';
 import '../../providers/app_state_provider.dart';
+import 'contract_pdf_view_screen.dart';
 
 enum ContractFormMode { create, edit, view }
 
@@ -783,13 +784,9 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
 
   void _openPrintableContractPreview() {
     final c = _buildContractModel();
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => OfficialContractPaperPreviewSheet(
-        contract: c,
-        onShare: _shareViaWhatsApp,
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => OfficialContractPdfViewScreen(contract: c),
       ),
     );
   }

@@ -9,6 +9,7 @@ import '../../core/widgets/spatial_glass_widgets.dart';
 import '../../models/app_models.dart';
 import '../../providers/app_state_provider.dart';
 import 'contract_form_dialog.dart';
+import 'contract_pdf_view_screen.dart';
 
 /// 4. CONTRATS SCREEN — 100% Web Parity (Contracts.tsx + NewContractDialog + EnhancedContractFormDialog)
 /// Includes:
@@ -51,13 +52,9 @@ class _ContractsScreenState extends State<ContractsScreen> {
   }
 
   void _openOfficialPreview(ContractModel c) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => OfficialContractPaperPreviewSheet(
-        contract: c,
-        onShare: () => _shareContractWhatsApp(c),
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (ctx) => OfficialContractPdfViewScreen(contract: c),
       ),
     );
   }

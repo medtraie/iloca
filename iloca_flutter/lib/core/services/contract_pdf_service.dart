@@ -1,170 +1,262 @@
+import 'dart:convert';
 import 'dart:typed_data';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../../models/app_models.dart';
 
+/// 100% Exact Replica of Web Contract PDF (`ContractFormPDF.tsx` & `ContractPDF.tsx`)
 class ContractPdfService {
-  /// Generates the official contract PDF matching Web (`ContractFormPDF.tsx` & `ContractPDF.tsx`)
+  static String _fmtDate(dynamic val) {
+    if (val == null) return '';
+    final s = val.toString().trim();
+    if (s.isEmpty || s == '-') return '';
+    try {
+      if (s.contains('T')) {
+        final dt = DateTime.parse(s);
+        return DateFormat('dd/MM/yyyy HH:mm').format(dt);
+      }
+      if (s.contains('-') && s.length == 10) {
+        final dt = DateTime.parse(s);
+        return DateFormat('dd/MM/yyyy').format(dt);
+      }
+    } catch (_) {}
+    return s;
+  }
+
+  static String _fmtDateOnly(dynamic val) {
+    if (val == null) return '';
+    final s = val.toString().trim();
+    if (s.isEmpty || s == '-') return '';
+    try {
+      if (s.contains('T')) {
+        final dt = DateTime.parse(s);
+        return DateFormat('dd/MM/yyyy').format(dt);
+      }
+      if (s.contains('-') && s.length == 10) {
+        final dt = DateTime.parse(s);
+        return DateFormat('dd/MM/yyyy').format(dt);
+      }
+    } catch (_) {}
+    return s;
+  }
+
   static Future<Uint8List> generateContractPdf(ContractModel contract) async {
     final pdf = pw.Document();
     final fmt = NumberFormat('#,##0', 'fr_FR');
     final cd = contract.contractData;
 
-    final customerFirstName = (cd['customerFirstName'] ?? cd['first_name'] ?? '').toString();
-    final customerLastName = (cd['customerLastName'] ?? cd['last_name'] ?? contract.customerName).toString();
-    final customerAddress = (cd['customerAddressMorocco'] ?? cd['customerAddress'] ?? cd['address'] ?? '').toString();
-    final customerForeignAddress = (cd['customerAddressForeign'] ?? '').toString();
-    final customerPhone = (cd['customerPhone'] ?? contract.customerPhone).toString();
-    final customerCin = (cd['customerCin'] ?? contract.customerCin).toString();
-    final customerCinDelivered = (cd['customerCinDelivered'] ?? '').toString();
-    final customerLicense = (cd['customerLicenseNumber'] ?? cd['license'] ?? '').toString();
-    final customerLicenseDelivered = (cd['customerLicenseDelivered'] ?? '').toString();
-    final customerPassport = (cd['customerPassportNumber'] ?? '').toString();
-    final customerPassportDelivered = (cd['customerPassportDelivered'] ?? '').toString();
-    final customerBirthDate = (cd['customerBirthDate'] ?? '').toString();
+    // Load car diagram image asset
+    pw.MemoryImage? carImage;
+    try {
+      final imgBytes = await rootBundle.load('assets/images/vehicle_diagram.png');
+      carImage = pw.MemoryImage(imgBytes.buffer.asUint8List());
+    } catch (_) {}
 
-    // 2nd driver
-    final d2LastName = (cd['secondDriverLastName'] ?? '').toString();
-    final d2FirstName = (cd['secondDriverFirstName'] ?? '').toString();
-    final d2Address = (cd['secondDriverAddressMorocco'] ?? '').toString();
-    final d2Phone = (cd['secondDriverPhone'] ?? '').toString();
-    final d2Cin = (cd['secondDriverCin'] ?? '').toString();
-    final d2License = (cd['secondDriverLicenseNumber'] ?? '').toString();
-    final d2Passport = (cd['secondDriverPassportNumber'] ?? '').toString();
+    // Extract Locataire Data
+    String custLastName = (cd['customerLastName'] ?? cd['last_name'] ?? '').toString().trim();
+    String custFirstName = (cd['customerFirstName'] ?? cd['first_name'] ?? '').toString().trim();
+    if (custLastName.isEmpty && custFirstName.isEmpty) {
+      final parts = contract.customerName.trim().split(' ');
+      custLastName = parts.first;
+      custFirstName = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+    }
 
-    // Vehicle
-    final vBrand = (cd['vehicleBrand'] ?? contract.vehicle).toString();
-    final vModel = (cd['vehicleModel'] ?? '').toString();
-    final vPlate = (cd['vehicleRegistration'] ?? cd['vehiclePlate'] ?? cd['plate'] ?? '').toString();
-    final vYear = (cd['vehicleYear'] ?? '').toString();
-    final vKmDepart = (cd['vehicleKmDepart'] ?? cd['startKm'] ?? '0').toString();
-    final deliveryLocation = (cd['deliveryLocation'] ?? 'Agence Casablanca').toString();
-    final deliveryDateTime = (cd['deliveryDateTime'] ?? contract.startDate).toString();
-    final rentalDays = (cd['rentalDays'] ?? cd['rentalDuration'] ?? contract.durationDays).toString();
-    final deliveryFuel = (cd['delivery_fuel_level'] ?? cd['deliveryFuelLevel'] ?? 50).toString();
-    final emergencyEquipment = (cd['emergencyEquipmentDelivery'] ?? 'Roue de secours + Cric + Triangle').toString();
-    final observations = (cd['observationsDelivery'] ?? 'Véhicule remis propre et en parfait état').toString();
+    final custPhone = (cd['customerPhone'] ?? contract.customerPhone).toString().trim();
+    final custCin = (cd['customerCin'] ?? contract.customerCin).toString().trim();
+    final custCinDelivered = _fmtDateOnly(cd['customerCinDelivered']);
+    final custLicense = (cd['customerLicenseNumber'] ?? cd['license'] ?? '').toString().trim();
+    final custLicenseDelivered = _fmtDateOnly(cd['customerLicenseDelivered']);
+    final custPassport = (cd['customerPassportNumber'] ?? '').toString().trim();
+    final custPassportDelivered = _fmtDateOnly(cd['customerPassportDelivered']);
+    final custAddressMorocco = (cd['customerAddressMorocco'] ?? cd['customerAddress'] ?? cd['address'] ?? '').toString().trim();
+    final custAddressForeign = (cd['customerAddressForeign'] ?? '').toString().trim();
+    final custBirthDate = _fmtDateOnly(cd['customerBirthDate']);
 
-    // Return
-    final returnDateTime = (cd['returnDateTime'] ?? contract.effectiveEndDate).toString();
-    final returnLocation = (cd['returnLocation'] ?? 'Agence Casablanca').toString();
-    final vKmReturn = (cd['vehicleKmReturn'] ?? cd['endKm'] ?? '').toString();
-    final returnFuel = (cd['return_fuel_level'] ?? cd['returnFuelLevel'] ?? 50).toString();
+    // 2nd Driver
+    final d2LastName = (cd['secondDriverLastName'] ?? '').toString().trim();
+    final d2FirstName = (cd['secondDriverFirstName'] ?? '').toString().trim();
+    final d2Phone = (cd['secondDriverPhone'] ?? '').toString().trim();
+    final d2Cin = (cd['secondDriverCin'] ?? '').toString().trim();
+    final d2CinDelivered = _fmtDateOnly(cd['secondDriverCinDelivered']);
+    final d2License = (cd['secondDriverLicenseNumber'] ?? '').toString().trim();
+    final d2LicenseDelivered = _fmtDateOnly(cd['secondDriverLicenseDelivered']);
+    final d2Passport = (cd['secondDriverPassportNumber'] ?? '').toString().trim();
+    final d2PassportDelivered = _fmtDateOnly(cd['secondDriverPassportDelivered']);
+    final d2AddressMorocco = (cd['secondDriverAddressMorocco'] ?? '').toString().trim();
+    final d2AddressForeign = (cd['secondDriverAddressForeign'] ?? '').toString().trim();
 
-    // Finances
+    // Vehicle Delivery
+    String vBrand = (cd['vehicleBrand'] ?? '').toString().trim();
+    String vModel = (cd['vehicleModel'] ?? '').toString().trim();
+    if (vBrand.isEmpty && vModel.isEmpty) {
+      final vParts = contract.vehicle.split(' ');
+      vBrand = vParts.first;
+      vModel = vParts.length > 1 ? vParts.sublist(1).join(' ') : '';
+    }
+    final vPlate = (cd['vehicleRegistration'] ?? cd['vehiclePlate'] ?? cd['plate'] ?? '').toString().trim();
+    final vYear = (cd['vehicleYear'] ?? '').toString().trim();
+    final vKmDepart = (cd['vehicleKmDepart'] ?? cd['startKm'] ?? '0').toString().trim();
+    final deliveryLoc = (cd['deliveryLocation'] ?? 'Casablanca').toString().trim();
+    final deliveryDateTime = _fmtDate(cd['deliveryDateTime'] ?? contract.startDate);
+    final rentalDays = (cd['rentalDays'] ?? cd['rentalDuration'] ?? contract.durationDays).toString().trim();
+    final deliveryFuel = (cd['delivery_fuel_level'] ?? cd['deliveryFuelLevel'] ?? contract.deliveryFuelLevel).toString().trim();
+    final deliveryFuelNum = int.tryParse(deliveryFuel) ?? 25;
+    final accessories = (cd['emergencyEquipmentDelivery'] ?? 'Roue de secours, Cric, Triangle, Gilet').toString().trim();
+    final observations = (cd['observationsDelivery'] ?? 'oui').toString().trim();
+
+    // Vehicle Return
+    final returnDateTime = _fmtDate(cd['returnDateTime'] ?? contract.effectiveEndDate);
+    final returnLoc = (cd['returnLocation'] ?? '').toString().trim();
+    final extensionUntil = _fmtDateOnly(cd['extensionUntil']);
+    final vKmReturn = (cd['vehicleKmReturn'] ?? cd['endKm'] ?? '').toString().trim();
+    final extendedDays = (cd['extendedDays'] ?? contract.extensionDays.toString()).toString().trim();
+    final returnFuel = (cd['return_fuel_level'] ?? cd['returnFuelLevel'] ?? contract.returnFuelLevel).toString().trim();
+    final returnFuelNum = int.tryParse(returnFuel) ?? 100;
+    final returnAccessories = (cd['emergencyEquipmentReturn'] ?? '').toString().trim();
+    final returnObservations = (cd['observationsReturn'] ?? '').toString().trim();
+
+    // Financials
     final dailyRate = contract.dailyRate;
     final totalPrice = contract.effectiveTotalAmount;
     final advance = contract.advancePayment;
     final remaining = contract.remainingAmount;
     final paymentMethod = contract.paymentMethod;
 
+    // Delivery & Return damage points
+    final deliveryDamages = contract.deliveryDamages;
+    final returnDamages = contract.returnDamages;
+
+    // Signatures
+    final sigDeliveryDate = _fmtDateOnly(cd['deliveryDate'] ?? cd['deliveryDateTime'] ?? contract.startDate);
+    final sigReturnDate = _fmtDateOnly(cd['returnDate'] ?? cd['returnDateTime'] ?? contract.effectiveEndDate);
+    final sigDeliveryAgent = (cd['delivery_agent_signature'] ?? '').toString();
+    final sigDeliveryTenant = (cd['delivery_tenant_signature'] ?? '').toString();
+    final sigReturnAgent = (cd['return_agent_signature'] ?? '').toString();
+    final sigReturnTenant = (cd['return_tenant_signature'] ?? '').toString();
+
     pdf.addPage(
       pw.Page(
         pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+        margin: const pw.EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         build: (pw.Context context) {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              // 1. Header (Company details & Contract Number)
+              // ===============================================================
+              // 1. TOP HEADER (Exact Web Layout)
+              // ===============================================================
               pw.Row(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
+                  // Left: Company Name & Type
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
                       pw.Text(
-                        'BONA TOURS SARL',
-                        style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, letterSpacing: 1.2),
+                        'SFTLOCATION',
+                        style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, letterSpacing: 0.5),
                       ),
                       pw.Text(
                         'LOCATION DE VOITURES',
-                        style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, letterSpacing: 0.8),
+                        style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, letterSpacing: 0.5),
                       ),
+                    ],
+                  ),
+
+                  // Center: Subtitle & Black Box CONTRAT DE LOCATION
+                  pw.Column(
+                    children: [
                       pw.Text(
                         'Courte et longue durée 7/7',
                         style: pw.TextStyle(fontSize: 9, fontStyle: pw.FontStyle.italic),
                       ),
+                      pw.SizedBox(height: 3),
+                      pw.Container(
+                        color: PdfColors.black,
+                        padding: const pw.EdgeInsets.symmetric(horizontal: 22, vertical: 4),
+                        child: pw.Text(
+                          'CONTRAT DE LOCATION',
+                          style: pw.TextStyle(
+                            color: PdfColors.white,
+                            fontSize: 11,
+                            fontWeight: pw.FontWeight.bold,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
+
+                  // Right: Address & Contact lines
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.end,
                     children: [
-                      pw.Text('10 Avenue des Far, Bureau N° 308 - Casablanca', style: const pw.TextStyle(fontSize: 8)),
-                      pw.Text('Tél: 05 22 22 87 04 - Fax: 05 22 47 17 80', style: const pw.TextStyle(fontSize: 8)),
-                      pw.Text('GSM: 06 62 59 63 07 - Email: bonatours308@gmail.com', style: const pw.TextStyle(fontSize: 8)),
+                      pw.Text('10 Avenue des Far, 3ème Étage - Bureau N° 308 - Casablanca - Maroc', style: const pw.TextStyle(fontSize: 6.8)),
+                      pw.Text('Tél: 0522228704 - Fax: 05 22 47 17 80', style: const pw.TextStyle(fontSize: 6.8)),
+                      pw.Text('GSM: 06 62 59 63 07', style: const pw.TextStyle(fontSize: 6.8)),
+                      pw.Text('E-mail: bonatours308@gmail.com', style: const pw.TextStyle(fontSize: 6.8)),
                     ],
                   ),
                 ],
               ),
 
-              pw.SizedBox(height: 10),
-
-              // Title Ribbon
-              pw.Center(
-                child: pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Container(
-                      padding: const pw.EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                      decoration: pw.BoxDecoration(
-                        border: pw.Border.all(color: PdfColors.black, width: 1.5),
-                      ),
-                      child: pw.Text(
-                        'CONTRAT DE LOCATION',
-                        style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, letterSpacing: 1.2),
-                      ),
-                    ),
-                    pw.Text(
-                      'N° : ${contract.contractNumber}',
-                      style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
-                    ),
-                  ],
+              pw.Align(
+                alignment: pw.Alignment.centerRight,
+                child: pw.Padding(
+                  padding: const pw.EdgeInsets.only(top: 4, bottom: 4),
+                  child: pw.Text(
+                    'N° : ${contract.contractNumber}',
+                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                  ),
                 ),
               ),
 
-              pw.SizedBox(height: 8),
-
-              // 2. Section LOCATAIRE
-              _sectionHeader('LOCATAIRE'),
+              // ===============================================================
+              // 2. SECTION LOCATAIRE
+              // ===============================================================
+              _bannerHeader('LOCATAIRE'),
               pw.Container(
                 decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.black, width: 0.8)),
                 padding: const pw.EdgeInsets.all(6),
                 child: pw.Row(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    // Main Driver
+                    // Col 1: Locataire
                     pw.Expanded(
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
-                          _subHeader('Locataire Principal'),
-                          _item2('Nom / Prénom:', '$customerLastName $customerFirstName'),
-                          _item2('Adresse Maroc:', customerAddress),
-                          if (customerForeignAddress.isNotEmpty) _item2('Adresse Étranger:', customerForeignAddress),
-                          _item2('Téléphone:', customerPhone),
-                          _item2('C.I.N. N°:', '$customerCin ${customerCinDelivered.isNotEmpty ? "délivré le $customerCinDelivered" : ""}'),
-                          _item2('Permis N°:', '$customerLicense ${customerLicenseDelivered.isNotEmpty ? "délivré le $customerLicenseDelivered" : ""}'),
-                          if (customerPassport.isNotEmpty) _item2('Passeport N°:', '$customerPassport ${customerPassportDelivered.isNotEmpty ? "délivré le $customerPassportDelivered" : ""}'),
-                          if (customerBirthDate.isNotEmpty) _item2('Date Naissance:', customerBirthDate),
+                          _columnTitle('Locataire'),
+                          pw.SizedBox(height: 3),
+                          _twoCols('Nom:', custLastName, 'Prénom:', custFirstName),
+                          _twoCols('Tél:', custPhone, 'C.I.N. N°:', custCin),
+                          _twoCols('Délivré le:', custCinDelivered, 'Permis N°:', custLicense),
+                          _twoCols('Délivré le:', custLicenseDelivered, 'Passeport N°:', custPassport),
+                          _singleItem('Délivré le:', custPassportDelivered),
+                          _singleItem('Adresse au Maroc:', custAddressMorocco),
+                          _singleItem('Adresse à l\'Étranger:', custAddressForeign),
+                          _singleItem('Date de Naissance:', custBirthDate),
                         ],
                       ),
                     ),
-                    pw.VerticalDivider(color: PdfColors.black, thickness: 0.8),
-                    // 2nd Driver
+                    pw.SizedBox(width: 8),
+                    // Col 2: 2ème Conducteur
                     pw.Expanded(
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
-                          _subHeader('2ème Conducteur'),
-                          _item2('Nom / Prénom:', '$d2LastName $d2FirstName'.trim().isNotEmpty ? '$d2LastName $d2FirstName'.trim() : 'Néant'),
-                          _item2('Adresse:', d2Address.isNotEmpty ? d2Address : '-'),
-                          _item2('Téléphone:', d2Phone.isNotEmpty ? d2Phone : '-'),
-                          _item2('C.I.N. N°:', d2Cin.isNotEmpty ? d2Cin : '-'),
-                          _item2('Permis N°:', d2License.isNotEmpty ? d2License : '-'),
-                          _item2('Passeport N°:', d2Passport.isNotEmpty ? d2Passport : '-'),
+                          _columnTitle('2ème Conducteur'),
+                          pw.SizedBox(height: 3),
+                          _twoCols('Nom:', d2LastName, 'Prénom:', d2FirstName),
+                          _twoCols('Tél:', d2Phone, 'C.I.N. N°:', d2Cin),
+                          _twoCols('Délivré le:', d2CinDelivered, 'Permis N°:', d2License),
+                          _twoCols('Délivré le:', d2LicenseDelivered, 'Passeport N°:', d2Passport),
+                          _singleItem('Délivré le:', d2PassportDelivered),
+                          _singleItem('Adresse au Maroc:', d2AddressMorocco),
+                          _singleItem('Adresse à l\'Étranger:', d2AddressForeign),
                         ],
                       ),
                     ),
@@ -172,47 +264,75 @@ class ContractPdfService {
                 ),
               ),
 
-              pw.SizedBox(height: 6),
+              pw.SizedBox(height: 5),
 
-              // 3. Section VÉHICULE
-              _sectionHeader('VÉHICULE'),
+              // ===============================================================
+              // 3. SECTION VÉHICULE
+              // ===============================================================
+              _bannerHeader('VÉHICULE'),
               pw.Container(
                 decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.black, width: 0.8)),
                 padding: const pw.EdgeInsets.all(6),
                 child: pw.Row(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    // Departure
+                    // Col 1: Livraison du Véhicule
                     pw.Expanded(
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
-                          _subHeader('Livraison du Véhicule'),
-                          _item2('Véhicule:', '$vBrand $vModel'.trim()),
-                          _item2('Immatriculation:', vPlate),
-                          if (vYear.isNotEmpty) _item2('Année:', vYear),
-                          _item2('Km Départ:', '$vKmDepart km'),
-                          _item2('Date & Heure:', deliveryDateTime),
-                          _item2('Lieu Prise:', deliveryLocation),
-                          _item2('Durée:', '$rentalDays jour(s)'),
-                          _item2('Carburant:', '$deliveryFuel%'),
-                          _item2('Accessoires:', emergencyEquipment),
-                          _item2('Observations:', observations),
+                          _columnTitle('Livraison du Véhicule'),
+                          pw.SizedBox(height: 3),
+                          _twoCols('Marque:', vBrand, 'Modèle:', vModel),
+                          _twoCols('Immatricule:', vPlate, 'Année:', vYear),
+                          _twoCols('Km Départ:', vKmDepart, 'Lieu:', deliveryLoc),
+                          _twoCols('Date et Heure:', deliveryDateTime, 'Nombre de Jour:', rentalDays),
+                          pw.SizedBox(height: 3),
+
+                          // Car Diagram Box - Livraison
+                          _buildVehicleDiagramBox(
+                            title: 'Schéma véhicule - Livraison',
+                            carImage: carImage,
+                            damages: deliveryDamages,
+                          ),
+                          pw.SizedBox(height: 3),
+
+                          // Fuel gauge
+                          _buildFuelGauge(deliveryFuelNum),
+                          pw.SizedBox(height: 2),
+
+                          _singleItem('Accessoires:', accessories),
+                          _singleItem('Observations:', observations),
                         ],
                       ),
                     ),
-                    pw.VerticalDivider(color: PdfColors.black, thickness: 0.8),
-                    // Return
+                    pw.SizedBox(width: 8),
+                    // Col 2: Reprise du Véhicule
                     pw.Expanded(
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
-                          _subHeader('Reprise du Véhicule'),
-                          _item2('Date & Heure:', returnDateTime),
-                          _item2('Lieu Restitution:', returnLocation),
-                          _item2('Km Retour:', vKmReturn.isNotEmpty ? '$vKmReturn km' : '-'),
-                          _item2('Carburant Retour:', '$returnFuel%'),
-                          _item2('État Restitution:', 'Conforme à l\'état de départ'),
+                          _columnTitle('Reprise du Véhicule'),
+                          pw.SizedBox(height: 3),
+                          _twoCols('Date:', returnDateTime, 'Lieu:', returnLoc),
+                          _twoCols('Prolongation:', extensionUntil, 'Km Retour:', vKmReturn),
+                          _singleItem('Jours Prolongés:', extendedDays),
+                          pw.SizedBox(height: 3),
+
+                          // Car Diagram Box - Retour
+                          _buildVehicleDiagramBox(
+                            title: 'Schéma Véhicule - Retour',
+                            carImage: carImage,
+                            damages: returnDamages,
+                          ),
+                          pw.SizedBox(height: 3),
+
+                          // Fuel gauge
+                          _buildFuelGauge(returnFuelNum),
+                          pw.SizedBox(height: 2),
+
+                          _singleItem('Accessoires:', returnAccessories),
+                          _singleItem('Observations:', returnObservations),
                         ],
                       ),
                     ),
@@ -220,94 +340,143 @@ class ContractPdfService {
                 ),
               ),
 
-              pw.SizedBox(height: 6),
+              pw.SizedBox(height: 5),
 
-              // 4. Section FACTURATION
-              _sectionHeader('FACTURATION'),
+              // ===============================================================
+              // 4. SECTION FACTURATION
+              // ===============================================================
+              _bannerHeader('FACTURATION'),
               pw.Container(
                 decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.black, width: 0.8)),
                 padding: const pw.EdgeInsets.all(6),
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
+                    // Row with 5 items
                     pw.Row(
                       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                       children: [
-                        _finTile('Prix / Jour', '${fmt.format(dailyRate)} DH'),
-                        _finTile('Durée', '$rentalDays j'),
-                        _finTile('Total TTC', '${fmt.format(totalPrice)} DH', isBold: true),
-                        _finTile('Avance versée', '${fmt.format(advance)} DH'),
-                        _finTile('Reste à payer', '${fmt.format(remaining)} DH', isHighlight: true),
+                        _factureItem('Prix/Jour :', '${fmt.format(dailyRate)} DH'),
+                        _factureItem('Durée :', '$rentalDays jour(s)'),
+                        _factureItem('Prix total :', '${fmt.format(totalPrice)} DH'),
+                        _factureItem('Avance :', '${fmt.format(advance)} DH'),
+                        _factureItem('Reste :', '${fmt.format(remaining)} DH'),
                       ],
                     ),
                     pw.SizedBox(height: 4),
-                    pw.Row(
-                      children: [
-                        pw.Text('Mode de Règlement : ', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
-                        pw.Text(paymentMethod, style: const pw.TextStyle(fontSize: 8)),
-                      ],
+                    pw.RichText(
+                      text: pw.TextSpan(
+                        children: [
+                          pw.TextSpan(
+                            text: 'Mode de Règlement : ',
+                            style: pw.TextStyle(fontSize: 7.5, fontWeight: pw.FontWeight.bold),
+                          ),
+                          pw.TextSpan(
+                            text: paymentMethod,
+                            style: const pw.TextStyle(fontSize: 7.5),
+                          ),
+                        ],
+                      ),
                     ),
                     pw.SizedBox(height: 4),
+
+                    // Blue Legal Box
                     pw.Container(
-                      padding: const pw.EdgeInsets.all(4),
-                      decoration: const pw.BoxDecoration(color: PdfColors.grey100),
-                      child: pw.Text(
-                        'Le locataire du véhicule BONATOURS SARL reconnaît avoir lu et accepté les conditions générales stipulées au présent contrat, il est le seul responsable en cas d\'infractions ou d\'accidents pendant toute la durée de la location.',
-                        style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey900),
+                      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      decoration: pw.BoxDecoration(
+                        color: PdfColor.fromHex('#EFF6FF'),
+                        border: pw.Border(
+                          left: pw.BorderSide(color: PdfColor.fromHex('#3B82F6'), width: 3),
+                        ),
+                      ),
+                      child: pw.RichText(
+                        text: pw.TextSpan(
+                          children: [
+                            pw.TextSpan(
+                              text: 'Le locataire du véhicule SFTLOCATION ',
+                              style: pw.TextStyle(fontSize: 7.2, fontWeight: pw.FontWeight.bold),
+                            ),
+                            const pw.TextSpan(
+                              text: 'reconnaît avoir lu et accepté les conditions générales stipulées au verso du présent contrat, il est le seul responsable en cas de violation de code de la route marocaine.',
+                              style: pw.TextStyle(fontSize: 7.2),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
 
-              pw.SizedBox(height: 8),
+              pw.SizedBox(height: 6),
 
-              // 5. Section SIGNATURES
+              // ===============================================================
+              // 5. SECTION SIGNATURES
+              // ===============================================================
               pw.Row(
                 children: [
+                  // Livraison Signatures
                   pw.Expanded(
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                        _subHeader('Signatures à la Livraison'),
+                        pw.Center(
+                          child: pw.Text(
+                            'Signatures à la livraison',
+                            style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold),
+                          ),
+                        ),
+                        pw.SizedBox(height: 2),
+                        pw.Text('Date : $sigDeliveryDate', style: const pw.TextStyle(fontSize: 7.2)),
+                        pw.SizedBox(height: 2),
                         pw.Row(
                           children: [
-                            _sigBox('L\'Agent'),
+                            _buildSignatureBox(
+                              label: "Lu et approuvé\nSignature de l'agent\nà la livraison",
+                              signatureData: sigDeliveryAgent,
+                            ),
                             pw.SizedBox(width: 6),
-                            _sigBox('Le Locataire (Lu et Approuvé)'),
+                            _buildSignatureBox(
+                              label: "Lu et approuvé\nSignature du locataire\nà la livraison",
+                              signatureData: sigDeliveryTenant,
+                            ),
                           ],
                         ),
                       ],
                     ),
                   ),
-                  pw.SizedBox(width: 12),
+                  pw.SizedBox(width: 14),
+                  // Retour Signatures
                   pw.Expanded(
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                        _subHeader('Signatures à la Restitution'),
+                        pw.Center(
+                          child: pw.Text(
+                            'Signatures au retour',
+                            style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold),
+                          ),
+                        ),
+                        pw.SizedBox(height: 2),
+                        pw.Text('Date : $sigReturnDate', style: const pw.TextStyle(fontSize: 7.2)),
+                        pw.SizedBox(height: 2),
                         pw.Row(
                           children: [
-                            _sigBox('L\'Agent'),
+                            _buildSignatureBox(
+                              label: "Lu et approuvé\nSignature agent\nretour",
+                              signatureData: sigReturnAgent,
+                            ),
                             pw.SizedBox(width: 6),
-                            _sigBox('Le Locataire'),
+                            _buildSignatureBox(
+                              label: "Lu et approuvé\nSignature locataire\nretour",
+                              signatureData: sigReturnTenant,
+                            ),
                           ],
                         ),
                       ],
                     ),
                   ),
                 ],
-              ),
-
-              pw.Spacer(),
-
-              // Footer
-              pw.Divider(color: PdfColors.grey400, thickness: 0.5),
-              pw.Center(
-                child: pw.Text(
-                  'BONA TOURS SARL • RC : 341955 • IF : 18734253 • Patente : 3515353P • CNSS : 9928112 • ICE : 00003111000011',
-                  style: const pw.TextStyle(fontSize: 7.5, color: PdfColors.grey700),
-                ),
               ),
             ],
           );
@@ -318,62 +487,63 @@ class ContractPdfService {
     return await pdf.save();
   }
 
-  static pw.Widget _sectionHeader(String title) {
+  // --- Helpers for Exact Styling ---
+
+  static pw.Widget _bannerHeader(String title) {
     return pw.Container(
       width: double.infinity,
       color: PdfColors.black,
-      padding: const pw.EdgeInsets.symmetric(vertical: 2.5, horizontal: 6),
-      child: pw.Text(
-        title,
-        style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 8.5),
+      padding: const pw.EdgeInsets.symmetric(vertical: 2.2),
+      child: pw.Center(
+        child: pw.Text(
+          title,
+          style: pw.TextStyle(
+            color: PdfColors.white,
+            fontWeight: pw.FontWeight.bold,
+            fontSize: 9,
+            letterSpacing: 0.8,
+          ),
+        ),
       ),
     );
   }
 
-  static pw.Widget _subHeader(String title) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.only(bottom: 3),
+  static pw.Widget _columnTitle(String title) {
+    return pw.Center(
       child: pw.Text(
         title,
-        style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline),
+        style: pw.TextStyle(
+          fontSize: 8.5,
+          fontWeight: pw.FontWeight.bold,
+          decoration: pw.TextDecoration.underline,
+        ),
       ),
     );
   }
 
-  static pw.Widget _item2(String label, String value) {
+  static pw.Widget _twoCols(String l1, String v1, String l2, String v2) {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 1),
       child: pw.Row(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.SizedBox(
-            width: 78,
-            child: pw.Text(label, style: pw.TextStyle(fontSize: 7.5, fontWeight: pw.FontWeight.bold)),
+          pw.Expanded(
+            child: pw.RichText(
+              text: pw.TextSpan(
+                children: [
+                  pw.TextSpan(text: '$l1 ', style: pw.TextStyle(fontSize: 7.2, fontWeight: pw.FontWeight.bold)),
+                  pw.TextSpan(text: v1, style: const pw.TextStyle(fontSize: 7.2)),
+                ],
+              ),
+            ),
           ),
           pw.Expanded(
-            child: pw.Text(value, style: const pw.TextStyle(fontSize: 7.5)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  static pw.Widget _finTile(String title, String val, {bool isBold = false, bool isHighlight = false}) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: pw.BoxDecoration(
-        color: isHighlight ? PdfColors.grey200 : PdfColors.white,
-        border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
-      ),
-      child: pw.Column(
-        children: [
-          pw.Text(title, style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey800)),
-          pw.SizedBox(height: 1),
-          pw.Text(
-            val,
-            style: pw.TextStyle(
-              fontSize: isBold ? 9 : 8,
-              fontWeight: isBold || isHighlight ? pw.FontWeight.bold : pw.FontWeight.normal,
+            child: pw.RichText(
+              text: pw.TextSpan(
+                children: [
+                  pw.TextSpan(text: '$l2 ', style: pw.TextStyle(fontSize: 7.2, fontWeight: pw.FontWeight.bold)),
+                  pw.TextSpan(text: v2, style: const pw.TextStyle(fontSize: 7.2)),
+                ],
+              ),
             ),
           ),
         ],
@@ -381,23 +551,138 @@ class ContractPdfService {
     );
   }
 
-  static pw.Widget _sigBox(String label) {
-    return pw.Expanded(
-      child: pw.Container(
-        height: 48,
-        decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.black, width: 0.8)),
-        padding: const pw.EdgeInsets.all(3),
-        child: pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+  static pw.Widget _singleItem(String label, String value) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 1),
+      child: pw.RichText(
+        text: pw.TextSpan(
           children: [
-            pw.Text(label, style: const pw.TextStyle(fontSize: 6.5, color: PdfColors.grey700)),
-            pw.Align(
-              alignment: pw.Alignment.bottomRight,
-              child: pw.Text('Cachet & Signature', style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey500)),
-            ),
+            pw.TextSpan(text: '$label ', style: pw.TextStyle(fontSize: 7.2, fontWeight: pw.FontWeight.bold)),
+            pw.TextSpan(text: value, style: const pw.TextStyle(fontSize: 7.2)),
           ],
         ),
+      ),
+    );
+  }
+
+  static pw.Widget _buildVehicleDiagramBox({
+    required String title,
+    required pw.MemoryImage? carImage,
+    required List<DamagePointModel> damages,
+  }) {
+    return pw.Container(
+      height: 72,
+      width: double.infinity,
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.black, width: 0.8),
+      ),
+      padding: const pw.EdgeInsets.all(2),
+      child: pw.Column(
+        children: [
+          pw.Text(title, style: const pw.TextStyle(fontSize: 6.5, color: PdfColors.grey800)),
+          pw.Expanded(
+            child: pw.Center(
+              child: carImage != null
+                  ? pw.Stack(
+                      alignment: pw.Alignment.center,
+                      children: [
+                        pw.Image(carImage, width: 120, height: 50, fit: pw.BoxFit.contain),
+                        ...damages.map((d) {
+                          // Scale x and y (0..100) to the container dimensions (120x50)
+                          final posX = (d.x.clamp(0, 100) / 100.0) * 120.0 - 2.5;
+                          final posY = (d.y.clamp(0, 100) / 100.0) * 50.0 - 2.5;
+                          return pw.Positioned(
+                            left: posX,
+                            top: posY,
+                            child: pw.Container(
+                              width: 5,
+                              height: 5,
+                              decoration: const pw.BoxDecoration(
+                                color: PdfColors.red,
+                                shape: pw.BoxShape.circle,
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
+                    )
+                  : pw.Text('Schéma Véhicule', style: const pw.TextStyle(fontSize: 7)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildFuelGauge(int level) {
+    final pct = level.clamp(0, 100);
+    return pw.Row(
+      children: [
+        pw.Text('Carburant: ', style: pw.TextStyle(fontSize: 7.2, fontWeight: pw.FontWeight.bold)),
+        pw.Container(
+          width: 50,
+          height: 7,
+          decoration: pw.BoxDecoration(
+            border: pw.Border.all(color: PdfColors.black, width: 0.8),
+          ),
+          child: pw.Align(
+            alignment: pw.Alignment.centerLeft,
+            child: pw.Container(
+              width: 50.0 * (pct / 100.0),
+              height: 7,
+              color: PdfColors.black,
+            ),
+          ),
+        ),
+        pw.SizedBox(width: 4),
+        pw.Text('$pct%', style: const pw.TextStyle(fontSize: 7.2)),
+      ],
+    );
+  }
+
+  static pw.Widget _factureItem(String label, String value) {
+    return pw.RichText(
+      text: pw.TextSpan(
+        children: [
+          pw.TextSpan(text: '$label ', style: pw.TextStyle(fontSize: 7.2, fontWeight: pw.FontWeight.bold)),
+          pw.TextSpan(text: value, style: const pw.TextStyle(fontSize: 7.2)),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildSignatureBox({
+    required String label,
+    required String signatureData,
+  }) {
+    pw.MemoryImage? memImage;
+    if (signatureData.isNotEmpty && signatureData.length > 50) {
+      try {
+        String clean = signatureData;
+        if (clean.contains(',')) {
+          clean = clean.split(',').last;
+        }
+        final bytes = base64Decode(clean.trim());
+        memImage = pw.MemoryImage(bytes);
+      } catch (_) {}
+    }
+
+    return pw.Expanded(
+      child: pw.Container(
+        height: 38,
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.black, width: 0.8),
+        ),
+        padding: const pw.EdgeInsets.all(2),
+        child: memImage != null
+            ? pw.Center(child: pw.Image(memImage, fit: pw.BoxFit.contain))
+            : pw.Center(
+                child: pw.Text(
+                  label,
+                  textAlign: pw.TextAlign.center,
+                  style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey700),
+                ),
+              ),
       ),
     );
   }
