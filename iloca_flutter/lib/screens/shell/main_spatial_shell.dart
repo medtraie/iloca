@@ -5,6 +5,7 @@ import '../../core/theme/app_theme_2026.dart';
 import '../../core/widgets/spatial_glass_widgets.dart';
 import '../../providers/app_state_provider.dart';
 import '../alerts/alerts_screen.dart';
+import '../auth/login_screen.dart';
 import '../clients/clients_screen.dart';
 import '../contracts/contracts_screen.dart';
 import '../invoices/invoices_screen.dart';
@@ -137,6 +138,12 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
     );
     if (confirm == true) {
       await state.logout();
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => LoginScreen(appState: state)),
+          (route) => false,
+        );
+      }
     }
   }
 

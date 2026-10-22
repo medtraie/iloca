@@ -64,6 +64,7 @@ class _IlocaSpatialApp2026State extends State<IlocaSpatialApp2026> {
       listenable: _appState,
       builder: (context, _) {
         return MaterialApp(
+          key: ValueKey('app_auth_${_appState.isAuthenticated}'),
           title: 'bonatours',
           debugShowCheckedModeBanner: false,
           themeMode: ThemeMode.dark,

@@ -4,6 +4,7 @@ import '../../core/config/app_config.dart';
 import '../../core/theme/app_theme_2026.dart';
 import '../../core/widgets/spatial_glass_widgets.dart';
 import '../../providers/app_state_provider.dart';
+import '../shell/main_spatial_shell.dart';
 
 class LoginScreen extends StatefulWidget {
   final AppStateProvider appState;
@@ -24,8 +25,24 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_emailCtrl.text.trim().isEmpty) return;
     setState(() => _loading = true);
     final pwd = _passCtrl.text.isEmpty ? 'bonatours2026' : _passCtrl.text;
-    await widget.appState.login(_emailCtrl.text.trim(), pwd);
-    if (mounted) setState(() => _loading = false);
+    final success = await widget.appState.login(_emailCtrl.text.trim(), pwd);
+    if (!mounted) return;
+    if (success) {
+      Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => MainSpatialShell(appState: widget.appState),
+        ),
+        (route) => false,
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Échec de connexion. Vérifiez vos identifiants.'),
+          backgroundColor: AppColors2026.roseLaser,
+        ),
+      );
+      setState(() => _loading = false);
+    }
   }
 
   @override

@@ -296,13 +296,22 @@ class AppStateProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    try {
-      await Supabase.instance.client.auth.signOut();
-    } catch (_) {}
-    await prefs.setBool('iloca_authenticated', false);
+    // 1. Immediately switch auth state & notify UI (0ms transition)
     _isAuthenticated = false;
     notifyListeners();
+
+    // 2. Persist state locally
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('iloca_authenticated', false);
+    } catch (e) {
+      debugPrint('[AppState] logout prefs note: $e');
+    }
+
+    // 3. Asynchronously sign out from Supabase in the background without blocking the UI
+    try {
+      unawaited(Supabase.instance.client.auth.signOut().catchError((_) {}));
+    } catch (_) {}
   }
 
   // ===========================================================================
