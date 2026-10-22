@@ -33,7 +33,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
   String _statusFilter = 'tous'; // 'tous' | 'ouvert' | 'ferme' | 'overdue'
   String _financialFilter = 'tous'; // 'tous' | 'payé' | 'en cours' | 'en attente'
   String _viewMode = 'cards'; // 'cards' | 'table' | 'kanban'
-  bool _showAnalytics = true;
+  bool _showAnalytics = false; // Collapsed by default for a clean, clutter-free mobile view
 
   void _openContractForm({
     ContractModel? contract,
@@ -670,7 +670,7 @@ _Merci pour votre confiance en BonaTours Location & Tours._
                 ],
 
                 const SizedBox(height: 8),
-                // Search Bar
+                // Search Bar with Integrated Financial Status Filter
                 SizedBox(
                   height: 42,
                   child: TextField(
@@ -682,87 +682,119 @@ _Merci pour votre confiance en BonaTours Location & Tours._
                       hintText:
                           'Rechercher N° contrat, client, CIN, tél ou véhicule...',
                       prefixIcon: const Icon(LucideIcons.search, size: 16),
-                      suffixIcon: _search.isNotEmpty
-                          ? IconButton(
+                      suffixIcon: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_search.isNotEmpty)
+                            IconButton(
                               icon: const Icon(LucideIcons.x, size: 14),
                               onPressed: () => setState(() => _search = ''),
-                            )
-                          : null,
+                            ),
+                          PopupMenuButton<String>(
+                            tooltip: 'Filtrer par statut financier',
+                            icon: Icon(
+                              LucideIcons.filter,
+                              size: 16,
+                              color: _financialFilter != 'tous'
+                                  ? AppColors2026.amberSolar
+                                  : AppColors2026.textSecondary,
+                            ),
+                            color: AppColors2026.obsidianElevated,
+                            onSelected: (val) =>
+                                setState(() => _financialFilter = val),
+                            itemBuilder: (ctx) => [
+                              const PopupMenuItem(
+                                value: 'tous',
+                                child: Text('Tous les statuts financiers'),
+                              ),
+                              const PopupMenuItem(
+                                value: 'payé',
+                                child: Text('🟢 Payé intégralement'),
+                              ),
+                              const PopupMenuItem(
+                                value: 'en cours',
+                                child: Text('🟡 En cours / Avance versée'),
+                              ),
+                              const PopupMenuItem(
+                                value: 'en attente',
+                                child: Text('🔴 En attente / Impayé'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(height: 8),
 
-                // Dual Filter Strip: Statut du Contrat + Statut Financier
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
+                // Clean Operational Status Segmented Bar (Tous, En cours, Retards, Clôturés)
+                Row(
+                  children: [
+                    _buildStatusTab(
+                      'tous',
+                      'Tous ($totalCount)',
+                      AppColors2026.cyanBright,
+                    ),
+                    const SizedBox(width: 6),
+                    _buildStatusTab(
+                      'ouvert',
+                      'En cours ($activeCount)',
+                      AppColors2026.emeraldNeon,
+                    ),
+                    const SizedBox(width: 6),
+                    _buildStatusTab(
+                      'overdue',
+                      'Retards ($overdueCount)',
+                      AppColors2026.roseLaser,
+                    ),
+                    const SizedBox(width: 6),
+                    _buildStatusTab(
+                      'ferme',
+                      'Clôturés ($closedCount)',
+                      AppColors2026.violetElectric,
+                    ),
+                  ],
+                ),
+
+                // Active Financial Filter Indicator Pill (if filtered)
+                if (_financialFilter != 'tous') ...[
+                  const SizedBox(height: 6),
+                  Row(
                     children: [
-                      _FilterChip2026(
-                        label: 'Tous (${all.length})',
-                        selected: _statusFilter == 'tous',
-                        color: AppColors2026.cyanBright,
-                        onTap: () => setState(() => _statusFilter = 'tous'),
-                      ),
-                      const SizedBox(width: 6),
-                      _FilterChip2026(
-                        label: 'En circulation ($activeCount)',
-                        selected: _statusFilter == 'ouvert',
-                        color: AppColors2026.emeraldNeon,
-                        onTap: () => setState(() => _statusFilter = 'ouvert'),
-                      ),
-                      const SizedBox(width: 6),
-                      _FilterChip2026(
-                        label: 'En retard ($overdueCount)',
-                        selected: _statusFilter == 'overdue',
-                        color: AppColors2026.roseLaser,
-                        onTap: () => setState(() => _statusFilter = 'overdue'),
-                      ),
-                      const SizedBox(width: 6),
-                      _FilterChip2026(
-                        label: 'Clôturés ($closedCount)',
-                        selected: _statusFilter == 'ferme',
-                        color: AppColors2026.violetElectric,
-                        onTap: () => setState(() => _statusFilter = 'ferme'),
-                      ),
                       Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 8),
-                        width: 1,
-                        height: 18,
-                        color: Colors.white24,
-                      ),
-                      _FilterChip2026(
-                        label: 'Financier: Tous',
-                        selected: _financialFilter == 'tous',
-                        color: AppColors2026.textSecondary,
-                        onTap: () => setState(() => _financialFilter = 'tous'),
-                      ),
-                      const SizedBox(width: 6),
-                      _FilterChip2026(
-                        label: 'Payé',
-                        selected: _financialFilter == 'payé',
-                        color: AppColors2026.emeraldBright,
-                        onTap: () => setState(() => _financialFilter = 'payé'),
-                      ),
-                      const SizedBox(width: 6),
-                      _FilterChip2026(
-                        label: 'En cours',
-                        selected: _financialFilter == 'en cours',
-                        color: AppColors2026.amberSolar,
-                        onTap: () =>
-                            setState(() => _financialFilter = 'en cours'),
-                      ),
-                      const SizedBox(width: 6),
-                      _FilterChip2026(
-                        label: 'En attente',
-                        selected: _financialFilter == 'en attente',
-                        color: AppColors2026.roseLaser,
-                        onTap: () =>
-                            setState(() => _financialFilter = 'en attente'),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors2026.amberSolar.withOpacity(0.16),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                              color: AppColors2026.amberSolar.withOpacity(0.35)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Filtre financier : ${_financialFilter.toUpperCase()}',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors2026.amberSolar,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            GestureDetector(
+                              onTap: () =>
+                                  setState(() => _financialFilter = 'tous'),
+                              child: const Icon(LucideIcons.x,
+                                  size: 12, color: AppColors2026.amberSolar),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -816,6 +848,41 @@ _Merci pour votre confiance en BonaTours Location & Tours._
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusTab(String id, String label, Color color) {
+    final active = _statusFilter == id;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _statusFilter = id),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: active
+                ? color.withOpacity(0.2)
+                : Colors.white.withOpacity(0.04),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: active ? color : Colors.white12,
+              width: active ? 1.2 : 1,
+            ),
+          ),
+          child: Center(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: active ? FontWeight.w900 : FontWeight.w700,
+                color: active ? Colors.white : AppColors2026.textSecondary,
+              ),
+            ),
           ),
         ),
       ),
@@ -1367,42 +1434,115 @@ class _ContractSpatialCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Top badges: Contract Number + Financial Badge + Contract Status Badge
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
+          // 1. Top Bar: Contract Number + Status + Financial Chip + Menu
+          Row(
             children: [
               NeonBadge(
                 label: c.contractNumber,
                 color: AppColors2026.cyanNeon,
                 icon: LucideIcons.fileText,
               ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  NeonBadge(
-                    label: c.financialStatus.toUpperCase(),
-                    color: finAccent,
+              const SizedBox(width: 6),
+              NeonBadge(
+                label: c.isOverdue
+                    ? 'RETARD +${c.overdueDays}J'
+                    : c.isActive
+                        ? 'EN COURS'
+                        : 'CLÔTURÉ',
+                color: statusAccent,
+                pulsing: c.isActive || c.isOverdue,
+              ),
+              const Spacer(),
+              NeonBadge(
+                label: c.financialStatus.toUpperCase(),
+                color: finAccent,
+              ),
+              const SizedBox(width: 2),
+              PopupMenuButton<String>(
+                padding: EdgeInsets.zero,
+                icon: const Icon(LucideIcons.moreVertical,
+                    size: 18, color: AppColors2026.textSecondary),
+                color: AppColors2026.obsidianElevated,
+                onSelected: (action) {
+                  if (action == 'view') onViewDetails();
+                  if (action == 'edit') onEditForm();
+                  if (action == 'call') onCall();
+                  if (action == 'toggle') onToggleClose();
+                  if (action == 'delete') onDelete();
+                },
+                itemBuilder: (ctx) => [
+                  const PopupMenuItem(
+                    value: 'view',
+                    child: Row(
+                      children: [
+                        Icon(LucideIcons.eye,
+                            size: 15, color: AppColors2026.textSecondary),
+                        SizedBox(width: 8),
+                        Text('Voir les détails'),
+                      ],
+                    ),
                   ),
-                  const SizedBox(width: 6),
-                  NeonBadge(
-                    label: c.isOverdue
-                        ? 'RETARD +${c.overdueDays}J'
-                        : c.isActive
-                            ? 'EN CIRCULATION'
-                            : 'CLÔTURÉ',
-                    color: statusAccent,
-                    pulsing: c.isActive || c.isOverdue,
+                  const PopupMenuItem(
+                    value: 'edit',
+                    child: Row(
+                      children: [
+                        Icon(LucideIcons.edit3, size: 15, color: Colors.white),
+                        SizedBox(width: 8),
+                        Text('Modifier le contrat'),
+                      ],
+                    ),
+                  ),
+                  if (c.customerPhone.isNotEmpty)
+                    const PopupMenuItem(
+                      value: 'call',
+                      child: Row(
+                        children: [
+                          Icon(LucideIcons.phone,
+                              size: 15, color: AppColors2026.emeraldBright),
+                          SizedBox(width: 8),
+                          Text('Appeler le locataire'),
+                        ],
+                      ),
+                    ),
+                  PopupMenuItem(
+                    value: 'toggle',
+                    child: Row(
+                      children: [
+                        Icon(
+                          c.isClosed
+                              ? LucideIcons.rotateCcw
+                              : LucideIcons.checkCircle2,
+                          size: 15,
+                          color: AppColors2026.cyanBright,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(c.isClosed
+                            ? 'Réouvrir le contrat'
+                            : 'Clôturer le contrat'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(LucideIcons.trash2,
+                            size: 15, color: AppColors2026.roseLaser),
+                        SizedBox(width: 8),
+                        Text(
+                          'Supprimer définitivement',
+                          style: TextStyle(color: AppColors2026.roseLaser),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
 
-          // Customer & Second Driver + Vehicle Info
+          // 2. Customer & Vehicle Info
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1413,7 +1553,7 @@ class _ContractSpatialCard extends StatelessWidget {
                     Text(
                       c.customerName,
                       style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 15,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -1429,112 +1569,48 @@ class _ContractSpatialCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        const Icon(LucideIcons.car,
-                            size: 14, color: AppColors2026.cyanBright),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            c.vehicle,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors2026.cyanBright,
-                            ),
-                          ),
-                        ),
-                      ],
+                  ],
+                ),
+              ),
+              // Compact Vehicle Chip
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors2026.cyanNeon.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: AppColors2026.cyanNeon.withOpacity(0.28)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(LucideIcons.car,
+                        size: 13, color: AppColors2026.cyanBright),
+                    const SizedBox(width: 5),
+                    Text(
+                      c.vehicle,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors2026.cyanBright,
+                      ),
                     ),
                   ],
                 ),
               ),
-              // Fuel & Damages & Signatures Telemetry Pills
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '⛽ ${c.deliveryFuelLevel}% → ${c.returnFuelLevel}%',
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors2026.amberSolar,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (c.deliveryDamages.isNotEmpty ||
-                          c.returnDamages.isNotEmpty)
-                        Container(
-                          margin: const EdgeInsets.only(right: 4),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppColors2026.roseLaser.withOpacity(0.16),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            '⚠️ ${c.deliveryDamages.length}/${c.returnDamages.length} impacts',
-                            style: const TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors2026.roseLaser,
-                            ),
-                          ),
-                        ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: (c.hasDeliverySignature
-                                  ? AppColors2026.emeraldNeon
-                                  : Colors.white24)
-                              .withOpacity(0.18),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          c.hasReturnSignature
-                              ? '✍️ Signé A/R'
-                              : c.hasDeliverySignature
-                                  ? '✍️ Signé Départ'
-                                  : '✍️ Non signé',
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                            color: c.hasDeliverySignature
-                                ? AppColors2026.emeraldBright
-                                : AppColors2026.textSecondary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
             ],
           ),
+          const SizedBox(height: 8),
 
-          const SizedBox(height: 10),
-          // Dates & Payment method strip
+          // 3. Dates & Period Strip
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.04),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
                   child: Text(
@@ -1546,7 +1622,7 @@ class _ContractSpatialCard extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '${c.dailyRate.round()} DH/j • ${c.paymentMethod}',
+                  '${c.dailyRate.round()} DH/j',
                   style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
@@ -1556,15 +1632,84 @@ class _ContractSpatialCard extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: 6),
 
-          const Divider(height: 16, color: Colors.white12),
+          // Mini status tags: Fuel, Damage, Signature
+          Row(
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '⛽ ${c.deliveryFuelLevel}% → ${c.returnFuelLevel}%',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors2026.amberSolar,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: (c.hasDeliverySignature
+                          ? AppColors2026.emeraldNeon
+                          : Colors.white24)
+                      .withOpacity(0.16),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  c.hasReturnSignature
+                      ? '✍️ Signé A/R'
+                      : c.hasDeliverySignature
+                          ? '✍️ Signé Départ'
+                          : '✍️ Non signé',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: c.hasDeliverySignature
+                        ? AppColors2026.emeraldBright
+                        : AppColors2026.textSecondary,
+                  ),
+                ),
+              ),
+              if (c.deliveryDamages.isNotEmpty ||
+                  c.returnDamages.isNotEmpty) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors2026.roseLaser.withOpacity(0.16),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '⚠️ ${c.deliveryDamages.length}/${c.returnDamages.length} impacts',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors2026.roseLaser,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
 
-          // 1. Structured Financial Telemetry Box (Total TTC | Avance | Reste)
+          const Divider(height: 14, color: Colors.white12),
+
+          // 4. Structured Financial Telemetry Box
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.04),
-              borderRadius: BorderRadius.circular(12),
+              color: Colors.white.withOpacity(0.03),
+              borderRadius: BorderRadius.circular(10),
               border: Border.all(color: Colors.white10),
             ),
             child: Row(
@@ -1576,19 +1721,19 @@ class _ContractSpatialCard extends StatelessWidget {
                       const Text(
                         'TOTAL TTC',
                         style: TextStyle(
-                          fontSize: 9,
+                          fontSize: 8.5,
                           fontWeight: FontWeight.w800,
                           color: AppColors2026.textSecondary,
                         ),
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 1),
                       FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerLeft,
                         child: Text(
                           '${currencyFmt.format(c.effectiveTotalAmount.round())} DH',
                           style: const TextStyle(
-                            fontSize: 14,
+                            fontSize: 13,
                             fontWeight: FontWeight.w900,
                             color: AppColors2026.emeraldBright,
                           ),
@@ -1597,7 +1742,7 @@ class _ContractSpatialCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                Container(width: 1, height: 24, color: Colors.white12),
+                Container(width: 1, height: 20, color: Colors.white12),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(
@@ -1606,12 +1751,12 @@ class _ContractSpatialCard extends StatelessWidget {
                       const Text(
                         'AVANCE',
                         style: TextStyle(
-                          fontSize: 9,
+                          fontSize: 8.5,
                           fontWeight: FontWeight.w800,
                           color: AppColors2026.textSecondary,
                         ),
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 1),
                       FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerLeft,
@@ -1627,7 +1772,7 @@ class _ContractSpatialCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                Container(width: 1, height: 24, color: Colors.white12),
+                Container(width: 1, height: 20, color: Colors.white12),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(
@@ -1636,12 +1781,12 @@ class _ContractSpatialCard extends StatelessWidget {
                       const Text(
                         'RESTE',
                         style: TextStyle(
-                          fontSize: 9,
+                          fontSize: 8.5,
                           fontWeight: FontWeight.w800,
                           color: AppColors2026.textSecondary,
                         ),
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 1),
                       FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerLeft,
@@ -1666,141 +1811,82 @@ class _ContractSpatialCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
 
-          // 2. Clean, Organized Action Bar (Zero Overflow)
+          // 5. Clean, Organized 3 Action Buttons (Modifier, Contrat A4, WhatsApp)
           Row(
             children: [
-              // Primary Action: Modifier
+              // 1. Modifier
               Expanded(
+                flex: 4,
                 child: SizedBox(
-                  height: 36,
+                  height: 38,
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors2026.violetElectric.withOpacity(0.22),
+                      backgroundColor: Colors.white.withOpacity(0.08),
                       foregroundColor: Colors.white,
-                      side: BorderSide(color: AppColors2026.violetElectric.withOpacity(0.55)),
+                      side: const BorderSide(color: Colors.white24),
                       padding: const EdgeInsets.symmetric(horizontal: 8),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
                     ),
                     onPressed: onEditForm,
                     icon: const Icon(LucideIcons.edit3, size: 14),
                     label: const Text(
                       'Modifier',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                      style:
+                          TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
                     ),
                   ),
                 ),
               ),
               const SizedBox(width: 8),
-              // Secondary Action: Contrat A4 (PDF Web 100%)
+              // 2. Contrat A4 (PDF Web 100%)
               Expanded(
+                flex: 5,
                 child: SizedBox(
-                  height: 36,
+                  height: 38,
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors2026.cyanNeon.withOpacity(0.18),
+                      backgroundColor:
+                          AppColors2026.cyanNeon.withOpacity(0.2),
                       foregroundColor: AppColors2026.cyanBright,
-                      side: BorderSide(color: AppColors2026.cyanBright.withOpacity(0.55)),
+                      side: BorderSide(
+                          color: AppColors2026.cyanBright.withOpacity(0.6)),
                       padding: const EdgeInsets.symmetric(horizontal: 6),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
                     ),
                     onPressed: onPreviewPaper,
                     icon: const Icon(LucideIcons.fileText, size: 14),
                     label: const Text(
                       'Contrat A4',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                      style:
+                          TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 6),
-              // Quick WhatsApp Share Button
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: AppColors2026.emeraldNeon.withOpacity(0.16),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors2026.emeraldNeon.withOpacity(0.35)),
-                ),
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  tooltip: 'Partager Contrat A4 WhatsApp',
-                  onPressed: onShareWhatsApp,
-                  icon: const Icon(LucideIcons.share2, size: 16, color: AppColors2026.emeraldBright),
-                ),
-              ),
-              const SizedBox(width: 6),
-              // Quick Détails Formulaire Button
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.06),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.white12),
-                ),
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  tooltip: 'Voir Formulaire Détails',
-                  onPressed: onViewDetails,
-                  icon: const Icon(LucideIcons.eye, size: 16, color: AppColors2026.textSecondary),
-                ),
-              ),
-              const SizedBox(width: 4),
-              // More Actions Menu
-              Container(
-                width: 34,
-                height: 36,
-                alignment: Alignment.center,
-                child: PopupMenuButton<String>(
-                  padding: EdgeInsets.zero,
-                  icon: const Icon(LucideIcons.moreVertical, size: 17, color: AppColors2026.textSecondary),
-                  color: AppColors2026.obsidianElevated,
-                  onSelected: (action) {
-                    if (action == 'call') onCall();
-                    if (action == 'toggle') onToggleClose();
-                    if (action == 'delete') onDelete();
-                  },
-                  itemBuilder: (ctx) => [
-                    if (c.customerPhone.isNotEmpty)
-                      const PopupMenuItem(
-                        value: 'call',
-                        child: Row(
-                          children: [
-                            Icon(LucideIcons.phone, size: 15, color: AppColors2026.emeraldBright),
-                            SizedBox(width: 8),
-                            Text('Appeler le client'),
-                          ],
-                        ),
-                      ),
-                    PopupMenuItem(
-                      value: 'toggle',
-                      child: Row(
-                        children: [
-                          Icon(
-                            c.isClosed ? LucideIcons.rotateCcw : LucideIcons.checkCircle2,
-                            size: 15,
-                            color: AppColors2026.cyanBright,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(c.isClosed ? 'Réouvrir le contrat' : 'Clôturer le contrat'),
-                        ],
-                      ),
+              const SizedBox(width: 8),
+              // 3. Quick WhatsApp Share Button
+              SizedBox(
+                width: 44,
+                height: 38,
+                child: Tooltip(
+                  message: 'Partager WhatsApp',
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor:
+                          AppColors2026.emeraldNeon.withOpacity(0.2),
+                      foregroundColor: AppColors2026.emeraldBright,
+                      side: BorderSide(
+                          color:
+                              AppColors2026.emeraldBright.withOpacity(0.6)),
+                      padding: EdgeInsets.zero,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
                     ),
-                    const PopupMenuItem(
-                      value: 'delete',
-                      child: Row(
-                        children: [
-                          Icon(LucideIcons.trash2, size: 15, color: AppColors2026.roseLaser),
-                          SizedBox(width: 8),
-                          Text(
-                            'Supprimer définitivement',
-                            style: TextStyle(color: AppColors2026.roseLaser),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                    onPressed: onShareWhatsApp,
+                    child: const Icon(LucideIcons.share2, size: 17),
+                  ),
                 ),
               ),
             ],
@@ -1941,47 +2027,6 @@ class _FinancialMetricCol extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _FilterChip2026 extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _FilterChip2026({
-    required this.label,
-    required this.selected,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected
-              ? color.withOpacity(0.22)
-              : Colors.white.withOpacity(0.04),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: selected ? color : Colors.white12,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w800,
-            color: selected ? Colors.white : AppColors2026.textSecondary,
-          ),
-        ),
       ),
     );
   }
