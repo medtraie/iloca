@@ -250,22 +250,28 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      meta.title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.4,
+                    Flexible(
+                      child: Text(
+                        meta.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.4,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
+                        horizontal: 7,
+                        vertical: 2.5,
                       ),
                       decoration: BoxDecoration(
                         color: AppColors2026.emeraldNeon.withOpacity(0.14),
@@ -281,16 +287,16 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
                             color: state.isSyncing
                                 ? AppColors2026.cyanNeon
                                 : AppColors2026.emeraldNeon,
-                            size: 6,
+                            size: 5,
                           ),
-                          const SizedBox(width: 5),
+                          const SizedBox(width: 4),
                           Text(
-                            state.isSyncing ? 'SYNC...' : 'SYNC LIVE',
+                            state.isSyncing ? 'SYNC...' : 'LIVE',
                             style: const TextStyle(
-                              fontSize: 9,
+                              fontSize: 8.5,
                               fontWeight: FontWeight.w900,
                               color: AppColors2026.emeraldNeon,
-                              letterSpacing: 0.5,
+                              letterSpacing: 0.4,
                             ),
                           ),
                         ],
@@ -303,7 +309,7 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 11,
+                    fontSize: 10.5,
                     color: AppColors2026.textSecondary,
                   ),
                 ),
@@ -311,30 +317,39 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
             ),
           ),
           IconButton(
-            tooltip: 'Synchroniser maintenant (Web & GPSWOX)',
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.all(6),
+            constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+            tooltip: 'Synchroniser',
             onPressed: () {
               state.refreshAllData();
               state.refreshGpsTelemetry();
             },
-            icon: const Icon(LucideIcons.refreshCw, size: 18),
+            icon: const Icon(LucideIcons.refreshCw, size: 17),
           ),
           IconButton(
-            tooltip: 'Changer le thème 2026',
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.all(6),
+            constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+            tooltip: 'Changer le thème',
             onPressed: () => state.toggleThemeMode(),
             icon: Icon(
               state.isDarkMode ? LucideIcons.sun : LucideIcons.moon,
-              size: 18,
+              size: 17,
               color: state.isDarkMode
                   ? AppColors2026.amberSolar
                   : AppColors2026.violetElectric,
             ),
           ),
           IconButton(
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.all(6),
+            constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
             tooltip: 'Déconnexion',
             onPressed: () => _confirmLogout(context, state),
             icon: const Icon(
               LucideIcons.logOut,
-              size: 18,
+              size: 17,
               color: AppColors2026.roseLaser,
             ),
           ),

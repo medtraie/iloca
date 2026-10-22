@@ -169,42 +169,52 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                             onChanged: (_) => setState(() {}),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8),
                         // Vehicle Filter Dropdown Pill
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          decoration: BoxDecoration(
-                            color: AppColors2026.obsidianSurface,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: Colors.white.withOpacity(0.08)),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String?>(
-                              value: _selectedVehicleId,
-                              dropdownColor: AppColors2026.obsidianSurface,
-                              icon: const Icon(LucideIcons.chevronDown, size: 16, color: AppColors2026.amberSolar),
-                              hint: const Row(
-                                children: [
-                                  Icon(LucideIcons.car, size: 14, color: AppColors2026.textMuted),
-                                  SizedBox(width: 6),
-                                  Text('Tous véhicules', style: TextStyle(fontSize: 12, color: AppColors2026.textSecondary)),
-                                ],
-                              ),
-                              items: [
-                                const DropdownMenuItem<String?>(
-                                  value: null,
-                                  child: Text('Tous véhicules', style: TextStyle(fontSize: 12)),
-                                ),
-                                ...state.vehicles.map((v) => DropdownMenuItem<String?>(
-                                      value: v.id,
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 135),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            decoration: BoxDecoration(
+                              color: AppColors2026.obsidianSurface,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: Colors.white.withOpacity(0.08)),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String?>(
+                                value: _selectedVehicleId,
+                                isExpanded: true,
+                                dropdownColor: AppColors2026.obsidianSurface,
+                                icon: const Icon(LucideIcons.chevronDown, size: 15, color: AppColors2026.amberSolar),
+                                hint: const Row(
+                                  children: [
+                                    Icon(LucideIcons.car, size: 13, color: AppColors2026.textMuted),
+                                    SizedBox(width: 5),
+                                    Expanded(
                                       child: Text(
-                                        v.fullName,
-                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                        'Tous véhicules',
+                                        style: TextStyle(fontSize: 11.5, color: AppColors2026.textSecondary),
                                         overflow: TextOverflow.ellipsis,
                                       ),
-                                    )),
-                              ],
-                              onChanged: (val) => setState(() => _selectedVehicleId = val),
+                                    ),
+                                  ],
+                                ),
+                                items: [
+                                  const DropdownMenuItem<String?>(
+                                    value: null,
+                                    child: Text('Tous véhicules', style: TextStyle(fontSize: 12)),
+                                  ),
+                                  ...state.vehicles.map((v) => DropdownMenuItem<String?>(
+                                        value: v.id,
+                                        child: Text(
+                                          v.fullName,
+                                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      )),
+                                ],
+                                onChanged: (val) => setState(() => _selectedVehicleId = val),
+                              ),
                             ),
                           ),
                         ),
@@ -708,25 +718,20 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
             children: [
               const Icon(LucideIcons.calendar, size: 13, color: AppColors2026.textMuted),
               const SizedBox(width: 5),
-              Text(
-                '${startDate != null ? _displayFormat.format(startDate) : exp.startDate} → ${endDate != null ? _displayFormat.format(endDate) : exp.endDate}',
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: AppColors2026.textSecondary,
-                  fontWeight: FontWeight.w500,
+              Expanded(
+                child: Text(
+                  '${startDate != null ? _displayFormat.format(startDate) : exp.startDate} → ${endDate != null ? _displayFormat.format(endDate) : exp.endDate} (${exp.periodMonths} mois)',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors2026.textSecondary,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
-              const SizedBox(width: 8),
-              Text(
-                '(${exp.periodMonths} mois)',
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: AppColors2026.textMuted,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const Spacer(),
-              if (exp.recurringEnabled)
+              if (exp.recurringEnabled) ...[
+                const SizedBox(width: 6),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
@@ -753,6 +758,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                     ],
                   ),
                 ),
+              ],
             ],
           ),
 

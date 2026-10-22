@@ -110,7 +110,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 6),
                     const Text(
-                      'Synchronisation Temps Réel Web • Android • iOS & Télémétrie GPSWOX',
+                      'Synchronisation Temps Réel Web • Android • iOS',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 12,
