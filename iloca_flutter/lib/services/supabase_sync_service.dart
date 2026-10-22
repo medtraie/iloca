@@ -11,6 +11,7 @@ class SupabaseSyncService {
   static const _localClientsKey = 'iloca:clients:local';
   static const _localVehiclesKey = 'iloca:vehicles:local';
   static const _localContractsKey = 'iloca:contracts:local';
+  static const _localInvoicesKey = 'iloca:invoices:local';
 
   static SupabaseClient get _sb => Supabase.instance.client;
 
@@ -19,6 +20,7 @@ class SupabaseSyncService {
     required VoidCallback onClientsChanged,
     required VoidCallback onVehiclesChanged,
     required VoidCallback onContractsChanged,
+    required VoidCallback onInvoicesChanged,
     required VoidCallback onFinanceChanged,
   }) {
     final channel = _sb.channel('iloca-flutter-realtime-2026');
@@ -44,6 +46,12 @@ class SupabaseSyncService {
             onContractsChanged();
             onVehiclesChanged();
           },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'invoices',
+          callback: (_) => onInvoicesChanged(),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
@@ -347,6 +355,85 @@ class SupabaseSyncService {
       }
     } catch (e) {
       debugPrint('[SupabaseSync] deleteContract error: $e');
+    }
+  }
+
+  // ===========================================================================
+  // INVOICES CRUD (Instant Sync with `public.invoices`)
+  // ===========================================================================
+  static Future<List<InvoiceModel>> fetchInvoices() async {
+    final prefs = await SharedPreferences.getInstance();
+    final localRaw = prefs.getString(_localInvoicesKey);
+    List<InvoiceModel> localList = [];
+    if (localRaw != null) {
+      try {
+        final decoded = jsonDecode(localRaw) as List;
+        localList = decoded
+            .map((e) => InvoiceModel.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      } catch (_) {}
+    }
+
+    try {
+      final rows = await _sb
+          .from('invoices')
+          .select('*')
+          .order('updated_at', ascending: false);
+      final remote = (rows as List)
+          .map((r) => InvoiceModel.fromJson(Map<String, dynamic>.from(r)))
+          .toList();
+      await prefs.setString(
+        _localInvoicesKey,
+        jsonEncode(remote.map((e) => e.toJson()).toList()),
+      );
+      return remote;
+    } catch (e) {
+      debugPrint('[SupabaseSync] fetchInvoices fallback to local: $e');
+      return localList;
+    }
+  }
+
+  static Future<InvoiceModel> saveInvoice(InvoiceModel invoice, {bool isEdit = false}) async {
+    final payload = invoice.toSupabasePayload();
+    final userId = _sb.auth.currentUser?.id;
+    if (userId != null) {
+      payload['user_id'] = userId;
+    }
+
+    try {
+      InvoiceModel saved;
+      if (isEdit && invoice.id.isNotEmpty) {
+        final res = await _sb
+            .from('invoices')
+            .update(payload)
+            .eq('id', invoice.id)
+            .select('*')
+            .single();
+        saved = InvoiceModel.fromJson(Map<String, dynamic>.from(res));
+      } else {
+        final res = await _sb
+            .from('invoices')
+            .insert(payload)
+            .select('*')
+            .single();
+        saved = InvoiceModel.fromJson(Map<String, dynamic>.from(res));
+      }
+      return saved;
+    } catch (e, stack) {
+      debugPrint('[SupabaseSync] saveInvoice error: $e\n$stack');
+      if (e.toString().contains('SocketException') ||
+          e.toString().contains('ClientException')) {
+        return invoice;
+      }
+      rethrow;
+    }
+  }
+
+  static Future<void> deleteInvoice(String id) async {
+    try {
+      await _sb.from('invoices').delete().eq('id', id);
+    } catch (e) {
+      debugPrint('[SupabaseSync] deleteInvoice error: $e');
     }
   }
 

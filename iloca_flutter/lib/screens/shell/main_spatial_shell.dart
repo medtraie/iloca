@@ -7,10 +7,9 @@ import '../../providers/app_state_provider.dart';
 import '../alerts/alerts_screen.dart';
 import '../clients/clients_screen.dart';
 import '../contracts/contracts_screen.dart';
-import '../map/fleet_map_screen.dart';
+import '../invoices/invoices_screen.dart';
 import '../overview/overview_screen.dart';
 import '../reports/reports_screen.dart';
-import '../tracking/tracking_screen.dart';
 import '../vehicles/vehicles_screen.dart';
 
 class SpatialSectionMeta {
@@ -35,7 +34,7 @@ class MainSpatialShell extends StatelessWidget {
   static const List<SpatialSectionMeta> sections = [
     SpatialSectionMeta(
       title: 'Overview',
-      subtitle: 'Centre de Commandement Spatial 2026',
+      subtitle: 'Centre de Commandement BonaTours 2026',
       icon: LucideIcons.layoutGrid,
       accentColor: AppColors2026.cyanNeon,
     ),
@@ -58,26 +57,20 @@ class MainSpatialShell extends StatelessWidget {
       accentColor: AppColors2026.amberSolar,
     ),
     SpatialSectionMeta(
+      title: 'Factures',
+      subtitle: 'Facturation Légale & Recouvrement BonaTours',
+      icon: LucideIcons.receipt,
+      accentColor: AppColors2026.cyanBright,
+    ),
+    SpatialSectionMeta(
       title: 'Rapports',
       subtitle: 'Intelligence Financière & Rentabilité',
       icon: LucideIcons.barChart3,
-      accentColor: AppColors2026.cyanNeon,
-    ),
-    SpatialSectionMeta(
-      title: 'Carte',
-      subtitle: 'Google Maps Live & Suivi Traceur Direct',
-      icon: LucideIcons.map,
-      accentColor: AppColors2026.emeraldNeon,
-    ),
-    SpatialSectionMeta(
-      title: 'Suivi',
-      subtitle: 'Studio Trajectoire GPSWOX & Lecteur Vidéo',
-      icon: LucideIcons.radio,
       accentColor: AppColors2026.violetElectric,
     ),
     SpatialSectionMeta(
       title: 'Alertes',
-      subtitle: 'Télémesure Sécurité, Vitesse & Contrats',
+      subtitle: 'Télémesure Sécurité, Retards & Contrats',
       icon: LucideIcons.bellRing,
       accentColor: AppColors2026.roseLaser,
     ),
@@ -89,21 +82,19 @@ class MainSpatialShell extends StatelessWidget {
         appState.activeTabIndex.clamp(0, sections.length - 1);
     final currentMeta = sections[currentIndex];
     final isWide = MediaQuery.of(context).size.width >= 840;
-    final isFullBleedMap = currentIndex == 5 || currentIndex == 6;
 
     final screens = [
       OverviewScreen(appState: appState),
       ClientsScreen(appState: appState),
       VehiclesScreen(appState: appState),
       ContractsScreen(appState: appState),
+      InvoicesScreen(appState: appState),
       ReportsScreen(appState: appState),
-      FleetMapScreen(appState: appState),
-      TrackingScreen(appState: appState),
       AlertsScreen(appState: appState),
     ];
 
     return Scaffold(
-      extendBody: !isFullBleedMap,
+      extendBody: true,
       body: Container(
         decoration: BoxDecoration(
           gradient: appState.isDarkMode
@@ -119,7 +110,7 @@ class MainSpatialShell extends StatelessWidget {
               : null,
         ),
         child: SafeArea(
-          bottom: isFullBleedMap,
+          bottom: false,
           child: Row(
             children: [
               if (isWide)
@@ -317,7 +308,7 @@ class MainSpatialShell extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'iLOCA 2026',
+                        'bonatours',
                         style: TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 16,
@@ -325,7 +316,7 @@ class MainSpatialShell extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        'FLUTTER SPATIAL OS',
+                        'LOCATION & TOURS PRO',
                         style: TextStyle(
                           fontSize: 9,
                           fontWeight: FontWeight.w800,
@@ -346,7 +337,7 @@ class MainSpatialShell extends StatelessWidget {
                 itemBuilder: (context, index) {
                   final item = sections[index];
                   final selected = index == currentIndex;
-                  final alertBadge = index == 7 && state.allAlerts.isNotEmpty
+                  final alertBadge = index == 6 && state.allAlerts.isNotEmpty
                       ? state.allAlerts.length
                       : 0;
 
@@ -457,7 +448,7 @@ class MainSpatialShell extends StatelessWidget {
             itemBuilder: (context, index) {
               final item = sections[index];
               final selected = index == currentIndex;
-              final alertBadge = index == 7 && state.allAlerts.isNotEmpty
+              final alertBadge = index == 6 && state.allAlerts.isNotEmpty
                   ? state.allAlerts.length
                   : 0;
 

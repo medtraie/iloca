@@ -137,7 +137,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
             const SizedBox(height: 16),
             _buildRevenueEvolutionCard(currencyFmt),
             const SizedBox(height: 16),
-            _buildGpsRadarLiveCard(app),
+            _buildRecentInvoicesCard(app, currencyFmt),
           ] else if (_activeTab == 'operations') ...[
             _buildTodayOperationsHub(
               todayReturns: todayReturns,
@@ -155,8 +155,6 @@ class _OverviewScreenState extends State<OverviewScreen> {
               maintVeh: maintVeh,
               occupancyRate: occupancyRate,
             ),
-            const SizedBox(height: 16),
-            _buildGpsRadarLiveCard(app),
           ] else if (_activeTab == 'financial') ...[
             _buildRevenueEvolutionCard(currencyFmt),
             const SizedBox(height: 16),
@@ -230,7 +228,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
           ),
           const SizedBox(height: 12),
           const Text(
-            'Tableau de Bord & Télémétrie SFT',
+            'Tableau de Bord & Cockpit BonaTours',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w900,
@@ -239,7 +237,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
           ),
           const SizedBox(height: 4),
           const Text(
-            'Supervision en direct de la flotte, alertes de restitution et finances.',
+            'Supervision en direct de la flotte, contrats, facturation et finances.',
             style: TextStyle(
               fontSize: 11.5,
               color: AppColors2026.textSecondary,
@@ -274,10 +272,10 @@ class _OverviewScreenState extends State<OverviewScreen> {
                 ),
                 const SizedBox(width: 8),
                 _QuickActionBtn(
-                  icon: LucideIcons.mapPin,
-                  label: 'Carte & GPS',
+                  icon: LucideIcons.fileSpreadsheet,
+                  label: 'Factures',
                   color: AppColors2026.amberSolar,
-                  onTap: () => app.setActiveTab(5),
+                  onTap: () => app.setActiveTab(4),
                 ),
               ],
             ),
@@ -939,9 +937,9 @@ class _OverviewScreenState extends State<OverviewScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // 7. GPS RADAR LIVE CARD
+  // 7. RECENT INVOICES CARD (FACTURES BONATOURS)
   // ---------------------------------------------------------------------------
-  Widget _buildGpsRadarLiveCard(AppStateProvider app) {
+  Widget _buildRecentInvoicesCard(AppStateProvider app, NumberFormat currencyFmt) {
     return SpatialGlassCard(
       padding: const EdgeInsets.all(16),
       borderColor: AppColors2026.amberSolar.withOpacity(0.3),
@@ -954,12 +952,12 @@ class _OverviewScreenState extends State<OverviewScreen> {
               const Expanded(
                 child: Row(
                   children: [
-                    Icon(LucideIcons.radio,
+                    Icon(LucideIcons.fileSpreadsheet,
                         color: AppColors2026.amberSolar, size: 16),
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'TÉLÉMÉTRIE GPS LIVE',
+                        'DERNIÈRES FACTURES',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -978,26 +976,35 @@ class _OverviewScreenState extends State<OverviewScreen> {
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                onPressed: () => app.setActiveTab(5),
-                child: const Text('Ouvrir Carte',
+                onPressed: () => app.setActiveTab(4),
+                child: const Text('Voir Factures',
                     style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
           const SizedBox(height: 10),
-          if (app.gpsDevices.isEmpty)
+          if (app.invoices.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
               child: Center(
                 child: Text(
-                  'Aucun traceur GPS connecté pour le moment.',
+                  'Aucune facture enregistrée pour le moment.',
                   style: TextStyle(
                       fontSize: 12, color: AppColors2026.textMuted),
                 ),
               ),
             )
           else
-            ...app.gpsDevices.take(3).map((d) {
+            ...app.invoices.take(3).map((inv) {
+              Color statusColor = AppColors2026.amberSolar;
+              String statusLabel = 'En attente';
+              if (inv.status == 'paid') {
+                statusColor = AppColors2026.emeraldNeon;
+                statusLabel = 'Payée';
+              } else if (inv.status == 'overdue') {
+                statusColor = AppColors2026.roseLaser;
+                statusLabel = 'En retard';
+              }
               return Container(
                 margin: const EdgeInsets.only(bottom: 8),
                 padding:
@@ -1009,32 +1016,53 @@ class _OverviewScreenState extends State<OverviewScreen> {
                 ),
                 child: Row(
                   children: [
-                    AnimatedPulseDot(color: d.statusColor, size: 8),
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: statusColor.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(LucideIcons.receipt, size: 16, color: statusColor),
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            d.name,
+                            inv.invoiceNumber,
                             style: const TextStyle(
                               fontWeight: FontWeight.w800,
                               fontSize: 13,
                             ),
                           ),
                           Text(
-                            '${d.plate} • ${d.statusLabel}',
+                            inv.customerName,
                             style: const TextStyle(
                               fontSize: 11,
                               color: AppColors2026.textSecondary,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),
                     ),
-                    NeonBadge(
-                      label: '${d.speed.round()} km/h',
-                      color: d.statusColor,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '${currencyFmt.format(inv.totalTtc)} DH',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 13,
+                          ),
+                        ),
+                        NeonBadge(
+                          label: statusLabel,
+                          color: statusColor,
+                        ),
+                      ],
                     ),
                   ],
                 ),

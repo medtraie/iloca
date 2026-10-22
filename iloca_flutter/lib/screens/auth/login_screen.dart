@@ -23,7 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _submit() async {
     if (_emailCtrl.text.trim().isEmpty) return;
     setState(() => _loading = true);
-    final pwd = _passCtrl.text.isEmpty ? 'sft2026' : _passCtrl.text;
+    final pwd = _passCtrl.text.isEmpty ? 'bonatours2026' : _passCtrl.text;
     await widget.appState.login(_emailCtrl.text.trim(), pwd);
     if (mounted) setState(() => _loading = false);
   }
@@ -67,16 +67,16 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 18),
                     const NeonBadge(
-                      label: 'SFT SPATIAL OS • ÉDITION 2026',
+                      label: 'BONATOURS LOCATION • ÉDITION 2026',
                       color: AppColors2026.cyanNeon,
                       pulsing: true,
                     ),
                     const SizedBox(height: 12),
                     const Text(
-                      'iLoca Fleet & Mobility',
+                      'bonatours',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        fontSize: 28,
+                        fontSize: 32,
                         fontWeight: FontWeight.w900,
                         letterSpacing: -0.8,
                         color: Colors.white,

@@ -9,7 +9,7 @@ import '../services/gpswox_service.dart';
 import '../services/supabase_sync_service.dart';
 
 class AppStateProvider extends ChangeNotifier {
-  // Navigation Tab (0: Overview, 1: Clients, 2: Véhicules, 3: Contrats, 4: Rapports, 5: Carte, 6: Suivi, 7: Alertes)
+  // Navigation Tab (0: Overview, 1: Clients, 2: Véhicules, 3: Contrats, 4: Factures, 5: Rapports, 6: Alertes)
   int _activeTabIndex = 0;
   int get activeTabIndex => _activeTabIndex;
 
@@ -18,7 +18,7 @@ class AppStateProvider extends ChangeNotifier {
   bool get isAuthenticated => _isAuthenticated;
   String _userEmail = '';
   String get userEmail => _userEmail;
-  String _userName = 'Administrateur SFT';
+  String _userName = 'Administrateur BonaTours';
   String get userName => _userName;
 
   // Theme Mode
@@ -40,6 +40,9 @@ class AppStateProvider extends ChangeNotifier {
 
   List<ContractModel> _contracts = [];
   List<ContractModel> get contracts => _contracts;
+
+  List<InvoiceModel> _invoices = [];
+  List<InvoiceModel> get invoices => _invoices;
 
   List<GpsDeviceModel> _gpsDevices = [];
   List<GpsDeviceModel> get gpsDevices => _gpsDevices;
@@ -82,13 +85,12 @@ class AppStateProvider extends ChangeNotifier {
       _userEmail = session?.user.email ??
           prefs.getString('iloca_user_email') ??
           AppConfig.superAdminEmail;
-      _userName = prefs.getString('iloca_user_name') ?? 'SFT Location Pro';
+      _userName = prefs.getString('iloca_user_name') ?? 'BonaTours Pro';
     }
 
     // Load Initial Data & Start Real-time Sync
     await refreshAllData();
     _setupRealtimeSubscriptions();
-    _startGpsPolling(const Duration(seconds: 15));
   }
 
   void setActiveTab(int index) {
@@ -134,6 +136,11 @@ class AppStateProvider extends ChangeNotifier {
         _lastSyncTime = DateTime.now();
         notifyListeners();
       },
+      onInvoicesChanged: () async {
+        _invoices = await SupabaseSyncService.fetchInvoices();
+        _lastSyncTime = DateTime.now();
+        notifyListeners();
+      },
       onFinanceChanged: () async {
         _monthlyExpensesAndRepairs =
             await SupabaseSyncService.fetchMonthlyExpensesAndRepairs();
@@ -152,6 +159,7 @@ class AppStateProvider extends ChangeNotifier {
         SupabaseSyncService.fetchClients(),
         SupabaseSyncService.fetchVehicles(),
         SupabaseSyncService.fetchContracts(),
+        SupabaseSyncService.fetchInvoices(),
         SupabaseSyncService.fetchMonthlyExpensesAndRepairs(),
         GpswoxService.getDevices(),
         GpswoxService.getEvents(),
@@ -160,9 +168,10 @@ class AppStateProvider extends ChangeNotifier {
       _clients = results[0] as List<ClientModel>;
       _vehicles = results[1] as List<VehicleModel>;
       _contracts = results[2] as List<ContractModel>;
-      _monthlyExpensesAndRepairs = results[3] as double;
-      _gpsDevices = results[4] as List<GpsDeviceModel>;
-      _gpsEvents = results[5] as List<AlertItemModel>;
+      _invoices = results[3] as List<InvoiceModel>;
+      _monthlyExpensesAndRepairs = results[4] as double;
+      _gpsDevices = results[5] as List<GpsDeviceModel>;
+      _gpsEvents = results[6] as List<AlertItemModel>;
 
       _syncVehiclesWithActiveContracts();
       _lastSyncTime = DateTime.now();
@@ -226,7 +235,7 @@ class AppStateProvider extends ChangeNotifier {
         _isAuthenticated = true;
         _userEmail = res.user!.email ?? email.trim();
         _userName =
-            res.user!.userMetadata?['full_name']?.toString() ?? 'SFT Location';
+            res.user!.userMetadata?['full_name']?.toString() ?? 'BonaTours';
         await prefs.setBool('iloca_authenticated', true);
         await prefs.setString('iloca_user_email', _userEmail);
         await prefs.setString('iloca_user_name', _userName);
@@ -317,6 +326,23 @@ class AppStateProvider extends ChangeNotifier {
     _syncVehiclesWithActiveContracts();
     notifyListeners();
     await SupabaseSyncService.deleteContract(contract);
+  }
+
+  Future<void> saveInvoice(InvoiceModel invoice, {bool isEdit = false}) async {
+    final saved = await SupabaseSyncService.saveInvoice(invoice, isEdit: isEdit);
+    if (isEdit) {
+      _invoices = _invoices.map((inv) => inv.id == saved.id ? saved : inv).toList();
+    } else {
+      _invoices = [saved, ..._invoices.where((inv) => inv.id != saved.id)];
+    }
+    _lastSyncTime = DateTime.now();
+    notifyListeners();
+  }
+
+  Future<void> deleteInvoice(String id) async {
+    _invoices = _invoices.where((inv) => inv.id != id).toList();
+    notifyListeners();
+    await SupabaseSyncService.deleteInvoice(id);
   }
 
   // ===========================================================================

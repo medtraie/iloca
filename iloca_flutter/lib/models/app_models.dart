@@ -857,3 +857,184 @@ class AlertItemModel {
     this.source = 'system',
   });
 }
+
+
+/// 7. Invoice Model (100% Web Parity with Supabase public.invoices)
+class InvoiceModel {
+  final String id;
+  final String invoiceNumber;
+  final String customerName;
+  final String customerICE;
+  final String invoiceDate;
+  final String description;
+  final double quantity;
+  final String unit;
+  final double unitPrice;
+  final double totalHT;
+  final double tva;
+  final double taxRate;
+  final double totalTTC;
+  final String paymentMethod; // 'CHEQUE', 'VIREMENT', 'ESPECES', 'CARTE', 'AUTRE'
+  final String status; // 'pending', 'paid', 'overdue'
+  final String createdAt;
+  final String updatedAt;
+
+  const InvoiceModel({
+    required this.id,
+    required this.invoiceNumber,
+    required this.customerName,
+    this.customerICE = '',
+    required this.invoiceDate,
+    this.description = '',
+    this.quantity = 1,
+    this.unit = 'J',
+    this.unitPrice = 0,
+    required this.totalHT,
+    required this.tva,
+    this.taxRate = 20,
+    required this.totalTTC,
+    this.paymentMethod = 'CHEQUE',
+    this.status = 'pending',
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  double get totalTtc => totalTTC;
+  double get totalHt => totalHT;
+  String get customerIce => customerICE;
+
+  bool get isPaid => status == 'paid';
+  bool get isPending => status == 'pending' || status == 'sent';
+  bool get isOverdue => status == 'overdue';
+
+  static double _parseNum(dynamic v, [double fallback = 0]) {
+    if (v == null) return fallback;
+    final clean = v.toString().replaceAll(RegExp(r'[^0-9.-]'), '');
+    return double.tryParse(clean) ?? fallback;
+  }
+
+  static String _mapPaymentMethodFromDb(dynamic val) {
+    final v = (val ?? '').toString().trim().toLowerCase();
+    if (v.contains('check') || v.contains('chèque') || v.contains('cheque')) return 'CHEQUE';
+    if (v.contains('trans') || v.contains('vir')) return 'VIREMENT';
+    if (v.contains('cash') || v.contains('esp')) return 'ESPECES';
+    if (v.contains('card') || v.contains('cart')) return 'CARTE';
+    return 'AUTRE';
+  }
+
+  static String _mapPaymentMethodToDb(String val) {
+    final v = val.trim().toLowerCase();
+    if (v.contains('ch')) return 'check';
+    if (v.contains('vir')) return 'transfer';
+    if (v.contains('esp') || v.contains('cash')) return 'cash';
+    if (v.contains('car')) return 'card';
+    return 'other';
+  }
+
+  static String _mapStatusFromDb(dynamic val) {
+    final v = (val ?? '').toString().trim().toLowerCase();
+    if (v == 'paid') return 'paid';
+    if (v == 'overdue') return 'overdue';
+    return 'pending';
+  }
+
+  static String _mapStatusToDb(String val) {
+    final v = val.trim().toLowerCase();
+    if (v == 'paid') return 'paid';
+    if (v == 'overdue') return 'overdue';
+    return 'sent';
+  }
+
+  factory InvoiceModel.fromJson(Map<String, dynamic> row) {
+    final now = DateTime.now().toIso8601String();
+    final ht = _parseNum(row['subtotal_ht'] ?? row['totalHT'] ?? row['total_ht'], 0);
+    final tax = _parseNum(row['tax_amount'] ?? row['tva'] ?? row['taxAmount'], ht * 0.2);
+    final ttc = _parseNum(row['total_ttc'] ?? row['totalTTC'], ht + tax);
+
+    return InvoiceModel(
+      id: (row['id'] ?? '').toString(),
+      invoiceNumber: (row['invoice_number'] ?? row['invoiceNumber'] ?? '0001/2026').toString(),
+      customerName: (row['customer_name'] ?? row['customerName'] ?? 'Client').toString(),
+      customerICE: (row['customer_ice'] ?? row['customerICE'] ?? '').toString(),
+      invoiceDate: (row['invoice_date'] ?? row['invoiceDate'] ?? now.substring(0, 10)).toString(),
+      description: (row['description'] ?? '').toString(),
+      quantity: _parseNum(row['quantity'], 1),
+      unit: (row['unit'] ?? 'J').toString(),
+      unitPrice: _parseNum(row['unitPrice'] ?? row['unit_price'], ht),
+      totalHT: ht,
+      tva: tax,
+      taxRate: _parseNum(row['tax_rate'], 20),
+      totalTTC: ttc,
+      paymentMethod: _mapPaymentMethodFromDb(row['payment_method'] ?? row['paymentMethod']),
+      status: _mapStatusFromDb(row['status']),
+      createdAt: (row['created_at'] ?? now).toString(),
+      updatedAt: (row['updated_at'] ?? now).toString(),
+    );
+  }
+
+  Map<String, dynamic> toSupabasePayload() {
+    return {
+      'invoice_number': invoiceNumber.trim(),
+      'customer_name': customerName.trim(),
+      'customer_ice': customerICE.trim().isEmpty ? null : customerICE.trim(),
+      'invoice_date': invoiceDate.trim(),
+      'description': description.trim().isEmpty ? null : description.trim(),
+      'subtotal_ht': totalHT,
+      'tax_amount': tva,
+      'tax_rate': taxRate,
+      'total_ttc': totalTTC,
+      'payment_method': _mapPaymentMethodToDb(paymentMethod),
+      'status': _mapStatusToDb(status),
+    };
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        ...toSupabasePayload(),
+        'quantity': quantity,
+        'unit': unit,
+        'unitPrice': unitPrice,
+        'created_at': createdAt,
+        'updated_at': updatedAt,
+      };
+
+  InvoiceModel copyWith({
+    String? id,
+    String? invoiceNumber,
+    String? customerName,
+    String? customerICE,
+    String? invoiceDate,
+    String? description,
+    double? quantity,
+    String? unit,
+    double? unitPrice,
+    double? totalHT,
+    double? tva,
+    double? taxRate,
+    double? totalTTC,
+    String? paymentMethod,
+    String? status,
+    String? createdAt,
+    String? updatedAt,
+  }) {
+    return InvoiceModel(
+      id: id ?? this.id,
+      invoiceNumber: invoiceNumber ?? this.invoiceNumber,
+      customerName: customerName ?? this.customerName,
+      customerICE: customerICE ?? this.customerICE,
+      invoiceDate: invoiceDate ?? this.invoiceDate,
+      description: description ?? this.description,
+      quantity: quantity ?? this.quantity,
+      unit: unit ?? this.unit,
+      unitPrice: unitPrice ?? this.unitPrice,
+      totalHT: totalHT ?? this.totalHT,
+      tva: tva ?? this.tva,
+      taxRate: taxRate ?? this.taxRate,
+      totalTTC: totalTTC ?? this.totalTTC,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      status: status ?? this.status,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+}

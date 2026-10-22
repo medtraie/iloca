@@ -60,7 +60,7 @@ class _IlocaSpatialApp2026State extends State<IlocaSpatialApp2026> {
       listenable: _appState,
       builder: (context, _) {
         return MaterialApp(
-          title: 'iLOCA SFT 2026',
+          title: 'bonatours',
           debugShowCheckedModeBanner: false,
           themeMode: _appState.isDarkMode ? ThemeMode.dark : ThemeMode.light,
           darkTheme: AppTheme2026.darkSpatialTheme,
