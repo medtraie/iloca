@@ -1,11 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/config/app_config.dart';
 import '../core/theme/app_theme_2026.dart';
 import '../models/app_models.dart';
-import '../services/gpswox_service.dart';
 import '../services/supabase_sync_service.dart';
 
 class AppStateProvider extends ChangeNotifier {
@@ -44,14 +44,10 @@ class AppStateProvider extends ChangeNotifier {
   List<InvoiceModel> _invoices = [];
   List<InvoiceModel> get invoices => _invoices;
 
-  List<GpsDeviceModel> _gpsDevices = [];
-  List<GpsDeviceModel> get gpsDevices => _gpsDevices;
-
-  List<AlertItemModel> _gpsEvents = [];
   double _monthlyExpensesAndRepairs = 0;
   double get monthlyExpensesAndRepairs => _monthlyExpensesAndRepairs;
 
-  // Traceur Customizer State (Persisted & Shared)
+  // Traceur Customizer State (Persisted)
   Color _tracerColor = AppColors2026.cyanNeon;
   Color get tracerColor => _tracerColor;
 
@@ -65,19 +61,19 @@ class AppStateProvider extends ChangeNotifier {
   bool get tracerGlow => _tracerGlow;
 
   RealtimeChannel? _realtimeChannel;
-  Timer? _gpsPollingTimer;
 
+  /// Fast Non-blocking Initialization
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // Restore Traceur Customizations
+    // 1. Restore Traceur Customizations
     final savedColorVal = prefs.getInt('sft_tracer_color_int');
     if (savedColorVal != null) _tracerColor = Color(savedColorVal);
     _tracerWeight = prefs.getDouble('sft_tracer_weight') ?? 5.0;
     _tracerSize = prefs.getDouble('sft_tracer_size') ?? 40.0;
     _tracerGlow = prefs.getBool('sft_tracer_glow') ?? true;
 
-    // Check Auth Session
+    // 2. Check Auth Session
     final session = Supabase.instance.client.auth.currentSession;
     final savedAuth = prefs.getBool('iloca_authenticated') ?? false;
     if (session?.user != null || savedAuth) {
@@ -88,9 +84,53 @@ class AppStateProvider extends ChangeNotifier {
       _userName = prefs.getString('iloca_user_name') ?? 'BonaTours Pro';
     }
 
-    // Load Initial Data & Start Real-time Sync
-    await refreshAllData();
+    // 3. Instant Cold-boot from Local Cache (0ms load time)
+    _loadFromLocalCache(prefs);
+    notifyListeners();
+
+    // 4. Background non-blocking network refresh & realtime setup
+    refreshAllData();
     _setupRealtimeSubscriptions();
+  }
+
+  void _loadFromLocalCache(SharedPreferences prefs) {
+    try {
+      final cJson = prefs.getString('cache_clients');
+      if (cJson != null) {
+        final list = jsonDecode(cJson) as List<dynamic>;
+        _clients = list.map((e) => ClientModel.fromJson(Map<String, dynamic>.from(e))).toList();
+      }
+      final vJson = prefs.getString('cache_vehicles');
+      if (vJson != null) {
+        final list = jsonDecode(vJson) as List<dynamic>;
+        _vehicles = list.map((e) => VehicleModel.fromJson(Map<String, dynamic>.from(e))).toList();
+      }
+      final kJson = prefs.getString('cache_contracts');
+      if (kJson != null) {
+        final list = jsonDecode(kJson) as List<dynamic>;
+        _contracts = list.map((e) => ContractModel.fromJson(Map<String, dynamic>.from(e))).toList();
+      }
+      final iJson = prefs.getString('cache_invoices');
+      if (iJson != null) {
+        final list = jsonDecode(iJson) as List<dynamic>;
+        _invoices = list.map((e) => InvoiceModel.fromJson(Map<String, dynamic>.from(e))).toList();
+      }
+      _monthlyExpensesAndRepairs = prefs.getDouble('cache_monthly_expenses') ?? 0;
+      _syncVehiclesWithActiveContracts();
+    } catch (e) {
+      debugPrint('[AppState] Local cache restore note: $e');
+    }
+  }
+
+  Future<void> _saveToLocalCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('cache_clients', jsonEncode(_clients.map((c) => c.toJson()).toList()));
+      await prefs.setString('cache_vehicles', jsonEncode(_vehicles.map((v) => v.toJson()).toList()));
+      await prefs.setString('cache_contracts', jsonEncode(_contracts.map((c) => c.toJson()).toList()));
+      await prefs.setString('cache_invoices', jsonEncode(_invoices.map((i) => i.toJson()).toList()));
+      await prefs.setDouble('cache_monthly_expenses', _monthlyExpensesAndRepairs);
+    } catch (_) {}
   }
 
   void setActiveTab(int index) {
@@ -104,52 +144,46 @@ class AppStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Adjust GPS polling cadence (e.g. 6 seconds when live Suivi is active on Map/Tracking)
-  void setFastGpsPolling(bool fast) {
-    _startGpsPolling(Duration(seconds: fast ? 6 : 15));
-  }
-
-  void _startGpsPolling(Duration interval) {
-    _gpsPollingTimer?.cancel();
-    _gpsPollingTimer = Timer.periodic(interval, (_) {
-      refreshGpsTelemetry();
-    });
-  }
-
   void _setupRealtimeSubscriptions() {
     _realtimeChannel?.unsubscribe();
     _realtimeChannel = SupabaseSyncService.subscribeRealtime(
       onClientsChanged: () async {
         _clients = await SupabaseSyncService.fetchClients();
         _lastSyncTime = DateTime.now();
+        _saveToLocalCache();
         notifyListeners();
       },
       onVehiclesChanged: () async {
         _vehicles = await SupabaseSyncService.fetchVehicles();
         _syncVehiclesWithActiveContracts();
         _lastSyncTime = DateTime.now();
+        _saveToLocalCache();
         notifyListeners();
       },
       onContractsChanged: () async {
         _contracts = await SupabaseSyncService.fetchContracts();
         _syncVehiclesWithActiveContracts();
         _lastSyncTime = DateTime.now();
+        _saveToLocalCache();
         notifyListeners();
       },
       onInvoicesChanged: () async {
         _invoices = await SupabaseSyncService.fetchInvoices();
         _lastSyncTime = DateTime.now();
+        _saveToLocalCache();
         notifyListeners();
       },
       onFinanceChanged: () async {
         _monthlyExpensesAndRepairs =
             await SupabaseSyncService.fetchMonthlyExpensesAndRepairs();
         _lastSyncTime = DateTime.now();
+        _saveToLocalCache();
         notifyListeners();
       },
     );
   }
 
+  /// High-speed parallel refresh from Supabase (Zero GPS blocking)
   Future<void> refreshAllData() async {
     _isSyncing = true;
     notifyListeners();
@@ -161,8 +195,6 @@ class AppStateProvider extends ChangeNotifier {
         SupabaseSyncService.fetchContracts(),
         SupabaseSyncService.fetchInvoices(),
         SupabaseSyncService.fetchMonthlyExpensesAndRepairs(),
-        GpswoxService.getDevices(),
-        GpswoxService.getEvents(),
       ]);
 
       _clients = results[0] as List<ClientModel>;
@@ -170,28 +202,16 @@ class AppStateProvider extends ChangeNotifier {
       _contracts = results[2] as List<ContractModel>;
       _invoices = results[3] as List<InvoiceModel>;
       _monthlyExpensesAndRepairs = results[4] as double;
-      _gpsDevices = results[5] as List<GpsDeviceModel>;
-      _gpsEvents = results[6] as List<AlertItemModel>;
 
       _syncVehiclesWithActiveContracts();
       _lastSyncTime = DateTime.now();
+      _saveToLocalCache();
     } catch (e) {
       debugPrint('[AppState] refreshAllData error: $e');
     } finally {
       _isSyncing = false;
       notifyListeners();
     }
-  }
-
-  Future<void> refreshGpsTelemetry() async {
-    try {
-      final devices = await GpswoxService.getDevices();
-      if (devices.isNotEmpty) {
-        _gpsDevices = devices;
-        _lastSyncTime = DateTime.now();
-        notifyListeners();
-      }
-    } catch (_) {}
   }
 
   void _syncVehiclesWithActiveContracts() {
@@ -205,17 +225,11 @@ class AppStateProvider extends ChangeNotifier {
     }
 
     _vehicles = _vehicles.map((v) {
-      final matchedById = activeVehicleIds.contains(v.id);
-      final matchedByName = activeVehicleNames.any((name) =>
-          name.contains(v.fullName.toLowerCase()) ||
-          (v.registration.isNotEmpty &&
-              name.contains(v.registration.toLowerCase())));
-      final shouldBeRented = matchedById || matchedByName;
-
-      if (v.status == 'disponible' && shouldBeRented) {
+      final isRented = activeVehicleIds.contains(v.id) ||
+          activeVehicleNames.contains(v.fullName.toLowerCase()) ||
+          activeVehicleNames.contains(v.registration.toLowerCase());
+      if (isRented && v.status.toLowerCase() != 'loue') {
         return v.copyWith(status: 'loue');
-      } else if (v.status == 'loue' && !shouldBeRented) {
-        return v.copyWith(status: 'disponible');
       }
       return v;
     }).toList();
@@ -281,11 +295,13 @@ class AppStateProvider extends ChangeNotifier {
       _clients = [saved, ..._clients.where((c) => c.id != saved.id)];
     }
     _lastSyncTime = DateTime.now();
+    _saveToLocalCache();
     notifyListeners();
   }
 
   Future<void> deleteClient(String id) async {
     _clients = _clients.where((c) => c.id != id).toList();
+    _saveToLocalCache();
     notifyListeners();
     await SupabaseSyncService.deleteClient(id);
   }
@@ -299,18 +315,19 @@ class AppStateProvider extends ChangeNotifier {
     }
     _syncVehiclesWithActiveContracts();
     _lastSyncTime = DateTime.now();
+    _saveToLocalCache();
     notifyListeners();
   }
 
   Future<void> deleteVehicle(String id) async {
     _vehicles = _vehicles.where((v) => v.id != id).toList();
+    _saveToLocalCache();
     notifyListeners();
     await SupabaseSyncService.deleteVehicle(id);
   }
 
   Future<void> saveContract(ContractModel contract, {bool isEdit = false}) async {
-    final saved =
-        await SupabaseSyncService.saveContract(contract, isEdit: isEdit);
+    final saved = await SupabaseSyncService.saveContract(contract, isEdit: isEdit);
     if (isEdit) {
       _contracts = _contracts.map((c) => c.id == saved.id ? saved : c).toList();
     } else {
@@ -318,66 +335,48 @@ class AppStateProvider extends ChangeNotifier {
     }
     _syncVehiclesWithActiveContracts();
     _lastSyncTime = DateTime.now();
+    _saveToLocalCache();
     notifyListeners();
   }
 
-  Future<void> deleteContract(ContractModel contract) async {
-    _contracts = _contracts.where((c) => c.id != contract.id).toList();
+  List<GpsDeviceModel> get gpsDevices => const [];
+  Future<void> refreshGpsTelemetry() async {}
+
+  Future<void> deleteContract(dynamic target) async {
+    final String id = target is ContractModel ? target.id : target.toString();
+    final ContractModel? toDelete = target is ContractModel
+        ? target
+        : _contracts.where((c) => c.id == id).firstOrNull;
+    _contracts = _contracts.where((c) => c.id != id).toList();
     _syncVehiclesWithActiveContracts();
+    _saveToLocalCache();
     notifyListeners();
-    await SupabaseSyncService.deleteContract(contract);
+    if (toDelete != null) {
+      await SupabaseSyncService.deleteContract(toDelete);
+    }
   }
 
   Future<void> saveInvoice(InvoiceModel invoice, {bool isEdit = false}) async {
     final saved = await SupabaseSyncService.saveInvoice(invoice, isEdit: isEdit);
     if (isEdit) {
-      _invoices = _invoices.map((inv) => inv.id == saved.id ? saved : inv).toList();
+      _invoices = _invoices.map((i) => i.id == saved.id ? saved : i).toList();
     } else {
-      _invoices = [saved, ..._invoices.where((inv) => inv.id != saved.id)];
+      _invoices = [saved, ..._invoices.where((i) => i.id != saved.id)];
     }
     _lastSyncTime = DateTime.now();
+    _saveToLocalCache();
     notifyListeners();
   }
 
   Future<void> deleteInvoice(String id) async {
-    _invoices = _invoices.where((inv) => inv.id != id).toList();
+    _invoices = _invoices.where((i) => i.id != id).toList();
+    _saveToLocalCache();
     notifyListeners();
     await SupabaseSyncService.deleteInvoice(id);
   }
 
   // ===========================================================================
-  // TRACEUR CUSTOMIZATION SETTERS
-  // ===========================================================================
-  Future<void> setTracerColor(Color color) async {
-    _tracerColor = color;
-    notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('sft_tracer_color_int', color.value);
-  }
-
-  Future<void> setTracerWeight(double weight) async {
-    _tracerWeight = weight;
-    notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble('sft_tracer_weight', weight);
-  }
-
-  Future<void> setTracerSize(double size) async {
-    _tracerSize = size;
-    notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble('sft_tracer_size', size);
-  }
-
-  Future<void> setTracerGlow(bool glow) async {
-    _tracerGlow = glow;
-    notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('sft_tracer_glow', glow);
-  }
-
-  // ===========================================================================
-  // COMPUTED ANALYTICS & SYSTEM ALERTS
+  // COMPUTED ANALYTICS & FLEET ALERTS (ZERO GPS - 100% OPERATIONAL)
   // ===========================================================================
   double get monthlyRevenue {
     final now = DateTime.now();
@@ -400,90 +399,100 @@ class AppStateProvider extends ChangeNotifier {
   int get maintenanceVehiclesCount =>
       _vehicles.where((v) => v.status.toLowerCase() == 'maintenance').length;
 
+  /// Pure Operational & Business Alerts (Zero GPS Tracking alerts)
   List<AlertItemModel> get allAlerts {
     final computed = <AlertItemModel>[];
     final now = DateTime.now();
 
-    // 1. Overdue / Expiring Contracts
+    // 1. Contrats Dépassés (Overdue contracts) - Critical
     for (final c in _contracts) {
       if (c.isActive) {
-        final end = DateTime.tryParse(c.endDate);
+        final end = DateTime.tryParse(c.effectiveEndDate) ?? DateTime.tryParse(c.endDate);
         if (end != null) {
-          final daysLeft = end.difference(now).inDays;
+          final diff = end.difference(now);
+          final daysLeft = diff.inDays;
           if (daysLeft < 0) {
             computed.add(AlertItemModel(
               id: 'cnt_overdue_${c.id}',
               severity: 'critical',
               title: 'Contrat dépassé (${c.contractNumber})',
               message:
-                  'Le locataire ${c.customerName} a dépassé la date de retour (${c.endDate}) pour ${c.vehicle}.',
-              date: c.endDate,
+                  'Le locataire ${c.customerName} a dépassé la date de restitution (${c.effectiveEndDate}) pour ${c.vehicle} (${daysLeft.abs()} jours de retard).',
+              date: c.effectiveEndDate,
               vehicleName: c.vehicle,
-              source: 'system',
+              source: 'contrat',
             ));
           } else if (daysLeft <= 2) {
+            // 2. Retours Imminents (< 48h) - Warning
             computed.add(AlertItemModel(
               id: 'cnt_soon_${c.id}',
               severity: 'warning',
-              title: 'Retour imminent (${c.contractNumber})',
+              title: 'Restitution imminente (${c.contractNumber})',
               message:
-                  'Le contrat de ${c.customerName} (${c.vehicle}) expire dans ${daysLeft == 0 ? "aujourd'hui" : "$daysLeft j"}.',
-              date: c.endDate,
+                  'Le contrat de ${c.customerName} (${c.vehicle}) expire ${daysLeft == 0 ? "aujourd'hui" : "dans $daysLeft jour(s)"}.',
+              date: c.effectiveEndDate,
               vehicleName: c.vehicle,
-              source: 'system',
+              source: 'contrat',
             ));
           }
         }
       }
     }
 
-    // 2. Vehicles in Maintenance or High Mileage
+    // 3. Factures Impayées / En Retard (Unpaid Invoices) - Warning
+    for (final inv in _invoices) {
+      if (inv.status.toLowerCase() == 'overdue' ||
+          (inv.status.toLowerCase() == 'pending' && inv.totalTtc > 0)) {
+        computed.add(AlertItemModel(
+          id: 'inv_unpaid_${inv.id}',
+          severity: inv.status.toLowerCase() == 'overdue' ? 'critical' : 'warning',
+          title: 'Facture en attente (${inv.invoiceNumber})',
+          message:
+              'Client ${inv.customerName} : Montant de ${inv.totalTtc.round()} DH en attente de règlement.',
+          date: inv.invoiceDate,
+          vehicleName: 'Facture #${inv.invoiceNumber}',
+          source: 'facture',
+        ));
+      }
+    }
+
+    // 4. Soldes Contrats à Recouvrer (Remaining balances) - Info
+    for (final c in _contracts) {
+      if (c.isActive && c.remainingAmount > 0) {
+        computed.add(AlertItemModel(
+          id: 'cnt_balance_${c.id}',
+          severity: 'info',
+          title: 'Reste à recouvrer (${c.contractNumber})',
+          message:
+              'Solde restant de ${c.remainingAmount.round()} DH pour ${c.customerName} (${c.vehicle}).',
+          date: c.startDate,
+          vehicleName: c.vehicle,
+          source: 'finance',
+        ));
+      }
+    }
+
+    // 5. Véhicules en Maintenance / Atelier - Info
     for (final v in _vehicles) {
       if (v.status.toLowerCase() == 'maintenance') {
         computed.add(AlertItemModel(
           id: 'veh_maint_${v.id}',
           severity: 'warning',
-          title: 'Véhicule en maintenance',
-          message: '${v.fullName} (${v.registration}) est actuellement immobilisé en atelier.',
+          title: 'Véhicule en atelier (${v.registration})',
+          message: '${v.fullName} est actuellement immobilisé pour entretien ou révision.',
           date: v.updatedAt,
           vehicleName: v.fullName,
-          source: 'system',
+          source: 'flotte',
         ));
       }
     }
 
-    // 3. GPSWOX Live Speeding & Offline Alerts
-    for (final d in _gpsDevices) {
-      if (d.speed > 120) {
-        computed.add(AlertItemModel(
-          id: 'gps_speed_${d.id}',
-          severity: 'critical',
-          title: 'Excès de vitesse détecté (${d.speed.round()} km/h)',
-          message: '${d.name} (${d.plate}) roule à ${d.speed.round()} km/h en direct.',
-          date: d.lastUpdate,
-          vehicleName: d.name,
-          source: 'gpswox',
-        ));
-      } else if (!d.online) {
-        computed.add(AlertItemModel(
-          id: 'gps_off_${d.id}',
-          severity: 'info',
-          title: 'Traceur en veille / Hors ligne',
-          message: '${d.name} (${d.plate}) est en arrêt prolongé ou hors couverture.',
-          date: d.lastUpdate,
-          vehicleName: d.name,
-          source: 'gpswox',
-        ));
-      }
-    }
-
-    return [...computed, ..._gpsEvents];
+    return computed;
   }
 
   @override
   void dispose() {
     _realtimeChannel?.unsubscribe();
-    _gpsPollingTimer?.cancel();
     super.dispose();
   }
 }

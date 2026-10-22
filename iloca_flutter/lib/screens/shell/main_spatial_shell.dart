@@ -26,7 +26,7 @@ class SpatialSectionMeta {
   });
 }
 
-class MainSpatialShell extends StatelessWidget {
+class MainSpatialShell extends StatefulWidget {
   final AppStateProvider appState;
 
   const MainSpatialShell({super.key, required this.appState});
@@ -70,28 +70,41 @@ class MainSpatialShell extends StatelessWidget {
     ),
     SpatialSectionMeta(
       title: 'Alertes',
-      subtitle: 'Télémesure Sécurité, Retards & Contrats',
+      subtitle: 'Surveillance Flotte, Retards & Recouvrement',
       icon: LucideIcons.bellRing,
       accentColor: AppColors2026.roseLaser,
     ),
   ];
 
   @override
-  Widget build(BuildContext context) {
-    final currentIndex =
-        appState.activeTabIndex.clamp(0, sections.length - 1);
-    final currentMeta = sections[currentIndex];
-    final isWide = MediaQuery.of(context).size.width >= 840;
+  State<MainSpatialShell> createState() => _MainSpatialShellState();
+}
 
-    final screens = [
-      OverviewScreen(appState: appState),
-      ClientsScreen(appState: appState),
-      VehiclesScreen(appState: appState),
-      ContractsScreen(appState: appState),
-      InvoicesScreen(appState: appState),
-      ReportsScreen(appState: appState),
-      AlertsScreen(appState: appState),
+class _MainSpatialShellState extends State<MainSpatialShell> {
+  late final List<Widget> _screens;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-cache all screens once for instant 0ms tab switching
+    _screens = [
+      OverviewScreen(appState: widget.appState),
+      ClientsScreen(appState: widget.appState),
+      VehiclesScreen(appState: widget.appState),
+      ContractsScreen(appState: widget.appState),
+      InvoicesScreen(appState: widget.appState),
+      ReportsScreen(appState: widget.appState),
+      AlertsScreen(appState: widget.appState),
     ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final appState = widget.appState;
+    final currentIndex =
+        appState.activeTabIndex.clamp(0, MainSpatialShell.sections.length - 1);
+    final currentMeta = MainSpatialShell.sections[currentIndex];
+    final isWide = MediaQuery.of(context).size.width >= 840;
 
     return Scaffold(
       extendBody: true,
@@ -122,7 +135,7 @@ class MainSpatialShell extends StatelessWidget {
                     Expanded(
                       child: IndexedStack(
                         index: currentIndex,
-                        children: screens,
+                        children: _screens,
                       ),
                     ),
                   ],
@@ -332,10 +345,10 @@ class MainSpatialShell extends StatelessWidget {
             const SizedBox(height: 20),
             Expanded(
               child: ListView.separated(
-                itemCount: sections.length,
+                itemCount: MainSpatialShell.sections.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 6),
                 itemBuilder: (context, index) {
-                  final item = sections[index];
+                  final item = MainSpatialShell.sections[index];
                   final selected = index == currentIndex;
                   final alertBadge = index == 6 && state.allAlerts.isNotEmpty
                       ? state.allAlerts.length
@@ -443,10 +456,10 @@ class MainSpatialShell extends StatelessWidget {
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            itemCount: sections.length,
+            itemCount: MainSpatialShell.sections.length,
             separatorBuilder: (_, __) => const SizedBox(width: 6),
             itemBuilder: (context, index) {
-              final item = sections[index];
+              final item = MainSpatialShell.sections[index];
               final selected = index == currentIndex;
               final alertBadge = index == 6 && state.allAlerts.isNotEmpty
                   ? state.allAlerts.length

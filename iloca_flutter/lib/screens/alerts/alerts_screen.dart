@@ -4,7 +4,7 @@ import '../../core/theme/app_theme_2026.dart';
 import '../../core/widgets/spatial_glass_widgets.dart';
 import '../../providers/app_state_provider.dart';
 
-/// 8. ALERTES SCREEN (Centre d'Alertes Système & Événements GPSWOX 2026)
+/// Centre d'Alertes Opérationnel BonaTours 2026 (100% Retards, Contrats, Factures & Flotte - Zéro GPS)
 class AlertsScreen extends StatefulWidget {
   final AppStateProvider appState;
 
@@ -15,7 +15,7 @@ class AlertsScreen extends StatefulWidget {
 }
 
 class _AlertsScreenState extends State<AlertsScreen> {
-  String _severityFilter = 'all'; // 'all' | 'critical' | 'warning' | 'info'
+  String _categoryFilter = 'all'; // 'all' | 'critical' | 'warning' | 'finance'
 
   Color _sevColor(String s) {
     switch (s) {
@@ -31,23 +31,21 @@ class _AlertsScreenState extends State<AlertsScreen> {
   String _sevLabel(String s) {
     switch (s) {
       case 'critical':
-        return 'CRITIQUE';
+        return 'URGENT / CRITIQUE';
       case 'warning':
         return 'AVERTISSEMENT';
       default:
-        return 'INFO';
+        return 'SUIVI & SOLDE';
     }
   }
 
-  IconData _sevIcon(String s) {
-    switch (s) {
-      case 'critical':
-        return LucideIcons.shieldAlert;
-      case 'warning':
-        return LucideIcons.alertTriangle;
-      default:
-        return LucideIcons.info;
-    }
+  IconData _sevIcon(String source, String sev) {
+    if (sev == 'critical') return LucideIcons.alertOctagon;
+    if (source == 'contrat') return LucideIcons.fileWarning;
+    if (source == 'facture') return LucideIcons.receipt;
+    if (source == 'finance') return LucideIcons.coins;
+    if (source == 'flotte') return LucideIcons.wrench;
+    return LucideIcons.alertTriangle;
   }
 
   @override
@@ -55,12 +53,12 @@ class _AlertsScreenState extends State<AlertsScreen> {
     final all = widget.appState.allAlerts;
     final critCount = all.where((a) => a.severity == 'critical').length;
     final warnCount = all.where((a) => a.severity == 'warning').length;
-    final infoCount = all.where((a) => a.severity == 'info').length;
+    final financeCount = all.where((a) => a.source == 'facture' || a.source == 'finance').length;
 
     final filtered = all.where((a) {
-      if (_severityFilter != 'all' && a.severity != _severityFilter) {
-        return false;
-      }
+      if (_categoryFilter == 'critical') return a.severity == 'critical';
+      if (_categoryFilter == 'warning') return a.severity == 'warning';
+      if (_categoryFilter == 'finance') return a.source == 'facture' || a.source == 'finance';
       return true;
     }).toList();
 
@@ -73,70 +71,81 @@ class _AlertsScreenState extends State<AlertsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'SURVEILLANCE & SÉCURITÉ SFT',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors2026.roseLaser,
-                      letterSpacing: 0.7,
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'CENTRE D\'EXPLOITATION BONATOURS',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors2026.roseLaser,
+                        letterSpacing: 0.7,
+                      ),
                     ),
-                  ),
-                  Text(
-                    'Centre d\'Alertes Live',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
+                    Text(
+                      'Alertes Opérationnelles',
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               OutlinedButton.icon(
                 onPressed: widget.appState.refreshAllData,
-                icon: const Icon(LucideIcons.refreshCw, size: 15),
+                icon: const Icon(LucideIcons.refreshCw, size: 14),
                 label: const Text('Actualiser'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: Colors.white24),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
               ),
             ],
           ),
 
           const SizedBox(height: 14),
 
-          // Severity KPI Row
+          // Operational Filter Cards (No GPS)
           Row(
             children: [
               Expanded(
                 child: _SeverityCounterCard(
                   label: 'Critiques',
+                  subtitle: 'Retards',
                   count: critCount,
                   color: AppColors2026.roseLaser,
-                  selected: _severityFilter == 'critical',
-                  onTap: () => setState(() => _severityFilter =
-                      _severityFilter == 'critical' ? 'all' : 'critical'),
+                  selected: _categoryFilter == 'critical',
+                  onTap: () => setState(() => _categoryFilter =
+                      _categoryFilter == 'critical' ? 'all' : 'critical'),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: _SeverityCounterCard(
-                  label: 'Avertissements',
+                  label: 'Rappels',
+                  subtitle: '< 48h & Atelier',
                   count: warnCount,
                   color: AppColors2026.amberSolar,
-                  selected: _severityFilter == 'warning',
-                  onTap: () => setState(() => _severityFilter =
-                      _severityFilter == 'warning' ? 'all' : 'warning'),
+                  selected: _categoryFilter == 'warning',
+                  onTap: () => setState(() => _categoryFilter =
+                      _categoryFilter == 'warning' ? 'all' : 'warning'),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: _SeverityCounterCard(
-                  label: 'Infos GPS',
-                  count: infoCount,
+                  label: 'Finances',
+                  subtitle: 'Soldes & Impayés',
+                  count: financeCount,
                   color: AppColors2026.cyanNeon,
-                  selected: _severityFilter == 'info',
-                  onTap: () => setState(() => _severityFilter =
-                      _severityFilter == 'info' ? 'all' : 'info'),
+                  selected: _categoryFilter == 'finance',
+                  onTap: () => setState(() => _categoryFilter =
+                      _categoryFilter == 'finance' ? 'all' : 'finance'),
                 ),
               ),
             ],
@@ -146,25 +155,25 @@ class _AlertsScreenState extends State<AlertsScreen> {
 
           if (filtered.isEmpty)
             SpatialGlassCard(
-              padding: const EdgeInsets.all(28),
+              padding: const EdgeInsets.all(32),
               child: Column(
                 children: [
                   const Icon(
-                    LucideIcons.shieldCheck,
-                    size: 42,
+                    LucideIcons.checkCircle2,
+                    size: 44,
                     color: AppColors2026.emeraldNeon,
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   const Text(
-                    'Aucune alerte active',
+                    'Aucune anomalie active',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Text(
-                    'Tous les véhicules et contrats fonctionnent normalement.',
+                    'Tous les contrats, véhicules et factures sont conformes et à jour.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 12,
@@ -179,7 +188,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
               final c = _sevColor(alert.severity);
               return SpatialGlassCard(
                 margin: const EdgeInsets.only(bottom: 10),
-                borderColor: c.withOpacity(0.4),
+                borderColor: c.withOpacity(0.35),
+                padding: const EdgeInsets.all(14),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -187,9 +197,13 @@ class _AlertsScreenState extends State<AlertsScreen> {
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: c.withOpacity(0.16),
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Icon(_sevIcon(alert.severity), color: c, size: 20),
+                      child: Icon(
+                        _sevIcon(alert.source, alert.severity),
+                        color: c,
+                        size: 20,
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -204,12 +218,19 @@ class _AlertsScreenState extends State<AlertsScreen> {
                                 color: c,
                                 pulsing: alert.severity == 'critical',
                               ),
-                              Text(
-                                alert.source.toUpperCase(),
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppColors2026.textSecondary,
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.06),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  alert.source.toUpperCase(),
+                                  style: const TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors2026.textSecondary,
+                                  ),
                                 ),
                               ),
                             ],
@@ -228,7 +249,47 @@ class _AlertsScreenState extends State<AlertsScreen> {
                             style: const TextStyle(
                               fontSize: 12,
                               color: AppColors2026.textSecondary,
+                              height: 1.35,
                             ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                alert.date.split('T').first,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors2026.textMuted,
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: () {
+                                  if (alert.source == 'contrat') {
+                                    widget.appState.setActiveTab(3); // Contrats
+                                  } else if (alert.source == 'facture') {
+                                    widget.appState.setActiveTab(4); // Factures
+                                  } else if (alert.source == 'flotte') {
+                                    widget.appState.setActiveTab(2); // Véhicules
+                                  }
+                                },
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      'Accéder',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                        color: c,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 2),
+                                    Icon(LucideIcons.arrowRight, size: 12, color: c),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -245,6 +306,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
 
 class _SeverityCounterCard extends StatelessWidget {
   final String label;
+  final String subtitle;
   final int count;
   final Color color;
   final bool selected;
@@ -252,6 +314,7 @@ class _SeverityCounterCard extends StatelessWidget {
 
   const _SeverityCounterCard({
     required this.label,
+    required this.subtitle,
     required this.count,
     required this.color,
     required this.selected,
@@ -263,35 +326,61 @@ class _SeverityCounterCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? color.withOpacity(0.24) : color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(20),
+          color: selected
+              ? color.withOpacity(0.18)
+              : Colors.white.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: selected ? color : color.withOpacity(0.3),
-            width: selected ? 1.8 : 1,
+            color: selected ? color : Colors.white10,
+            width: selected ? 1.5 : 1,
           ),
         ),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '$count',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                color: color,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: selected ? color : Colors.white70,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      color: color,
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 2),
             Text(
-              label,
+              subtitle,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
+                fontSize: 9.5,
+                color: AppColors2026.textMuted,
               ),
             ),
           ],
