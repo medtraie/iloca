@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/config/app_config.dart';
 import 'core/theme/app_theme_2026.dart';
 import 'providers/app_state_provider.dart';
+import 'screens/auth/login_screen.dart';
 import 'screens/shell/main_spatial_shell.dart';
 
 Future<void> main() async {
@@ -68,7 +69,9 @@ class _IlocaSpatialApp2026State extends State<IlocaSpatialApp2026> {
           themeMode: ThemeMode.dark,
           darkTheme: AppTheme2026.darkSpatialTheme,
           theme: AppTheme2026.darkSpatialTheme,
-          home: MainSpatialShell(appState: _appState),
+          home: _appState.isAuthenticated
+              ? MainSpatialShell(appState: _appState)
+              : LoginScreen(appState: _appState),
         );
       },
     );

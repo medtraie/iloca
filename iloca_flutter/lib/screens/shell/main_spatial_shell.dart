@@ -98,6 +98,48 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
     ];
   }
 
+  Future<void> _confirmLogout(BuildContext context, AppStateProvider state) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors2026.obsidianSurface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: AppColors2026.roseLaser.withOpacity(0.4)),
+        ),
+        title: const Row(
+          children: [
+            Icon(LucideIcons.logOut, color: AppColors2026.roseLaser, size: 20),
+            SizedBox(width: 8),
+            Text('Déconnexion',
+                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+          ],
+        ),
+        content: const Text(
+          'Voulez-vous vraiment vous déconnecter de BonaTours ?',
+          style: TextStyle(color: AppColors2026.textSecondary, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors2026.roseLaser,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Se déconnecter'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await state.logout();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = widget.appState;
@@ -274,7 +316,7 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
           ),
           IconButton(
             tooltip: 'Déconnexion',
-            onPressed: () => state.logout(),
+            onPressed: () => _confirmLogout(context, state),
             icon: const Icon(
               LucideIcons.logOut,
               size: 18,

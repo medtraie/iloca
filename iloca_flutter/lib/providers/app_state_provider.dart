@@ -75,6 +75,7 @@ class AppStateProvider extends ChangeNotifier {
       _tracerGlow = prefs.getBool('sft_tracer_glow') ?? true;
 
       // 2. Check Auth Session safely
+      final savedAuth = prefs.getBool('iloca_authenticated');
       try {
         final session = Supabase.instance.client.auth.currentSession;
         if (session?.user != null) {
@@ -84,11 +85,16 @@ class AppStateProvider extends ChangeNotifier {
         debugPrint('[AppState] Supabase session check note: $e');
       }
 
-      // Always authenticate seamlessly on any device
-      _isAuthenticated = true;
-      _userEmail = prefs.getString('iloca_user_email') ?? AppConfig.superAdminEmail;
-      _userName = prefs.getString('iloca_user_name') ?? 'Administrateur BonaTours';
-      await prefs.setBool('iloca_authenticated', true);
+      // If user explicitly logged out (savedAuth == false), stay logged out
+      if (savedAuth == false) {
+        _isAuthenticated = false;
+      } else {
+        // Authenticated as BonaTours Operator
+        _isAuthenticated = true;
+        _userEmail = prefs.getString('iloca_user_email') ?? AppConfig.superAdminEmail;
+        _userName = prefs.getString('iloca_user_name') ?? 'Administrateur BonaTours';
+        await prefs.setBool('iloca_authenticated', true);
+      }
 
       // 3. Instant Cold-boot from Local Cache (0ms load time)
       _loadFromLocalCache(prefs);
