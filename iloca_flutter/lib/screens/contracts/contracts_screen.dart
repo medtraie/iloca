@@ -1691,21 +1691,22 @@ class _ContractSpatialCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              // Secondary Action: Détails
+              // Secondary Action: Contrat A4 (PDF Web 100%)
               Expanded(
                 child: SizedBox(
                   height: 36,
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors2026.cyanNeon.withOpacity(0.18),
                       foregroundColor: AppColors2026.cyanBright,
-                      side: BorderSide(color: AppColors2026.cyanBright.withOpacity(0.45)),
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      side: BorderSide(color: AppColors2026.cyanBright.withOpacity(0.55)),
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
-                    onPressed: onViewDetails,
-                    icon: const Icon(LucideIcons.eye, size: 14),
+                    onPressed: onPreviewPaper,
+                    icon: const Icon(LucideIcons.fileText, size: 14),
                     label: const Text(
-                      'Détails',
+                      'Contrat A4',
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
                     ),
                   ),
@@ -1723,26 +1724,26 @@ class _ContractSpatialCard extends StatelessWidget {
                 ),
                 child: IconButton(
                   padding: EdgeInsets.zero,
-                  tooltip: 'Partager sur WhatsApp',
+                  tooltip: 'Partager Contrat A4 WhatsApp',
                   onPressed: onShareWhatsApp,
                   icon: const Icon(LucideIcons.share2, size: 16, color: AppColors2026.emeraldBright),
                 ),
               ),
               const SizedBox(width: 6),
-              // Quick Official Paper Preview Button
+              // Quick Détails Formulaire Button
               Container(
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: AppColors2026.amberSolar.withOpacity(0.16),
+                  color: Colors.white.withOpacity(0.06),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors2026.amberSolar.withOpacity(0.35)),
+                  border: Border.all(color: Colors.white12),
                 ),
                 child: IconButton(
                   padding: EdgeInsets.zero,
-                  tooltip: 'Aperçu Contrat Officiel',
-                  onPressed: onPreviewPaper,
-                  icon: const Icon(LucideIcons.printer, size: 16, color: AppColors2026.amberSolar),
+                  tooltip: 'Voir Formulaire Détails',
+                  onPressed: onViewDetails,
+                  icon: const Icon(LucideIcons.eye, size: 16, color: AppColors2026.textSecondary),
                 ),
               ),
               const SizedBox(width: 4),
