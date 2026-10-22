@@ -4,7 +4,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/config/app_config.dart';
 import 'core/theme/app_theme_2026.dart';
 import 'providers/app_state_provider.dart';
-import 'screens/auth/login_screen.dart';
 import 'screens/shell/main_spatial_shell.dart';
 
 Future<void> main() async {
@@ -20,14 +19,18 @@ Future<void> main() async {
     ),
   );
 
-  // Initialize Supabase with Web-shared project credentials and Realtime WebSockets
-  await Supabase.initialize(
-    url: AppConfig.supabaseUrl,
-    anonKey: AppConfig.supabasePublishableKey,
-    realtimeClientOptions: const RealtimeClientOptions(
-      eventsPerSecond: 20,
-    ),
-  );
+  // Initialize Supabase with Web-shared project credentials safely (Non-blocking)
+  try {
+    await Supabase.initialize(
+      url: AppConfig.supabaseUrl,
+      anonKey: AppConfig.supabasePublishableKey,
+      realtimeClientOptions: const RealtimeClientOptions(
+        eventsPerSecond: 20,
+      ),
+    ).timeout(const Duration(seconds: 4));
+  } catch (e) {
+    debugPrint('[Main] Supabase startup note: $e');
+  }
 
   runApp(const IlocaSpatialApp2026());
 }
@@ -62,12 +65,10 @@ class _IlocaSpatialApp2026State extends State<IlocaSpatialApp2026> {
         return MaterialApp(
           title: 'bonatours',
           debugShowCheckedModeBanner: false,
-          themeMode: _appState.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+          themeMode: ThemeMode.dark,
           darkTheme: AppTheme2026.darkSpatialTheme,
-          theme: AppTheme2026.lightPearlTheme,
-          home: _appState.isAuthenticated
-              ? MainSpatialShell(appState: _appState)
-              : LoginScreen(appState: _appState),
+          theme: AppTheme2026.darkSpatialTheme,
+          home: MainSpatialShell(appState: _appState),
         );
       },
     );

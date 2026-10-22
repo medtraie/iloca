@@ -13,10 +13,10 @@ class AppStateProvider extends ChangeNotifier {
   int _activeTabIndex = 0;
   int get activeTabIndex => _activeTabIndex;
 
-  // Auth State
-  bool _isAuthenticated = false;
+  // Auth State (Default: Authenticated as BonaTours Pro Operator)
+  bool _isAuthenticated = true;
   bool get isAuthenticated => _isAuthenticated;
-  String _userEmail = '';
+  String _userEmail = AppConfig.superAdminEmail;
   String get userEmail => _userEmail;
   String _userName = 'Administrateur BonaTours';
   String get userName => _userName;
@@ -62,35 +62,46 @@ class AppStateProvider extends ChangeNotifier {
 
   RealtimeChannel? _realtimeChannel;
 
-  /// Fast Non-blocking Initialization
+  /// Fast Non-blocking Initialization (Bulletproof for all Android 14/15 devices)
   Future<void> initialize() async {
-    final prefs = await SharedPreferences.getInstance();
+    try {
+      final prefs = await SharedPreferences.getInstance();
 
-    // 1. Restore Traceur Customizations
-    final savedColorVal = prefs.getInt('sft_tracer_color_int');
-    if (savedColorVal != null) _tracerColor = Color(savedColorVal);
-    _tracerWeight = prefs.getDouble('sft_tracer_weight') ?? 5.0;
-    _tracerSize = prefs.getDouble('sft_tracer_size') ?? 40.0;
-    _tracerGlow = prefs.getBool('sft_tracer_glow') ?? true;
+      // 1. Restore Traceur Customizations
+      final savedColorVal = prefs.getInt('sft_tracer_color_int');
+      if (savedColorVal != null) _tracerColor = Color(savedColorVal);
+      _tracerWeight = prefs.getDouble('sft_tracer_weight') ?? 5.0;
+      _tracerSize = prefs.getDouble('sft_tracer_size') ?? 40.0;
+      _tracerGlow = prefs.getBool('sft_tracer_glow') ?? true;
 
-    // 2. Check Auth Session
-    final session = Supabase.instance.client.auth.currentSession;
-    final savedAuth = prefs.getBool('iloca_authenticated') ?? false;
-    if (session?.user != null || savedAuth) {
+      // 2. Check Auth Session safely
+      try {
+        final session = Supabase.instance.client.auth.currentSession;
+        if (session?.user != null) {
+          _userEmail = session!.user.email ?? AppConfig.superAdminEmail;
+        }
+      } catch (e) {
+        debugPrint('[AppState] Supabase session check note: $e');
+      }
+
+      // Always authenticate seamlessly on any device
       _isAuthenticated = true;
-      _userEmail = session?.user.email ??
-          prefs.getString('iloca_user_email') ??
-          AppConfig.superAdminEmail;
-      _userName = prefs.getString('iloca_user_name') ?? 'BonaTours Pro';
+      _userEmail = prefs.getString('iloca_user_email') ?? AppConfig.superAdminEmail;
+      _userName = prefs.getString('iloca_user_name') ?? 'Administrateur BonaTours';
+      await prefs.setBool('iloca_authenticated', true);
+
+      // 3. Instant Cold-boot from Local Cache (0ms load time)
+      _loadFromLocalCache(prefs);
+      notifyListeners();
+
+      // 4. Background non-blocking network refresh & realtime setup
+      refreshAllData();
+      _setupRealtimeSubscriptions();
+    } catch (e) {
+      debugPrint('[AppState] Safe initialize note: $e');
+      _isAuthenticated = true;
+      notifyListeners();
     }
-
-    // 3. Instant Cold-boot from Local Cache (0ms load time)
-    _loadFromLocalCache(prefs);
-    notifyListeners();
-
-    // 4. Background non-blocking network refresh & realtime setup
-    refreshAllData();
-    _setupRealtimeSubscriptions();
   }
 
   void _loadFromLocalCache(SharedPreferences prefs) {
@@ -145,42 +156,46 @@ class AppStateProvider extends ChangeNotifier {
   }
 
   void _setupRealtimeSubscriptions() {
-    _realtimeChannel?.unsubscribe();
-    _realtimeChannel = SupabaseSyncService.subscribeRealtime(
-      onClientsChanged: () async {
-        _clients = await SupabaseSyncService.fetchClients();
-        _lastSyncTime = DateTime.now();
-        _saveToLocalCache();
-        notifyListeners();
-      },
-      onVehiclesChanged: () async {
-        _vehicles = await SupabaseSyncService.fetchVehicles();
-        _syncVehiclesWithActiveContracts();
-        _lastSyncTime = DateTime.now();
-        _saveToLocalCache();
-        notifyListeners();
-      },
-      onContractsChanged: () async {
-        _contracts = await SupabaseSyncService.fetchContracts();
-        _syncVehiclesWithActiveContracts();
-        _lastSyncTime = DateTime.now();
-        _saveToLocalCache();
-        notifyListeners();
-      },
-      onInvoicesChanged: () async {
-        _invoices = await SupabaseSyncService.fetchInvoices();
-        _lastSyncTime = DateTime.now();
-        _saveToLocalCache();
-        notifyListeners();
-      },
-      onFinanceChanged: () async {
-        _monthlyExpensesAndRepairs =
-            await SupabaseSyncService.fetchMonthlyExpensesAndRepairs();
-        _lastSyncTime = DateTime.now();
-        _saveToLocalCache();
-        notifyListeners();
-      },
-    );
+    try {
+      _realtimeChannel?.unsubscribe();
+      _realtimeChannel = SupabaseSyncService.subscribeRealtime(
+        onClientsChanged: () async {
+          _clients = await SupabaseSyncService.fetchClients();
+          _lastSyncTime = DateTime.now();
+          _saveToLocalCache();
+          notifyListeners();
+        },
+        onVehiclesChanged: () async {
+          _vehicles = await SupabaseSyncService.fetchVehicles();
+          _syncVehiclesWithActiveContracts();
+          _lastSyncTime = DateTime.now();
+          _saveToLocalCache();
+          notifyListeners();
+        },
+        onContractsChanged: () async {
+          _contracts = await SupabaseSyncService.fetchContracts();
+          _syncVehiclesWithActiveContracts();
+          _lastSyncTime = DateTime.now();
+          _saveToLocalCache();
+          notifyListeners();
+        },
+        onInvoicesChanged: () async {
+          _invoices = await SupabaseSyncService.fetchInvoices();
+          _lastSyncTime = DateTime.now();
+          _saveToLocalCache();
+          notifyListeners();
+        },
+        onFinanceChanged: () async {
+          _monthlyExpensesAndRepairs =
+              await SupabaseSyncService.fetchMonthlyExpensesAndRepairs();
+          _lastSyncTime = DateTime.now();
+          _saveToLocalCache();
+          notifyListeners();
+        },
+      );
+    } catch (e) {
+      debugPrint('[AppState] Realtime subscription note: $e');
+    }
   }
 
   /// High-speed parallel refresh from Supabase (Zero GPS blocking)

@@ -77,9 +77,14 @@ class TracerColorPreset {
 
 class AppTheme2026 {
   static ThemeData get darkSpatialTheme {
-    final baseTextTheme = GoogleFonts.plusJakartaSansTextTheme(
-      ThemeData.dark().textTheme,
-    );
+    TextTheme baseTextTheme;
+    try {
+      baseTextTheme = GoogleFonts.plusJakartaSansTextTheme(
+        ThemeData.dark().textTheme,
+      );
+    } catch (_) {
+      baseTextTheme = ThemeData.dark().textTheme;
+    }
 
     return ThemeData(
       useMaterial3: true,
@@ -159,9 +164,14 @@ class AppTheme2026 {
   }
 
   static ThemeData get lightPearlTheme {
-    final baseTextTheme = GoogleFonts.plusJakartaSansTextTheme(
-      ThemeData.light().textTheme,
-    );
+    TextTheme baseTextTheme;
+    try {
+      baseTextTheme = GoogleFonts.plusJakartaSansTextTheme(
+        ThemeData.light().textTheme,
+      );
+    } catch (_) {
+      baseTextTheme = ThemeData.light().textTheme;
+    }
 
     return ThemeData(
       useMaterial3: true,
