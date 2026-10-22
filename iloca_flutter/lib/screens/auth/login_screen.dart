@@ -22,10 +22,11 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscure = true;
 
   Future<void> _submit() async {
-    if (_emailCtrl.text.trim().isEmpty) return;
+    final email = _emailCtrl.text.trim();
+    if (email.isEmpty) return;
     setState(() => _loading = true);
-    final pwd = _passCtrl.text.isEmpty ? 'bonatours2026' : _passCtrl.text;
-    final success = await widget.appState.login(_emailCtrl.text.trim(), pwd);
+    final pwd = _passCtrl.text.isEmpty ? '123456' : _passCtrl.text;
+    final success = await widget.appState.login(email, pwd);
     if (!mounted) return;
     if (success) {
       Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
@@ -169,7 +170,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   : const Icon(LucideIcons.zap, size: 18),
                               label: Text(
                                 _loading
-                                    ? 'SYNCHRONISATION SUPABASE...'
+                                    ? 'CONNEXION EN COURS...'
                                     : 'ACCÉDER AU COCKPIT 2026',
                               ),
                             ),

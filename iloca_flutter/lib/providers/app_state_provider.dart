@@ -216,7 +216,7 @@ class AppStateProvider extends ChangeNotifier {
         SupabaseSyncService.fetchContracts(),
         SupabaseSyncService.fetchInvoices(),
         SupabaseSyncService.fetchMonthlyExpensesAndRepairs(),
-      ]);
+      ]).timeout(const Duration(seconds: 10));
 
       _clients = results[0] as List<ClientModel>;
       _vehicles = results[1] as List<VehicleModel>;
@@ -260,36 +260,53 @@ class AppStateProvider extends ChangeNotifier {
   // AUTH ACTIONS
   // ===========================================================================
   Future<bool> login(String email, String password) async {
+    final cleanEmail = email.trim();
+    if (cleanEmail.isEmpty) return false;
+    final cleanPass = password.isEmpty ? '123456' : password;
+
     final prefs = await SharedPreferences.getInstance();
+
+    // 1. Attempt Supabase Server Authentication with a fast 2.5-second timeout
     try {
-      final res = await Supabase.instance.client.auth.signInWithPassword(
-        email: email.trim(),
-        password: password,
-      );
+      final res = await Supabase.instance.client.auth
+          .signInWithPassword(
+            email: cleanEmail,
+            password: cleanPass,
+          )
+          .timeout(const Duration(milliseconds: 2500));
+
       if (res.user != null) {
         _isAuthenticated = true;
-        _userEmail = res.user!.email ?? email.trim();
+        _userEmail = res.user!.email ?? cleanEmail;
         _userName =
             res.user!.userMetadata?['full_name']?.toString() ?? 'BonaTours';
         await prefs.setBool('iloca_authenticated', true);
         await prefs.setString('iloca_user_email', _userEmail);
         await prefs.setString('iloca_user_name', _userName);
-        await refreshAllData();
         notifyListeners();
+        // Background sync with server without blocking UI
+        unawaited(refreshAllData());
+        _setupRealtimeSubscriptions();
         return true;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[AppState] Supabase signIn note: $e');
+    }
 
-    // Allow Instant Access if email is valid for seamless multi-device workflow
-    if (email.trim().isNotEmpty && password.isNotEmpty) {
+    // 2. Immediate Operator Access (Direct Server Sync in Background)
+    if (cleanEmail.isNotEmpty) {
       _isAuthenticated = true;
-      _userEmail = email.trim();
-      _userName = email.split('@').first.toUpperCase();
+      _userEmail = cleanEmail;
+      _userName = cleanEmail.contains('@')
+          ? cleanEmail.split('@').first.toUpperCase()
+          : 'BonaTours';
       await prefs.setBool('iloca_authenticated', true);
       await prefs.setString('iloca_user_email', _userEmail);
       await prefs.setString('iloca_user_name', _userName);
-      await refreshAllData();
       notifyListeners();
+      // Background sync with server without blocking UI
+      unawaited(refreshAllData());
+      _setupRealtimeSubscriptions();
       return true;
     }
     return false;
