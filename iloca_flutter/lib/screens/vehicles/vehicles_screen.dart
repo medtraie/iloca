@@ -26,6 +26,22 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
   String _search = '';
   String _statusFilter = 'all'; // 'all' | 'disponible' | 'loue' | 'maintenance'
 
+  void _onStateChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.appState.addListener(_onStateChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.appState.removeListener(_onStateChanged);
+    super.dispose();
+  }
+
   void _openVehicleForm([VehicleModel? existing]) {
     Navigator.of(context).push(
       MaterialPageRoute(

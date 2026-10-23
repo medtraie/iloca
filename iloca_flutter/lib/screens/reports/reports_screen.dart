@@ -22,6 +22,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
   String _activeTab = 'finance'; // 'finance' | 'fleet' | 'tenants' | 'invoices'
   String _periodFilter = 'all'; // 'all' | 'month' | 'quarter' | 'year'
 
+  void _onStateChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.appState.addListener(_onStateChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.appState.removeListener(_onStateChanged);
+    super.dispose();
+  }
+
   DateTime? _getPeriodStartDate() {
     final now = DateTime.now();
     switch (_periodFilter) {

@@ -17,6 +17,22 @@ class AlertsScreen extends StatefulWidget {
 class _AlertsScreenState extends State<AlertsScreen> {
   String _categoryFilter = 'all'; // 'all' | 'critical' | 'warning' | 'finance'
 
+  void _onStateChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.appState.addListener(_onStateChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.appState.removeListener(_onStateChanged);
+    super.dispose();
+  }
+
   Color _sevColor(String s) {
     switch (s) {
       case 'critical':

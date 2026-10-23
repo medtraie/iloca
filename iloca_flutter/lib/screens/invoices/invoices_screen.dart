@@ -24,6 +24,22 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   String _search = '';
   String _statusFilter = 'all'; // 'all' | 'pending' | 'paid' | 'overdue'
 
+  void _onStateChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.appState.addListener(_onStateChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.appState.removeListener(_onStateChanged);
+    super.dispose();
+  }
+
   void _openInvoiceForm([InvoiceModel? existing]) {
     Navigator.of(context).push(
       MaterialPageRoute(

@@ -89,22 +89,17 @@ class MainSpatialShell extends StatefulWidget {
 }
 
 class _MainSpatialShellState extends State<MainSpatialShell> {
-  late final List<Widget> _screens;
-
   @override
   void initState() {
     super.initState();
-    // Pre-cache all screens once for instant 0ms tab switching
-    _screens = [
-      OverviewScreen(appState: widget.appState),
-      ClientsScreen(appState: widget.appState),
-      VehiclesScreen(appState: widget.appState),
-      ContractsScreen(appState: widget.appState),
-      InvoicesScreen(appState: widget.appState),
-      ExpensesScreen(appState: widget.appState),
-      ReportsScreen(appState: widget.appState),
-      AlertsScreen(appState: widget.appState),
-    ];
+    // Ensure data is fetched immediately when entering the Cockpit shell
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted &&
+          widget.appState.vehicles.isEmpty &&
+          !widget.appState.isSyncing) {
+        widget.appState.refreshAllData();
+      }
+    });
   }
 
   Future<void> _confirmLogout(BuildContext context, AppStateProvider state) async {
@@ -152,53 +147,68 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
   @override
   Widget build(BuildContext context) {
     final appState = widget.appState;
-    final currentIndex =
-        appState.activeTabIndex.clamp(0, MainSpatialShell.sections.length - 1);
-    final currentMeta = MainSpatialShell.sections[currentIndex];
-    final isWide = MediaQuery.of(context).size.width >= 840;
+    return ListenableBuilder(
+      listenable: appState,
+      builder: (context, _) {
+        final currentIndex = appState.activeTabIndex
+            .clamp(0, MainSpatialShell.sections.length - 1);
+        final currentMeta = MainSpatialShell.sections[currentIndex];
+        final isWide = MediaQuery.of(context).size.width >= 840;
 
-    return Scaffold(
-      extendBody: true,
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: appState.isDarkMode
-              ? const RadialGradient(
-                  center: Alignment(-0.7, -0.8),
-                  radius: 1.6,
-                  colors: [
-                    Color(0xFF0E1B38),
-                    AppColors2026.abyss,
-                    Color(0xFF03060C),
-                  ],
-                )
-              : null,
-        ),
-        child: SafeArea(
-          bottom: false,
-          child: Row(
-            children: [
-              if (isWide)
-                _buildSpatialNavigationRail(context, appState, currentIndex),
-              Expanded(
-                child: Column(
-                  children: [
-                    _buildTopSpatialHeader(context, appState, currentMeta),
-                    Expanded(
-                      child: IndexedStack(
-                        index: currentIndex,
-                        children: _screens,
-                      ),
+        return Scaffold(
+          extendBody: true,
+          body: Container(
+            decoration: BoxDecoration(
+              gradient: appState.isDarkMode
+                  ? const RadialGradient(
+                      center: Alignment(-0.7, -0.8),
+                      radius: 1.6,
+                      colors: [
+                        Color(0xFF0E1B38),
+                        AppColors2026.abyss,
+                        Color(0xFF03060C),
+                      ],
+                    )
+                  : null,
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Row(
+                children: [
+                  if (isWide)
+                    _buildSpatialNavigationRail(
+                        context, appState, currentIndex),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        _buildTopSpatialHeader(context, appState, currentMeta),
+                        Expanded(
+                          child: IndexedStack(
+                            index: currentIndex,
+                            children: [
+                              OverviewScreen(appState: appState),
+                              ClientsScreen(appState: appState),
+                              VehiclesScreen(appState: appState),
+                              ContractsScreen(appState: appState),
+                              InvoicesScreen(appState: appState),
+                              ExpensesScreen(appState: appState),
+                              ReportsScreen(appState: appState),
+                              AlertsScreen(appState: appState),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
-      bottomNavigationBar: isWide
-          ? null
-          : _buildMobileSpatialDock(context, appState, currentIndex),
+          bottomNavigationBar: isWide
+              ? null
+              : _buildMobileSpatialDock(context, appState, currentIndex),
+        );
+      },
     );
   }
 

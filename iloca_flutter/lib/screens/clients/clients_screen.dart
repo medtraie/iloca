@@ -22,6 +22,22 @@ class _ClientsScreenState extends State<ClientsScreen> {
   String _typeFilter = 'all'; // 'all' | 'Locataire Principal' | 'Chauffeur secondaire'
   String _nationalityFilter = 'all';
 
+  void _onStateChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.appState.addListener(_onStateChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.appState.removeListener(_onStateChanged);
+    super.dispose();
+  }
+
   void _openClientForm([ClientModel? existing]) {
     Navigator.of(context).push(
       MaterialPageRoute(

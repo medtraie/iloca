@@ -35,6 +35,22 @@ class _ContractsScreenState extends State<ContractsScreen> {
   String _viewMode = 'cards'; // 'cards' | 'table' | 'kanban'
   bool _showAnalytics = false; // Collapsed by default for a clean, clutter-free mobile view
 
+  void _onStateChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.appState.addListener(_onStateChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.appState.removeListener(_onStateChanged);
+    super.dispose();
+  }
+
   void _openContractForm({
     ContractModel? contract,
     ContractFormMode mode = ContractFormMode.create,

@@ -26,6 +26,22 @@ class _OverviewScreenState extends State<OverviewScreen> {
   String _activeTab = 'overview';
   String _opsFilter = 'returns'; // 'returns' | 'overdue' | 'departures'
 
+  void _onStateChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.appState.addListener(_onStateChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.appState.removeListener(_onStateChanged);
+    super.dispose();
+  }
+
   Future<void> _openWhatsApp(String phone, String message) async {
     final clean = phone.replaceAll(RegExp(r'[^0-9+]'), '');
     if (clean.isEmpty) return;

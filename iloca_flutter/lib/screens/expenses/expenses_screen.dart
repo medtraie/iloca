@@ -23,8 +23,19 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   final NumberFormat _currencyFormat = NumberFormat('#,##0', 'fr_FR');
   final DateFormat _displayFormat = DateFormat('dd/MM/yyyy');
 
+  void _onStateChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.appState.addListener(_onStateChanged);
+  }
+
   @override
   void dispose() {
+    widget.appState.removeListener(_onStateChanged);
     _searchCtrl.dispose();
     super.dispose();
   }

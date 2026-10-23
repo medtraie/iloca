@@ -152,27 +152,27 @@ class AppStateProvider extends ChangeNotifier {
 
   void _loadFromLocalCache(SharedPreferences prefs) {
     try {
-      final cJson = prefs.getString('cache_clients');
+      final cJson = prefs.getString('cache_clients') ?? prefs.getString('iloca:clients:local');
       if (cJson != null) {
         final list = jsonDecode(cJson) as List<dynamic>;
         _clients = list.map((e) => ClientModel.fromJson(Map<String, dynamic>.from(e))).toList();
       }
-      final vJson = prefs.getString('cache_vehicles');
+      final vJson = prefs.getString('cache_vehicles') ?? prefs.getString('iloca:vehicles:local');
       if (vJson != null) {
         final list = jsonDecode(vJson) as List<dynamic>;
         _vehicles = list.map((e) => VehicleModel.fromJson(Map<String, dynamic>.from(e))).toList();
       }
-      final kJson = prefs.getString('cache_contracts');
+      final kJson = prefs.getString('cache_contracts') ?? prefs.getString('iloca:contracts:local');
       if (kJson != null) {
         final list = jsonDecode(kJson) as List<dynamic>;
         _contracts = list.map((e) => ContractModel.fromJson(Map<String, dynamic>.from(e))).toList();
       }
-      final iJson = prefs.getString('cache_invoices');
+      final iJson = prefs.getString('cache_invoices') ?? prefs.getString('iloca:invoices:local');
       if (iJson != null) {
         final list = jsonDecode(iJson) as List<dynamic>;
         _invoices = list.map((e) => InvoiceModel.fromJson(Map<String, dynamic>.from(e))).toList();
       }
-      final eJson = prefs.getString('cache_expenses');
+      final eJson = prefs.getString('cache_expenses') ?? prefs.getString('iloca:expenses:local');
       if (eJson != null) {
         final list = jsonDecode(eJson) as List<dynamic>;
         _expenses = list.map((e) => ExpenseModel.fromJson(Map<String, dynamic>.from(e))).toList();
@@ -264,18 +264,37 @@ class AppStateProvider extends ChangeNotifier {
         SupabaseSyncService.fetchInvoices(),
         SupabaseSyncService.fetchExpenses(),
         SupabaseSyncService.fetchMonthlyExpensesAndRepairs(),
-      ]).timeout(const Duration(seconds: 10));
+      ]).timeout(const Duration(seconds: 12));
 
-      _clients = results[0] as List<ClientModel>;
-      _vehicles = results[1] as List<VehicleModel>;
-      _contracts = results[2] as List<ContractModel>;
-      _invoices = results[3] as List<InvoiceModel>;
-      _expenses = results[4] as List<ExpenseModel>;
-      _monthlyExpensesAndRepairs = results[5] as double;
+      final fetchedClients = results[0] as List<ClientModel>;
+      final fetchedVehicles = results[1] as List<VehicleModel>;
+      final fetchedContracts = results[2] as List<ContractModel>;
+      final fetchedInvoices = results[3] as List<InvoiceModel>;
+      final fetchedExpenses = results[4] as List<ExpenseModel>;
+      final fetchedMonthly = results[5] as double;
+
+      if (fetchedClients.isNotEmpty || _clients.isEmpty) {
+        _clients = fetchedClients;
+      }
+      if (fetchedVehicles.isNotEmpty || _vehicles.isEmpty) {
+        _vehicles = fetchedVehicles;
+      }
+      if (fetchedContracts.isNotEmpty || _contracts.isEmpty) {
+        _contracts = fetchedContracts;
+      }
+      if (fetchedInvoices.isNotEmpty || _invoices.isEmpty) {
+        _invoices = fetchedInvoices;
+      }
+      if (fetchedExpenses.isNotEmpty || _expenses.isEmpty) {
+        _expenses = fetchedExpenses;
+      }
+      if (fetchedMonthly > 0 || _monthlyExpensesAndRepairs == 0) {
+        _monthlyExpensesAndRepairs = fetchedMonthly;
+      }
 
       _syncVehiclesWithActiveContracts();
       _lastSyncTime = DateTime.now();
-      _saveToLocalCache();
+      await _saveToLocalCache();
     } catch (e) {
       debugPrint('[AppState] refreshAllData error: $e');
     } finally {
@@ -339,6 +358,10 @@ class AppStateProvider extends ChangeNotifier {
   }
 
   Future<void> _performBackgroundAuthAndSync(String email, String password) async {
+    // 1. Trigger immediate parallel data fetch right away without waiting for auth
+    final initialRefresh = refreshAllData();
+
+    // 2. Authenticate with Supabase in parallel
     try {
       final res = await Supabase.instance.client.auth
           .signInWithPassword(email: email, password: password)
@@ -356,8 +379,9 @@ class AppStateProvider extends ChangeNotifier {
       debugPrint('[AppState] Background auth note: $e');
     }
 
+    // 3. Ensure initial refresh completes and Realtime subscriptions are active
     try {
-      await refreshAllData();
+      await initialRefresh;
       _setupRealtimeSubscriptions();
     } catch (e) {
       debugPrint('[AppState] Background refresh error: $e');

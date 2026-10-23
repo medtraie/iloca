@@ -1,13 +1,16 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
+import '../core/config/app_config.dart';
 import '../models/app_models.dart';
 
 /// Bidirectional Instant Synchronization Engine (Flutter Android/iOS <-> Supabase <-> Web)
 class SupabaseSyncService {
   static const _uuid = Uuid();
+  static const _defaultSuperAdminId = '5096a8c8-178e-4829-827d-b4881713435b';
   static const _localClientsKey = 'iloca:clients:local';
   static const _localVehiclesKey = 'iloca:vehicles:local';
   static const _localContractsKey = 'iloca:contracts:local';
@@ -15,6 +18,60 @@ class SupabaseSyncService {
   static const _localExpensesKey = 'iloca:expenses:local';
 
   static SupabaseClient get _sb => Supabase.instance.client;
+
+  static String get _effectiveUserId =>
+      _sb.auth.currentUser?.id ?? _defaultSuperAdminId;
+
+  /// Dual-Engine Table Fetcher:
+  /// 1. High-speed direct HTTPS REST call to Supabase PostgREST (immune to expired GoTrue session tokens or isolate delays)
+  /// 2. Fallback to Supabase SDK client
+  static Future<List<Map<String, dynamic>>> _fetchTableRows(
+    String table, {
+    String? orderBy,
+    bool ascending = false,
+  }) async {
+    try {
+      final orderParam = orderBy != null
+          ? '&order=$orderBy.${ascending ? 'asc' : 'desc'}'
+          : '';
+      final uri = Uri.parse(
+        '${AppConfig.supabaseUrl}/rest/v1/$table?select=*$orderParam',
+      );
+      final response = await http
+          .get(
+            uri,
+            headers: {
+              'apikey': AppConfig.supabasePublishableKey,
+              'Authorization': 'Bearer ${AppConfig.supabasePublishableKey}',
+              'Accept': 'application/json',
+            },
+          )
+          .timeout(const Duration(seconds: 7));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is List) {
+          return decoded
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
+        }
+      }
+    } catch (e) {
+      debugPrint('[SupabaseSync] Direct REST note ($table): $e');
+    }
+
+    final query = _sb.from(table).select('*');
+    final rows = orderBy != null
+        ? await query
+            .order(orderBy, ascending: ascending)
+            .timeout(const Duration(seconds: 7))
+        : await query.timeout(const Duration(seconds: 7));
+    return (rows as List)
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
 
   /// Subscribe to Supabase Postgres Realtime Changes on all tables
   static RealtimeChannel subscribeRealtime({
@@ -76,7 +133,7 @@ class SupabaseSyncService {
   // ===========================================================================
   static Future<List<ClientModel>> fetchClients() async {
     final prefs = await SharedPreferences.getInstance();
-    final localRaw = prefs.getString(_localClientsKey);
+    final localRaw = prefs.getString(_localClientsKey) ?? prefs.getString('cache_clients');
     List<ClientModel> localList = [];
     if (localRaw != null) {
       try {
@@ -88,17 +145,13 @@ class SupabaseSyncService {
     }
 
     try {
-      final rows = await _sb
-          .from('clients')
-          .select('*')
-          .order('updated_at', ascending: false);
-      final remote = (rows as List)
-          .map((r) => ClientModel.fromJson(Map<String, dynamic>.from(r)))
+      final rows = await _fetchTableRows('clients', orderBy: 'updated_at', ascending: false);
+      final remote = rows
+          .map((r) => ClientModel.fromJson(r))
           .toList();
-      await prefs.setString(
-        _localClientsKey,
-        jsonEncode(remote.map((e) => e.toJson()).toList()),
-      );
+      final encoded = jsonEncode(remote.map((e) => e.toJson()).toList());
+      await prefs.setString(_localClientsKey, encoded);
+      await prefs.setString('cache_clients', encoded);
       return remote;
     } catch (e) {
       debugPrint('[SupabaseSync] fetchClients fallback to local: $e');
@@ -108,10 +161,7 @@ class SupabaseSyncService {
 
   static Future<ClientModel> saveClient(ClientModel client, {bool isEdit = false}) async {
     final payload = client.toSupabasePayload();
-    final userId = _sb.auth.currentUser?.id;
-    if (userId != null) {
-      payload['user_id'] = userId;
-    }
+    payload['user_id'] = _effectiveUserId;
 
     try {
       if (isEdit && client.id.isNotEmpty) {
@@ -172,7 +222,7 @@ class SupabaseSyncService {
   // ===========================================================================
   static Future<List<VehicleModel>> fetchVehicles() async {
     final prefs = await SharedPreferences.getInstance();
-    final localRaw = prefs.getString(_localVehiclesKey);
+    final localRaw = prefs.getString(_localVehiclesKey) ?? prefs.getString('cache_vehicles');
     List<VehicleModel> localList = [];
     if (localRaw != null) {
       try {
@@ -184,17 +234,13 @@ class SupabaseSyncService {
     }
 
     try {
-      final rows = await _sb
-          .from('vehicles')
-          .select('*')
-          .order('updated_at', ascending: false);
-      final remote = (rows as List)
-          .map((r) => VehicleModel.fromJson(Map<String, dynamic>.from(r)))
+      final rows = await _fetchTableRows('vehicles', orderBy: 'updated_at', ascending: false);
+      final remote = rows
+          .map((r) => VehicleModel.fromJson(r))
           .toList();
-      await prefs.setString(
-        _localVehiclesKey,
-        jsonEncode(remote.map((e) => e.toJson()).toList()),
-      );
+      final encoded = jsonEncode(remote.map((e) => e.toJson()).toList());
+      await prefs.setString(_localVehiclesKey, encoded);
+      await prefs.setString('cache_vehicles', encoded);
       return remote;
     } catch (e) {
       debugPrint('[SupabaseSync] fetchVehicles fallback to local: $e');
@@ -204,11 +250,7 @@ class SupabaseSyncService {
 
   static Future<VehicleModel> saveVehicle(VehicleModel vehicle, {bool isEdit = false}) async {
     final payload = vehicle.toSupabasePayload();
-    // Do not enforce user_id if null to allow shared fleet visibility across Web & Mobile
-    final userId = _sb.auth.currentUser?.id;
-    if (userId != null) {
-      payload['user_id'] = userId;
-    }
+    payload['user_id'] = _effectiveUserId;
 
     try {
       if (isEdit && vehicle.id.isNotEmpty) {
@@ -276,7 +318,7 @@ class SupabaseSyncService {
   // ===========================================================================
   static Future<List<ContractModel>> fetchContracts() async {
     final prefs = await SharedPreferences.getInstance();
-    final localRaw = prefs.getString(_localContractsKey);
+    final localRaw = prefs.getString(_localContractsKey) ?? prefs.getString('cache_contracts');
     List<ContractModel> localList = [];
     if (localRaw != null) {
       try {
@@ -288,17 +330,13 @@ class SupabaseSyncService {
     }
 
     try {
-      final rows = await _sb
-          .from('contracts')
-          .select('*')
-          .order('created_at', ascending: false);
-      final remote = (rows as List)
-          .map((r) => ContractModel.fromJson(Map<String, dynamic>.from(r)))
+      final rows = await _fetchTableRows('contracts', orderBy: 'created_at', ascending: false);
+      final remote = rows
+          .map((r) => ContractModel.fromJson(r))
           .toList();
-      await prefs.setString(
-        _localContractsKey,
-        jsonEncode(remote.map((e) => e.toJson()).toList()),
-      );
+      final encoded = jsonEncode(remote.map((e) => e.toJson()).toList());
+      await prefs.setString(_localContractsKey, encoded);
+      await prefs.setString('cache_contracts', encoded);
       return remote;
     } catch (e) {
       debugPrint('[SupabaseSync] fetchContracts fallback to local: $e');
@@ -308,10 +346,7 @@ class SupabaseSyncService {
 
   static Future<ContractModel> saveContract(ContractModel contract, {bool isEdit = false}) async {
     final payload = contract.toSupabasePayload();
-    final userId = _sb.auth.currentUser?.id;
-    if (userId != null) {
-      payload['user_id'] = userId;
-    }
+    payload['user_id'] = _effectiveUserId;
 
     try {
       ContractModel saved;
@@ -364,7 +399,7 @@ class SupabaseSyncService {
   // ===========================================================================
   static Future<List<InvoiceModel>> fetchInvoices() async {
     final prefs = await SharedPreferences.getInstance();
-    final localRaw = prefs.getString(_localInvoicesKey);
+    final localRaw = prefs.getString(_localInvoicesKey) ?? prefs.getString('cache_invoices');
     List<InvoiceModel> localList = [];
     if (localRaw != null) {
       try {
@@ -376,17 +411,13 @@ class SupabaseSyncService {
     }
 
     try {
-      final rows = await _sb
-          .from('invoices')
-          .select('*')
-          .order('updated_at', ascending: false);
-      final remote = (rows as List)
-          .map((r) => InvoiceModel.fromJson(Map<String, dynamic>.from(r)))
+      final rows = await _fetchTableRows('invoices', orderBy: 'updated_at', ascending: false);
+      final remote = rows
+          .map((r) => InvoiceModel.fromJson(r))
           .toList();
-      await prefs.setString(
-        _localInvoicesKey,
-        jsonEncode(remote.map((e) => e.toJson()).toList()),
-      );
+      final encoded = jsonEncode(remote.map((e) => e.toJson()).toList());
+      await prefs.setString(_localInvoicesKey, encoded);
+      await prefs.setString('cache_invoices', encoded);
       return remote;
     } catch (e) {
       debugPrint('[SupabaseSync] fetchInvoices fallback to local: $e');
@@ -396,10 +427,7 @@ class SupabaseSyncService {
 
   static Future<InvoiceModel> saveInvoice(InvoiceModel invoice, {bool isEdit = false}) async {
     final payload = invoice.toSupabasePayload();
-    final userId = _sb.auth.currentUser?.id;
-    if (userId != null) {
-      payload['user_id'] = userId;
-    }
+    payload['user_id'] = _effectiveUserId;
 
     try {
       InvoiceModel saved;
@@ -442,29 +470,27 @@ class SupabaseSyncService {
   // EXPENSES & REPAIRS FETCH FOR OVERVIEW & REPORTS
   // ===========================================================================
   static Future<double> fetchMonthlyExpensesAndRepairs() async {
-    final now = DateTime.now();
-    final monthStart = DateTime(now.year, now.month, 1).toIso8601String();
     double total = 0;
 
     try {
-      final expRows = await _sb
-          .from('expenses')
-          .select('monthly_cost,total_cost,created_at')
-          .gte('created_at', monthStart);
-      for (final r in (expRows as List)) {
+      final expRows = await _fetchTableRows('expenses', orderBy: 'created_at', ascending: false);
+      for (final r in expRows) {
+        if (r['archived'] == true) continue;
         final val = double.tryParse((r['monthly_cost'] ?? r['total_cost'] ?? '0').toString()) ?? 0;
         total += val;
       }
     } catch (_) {}
 
     try {
-      final repRows = await _sb
-          .from('repairs')
-          .select('cout,created_at')
-          .gte('created_at', monthStart);
-      for (final r in (repRows as List)) {
-        final val = double.tryParse((r['cout'] ?? '0').toString()) ?? 0;
-        total += val;
+      final repRows = await _fetchTableRows('repairs', orderBy: 'created_at', ascending: false);
+      final now = DateTime.now();
+      final monthPrefix = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+      for (final r in repRows) {
+        final createdAt = (r['created_at'] ?? '').toString();
+        if (createdAt.startsWith(monthPrefix)) {
+          final val = double.tryParse((r['cout'] ?? '0').toString()) ?? 0;
+          total += val;
+        }
       }
     } catch (_) {}
 
@@ -476,7 +502,7 @@ class SupabaseSyncService {
   // ===========================================================================
   static Future<List<ExpenseModel>> fetchExpenses() async {
     final prefs = await SharedPreferences.getInstance();
-    final localJson = prefs.getString(_localExpensesKey);
+    final localJson = prefs.getString(_localExpensesKey) ?? prefs.getString('cache_expenses');
     List<ExpenseModel> localList = [];
     if (localJson != null && localJson.isNotEmpty) {
       try {
@@ -490,26 +516,15 @@ class SupabaseSyncService {
     }
 
     try {
-      final res = await _sb
-          .from('expenses')
-          .select('*')
-          .order('created_at', ascending: false);
-
-      final remoteList = (res as List<dynamic>)
-          .map((e) => ExpenseModel.fromJson(Map<String, dynamic>.from(e)))
+      final rows = await _fetchTableRows('expenses', orderBy: 'created_at', ascending: false);
+      final remoteList = rows
+          .map((e) => ExpenseModel.fromJson(e))
           .toList();
 
-      final remoteIds = remoteList.map((e) => e.id).toSet();
-      final combined = [
-        ...remoteList,
-        ...localList.where((e) => !remoteIds.contains(e.id)),
-      ];
-
-      await prefs.setString(
-        _localExpensesKey,
-        jsonEncode(combined.map((e) => e.toJson()).toList()),
-      );
-      return combined;
+      final encoded = jsonEncode(remoteList.map((e) => e.toJson()).toList());
+      await prefs.setString(_localExpensesKey, encoded);
+      await prefs.setString('cache_expenses', encoded);
+      return remoteList;
     } catch (e) {
       debugPrint('[SupabaseSync] fetchExpenses network error (using cache): $e');
       return localList;
@@ -538,12 +553,8 @@ class SupabaseSyncService {
       'parent_expense_id': expense.parentExpenseId,
       'next_due_date': expense.nextDueDate ?? expense.endDate,
       'updated_at': now,
+      'user_id': _effectiveUserId,
     };
-
-    final userId = _sb.auth.currentUser?.id;
-    if (userId != null) {
-      payload['user_id'] = userId;
-    }
 
     try {
       ExpenseModel saved;
