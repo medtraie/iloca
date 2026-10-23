@@ -224,7 +224,9 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
         ? 'Pas de connexion au serveur (vérifiez Internet).'
         : err.contains('Timeout')
             ? 'Le serveur met trop de temps à répondre.'
-            : err;
+            : err.contains('PlatformException') || err.contains('SharedPreferences')
+                ? 'Connexion au serveur en cours...'
+                : err;
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),

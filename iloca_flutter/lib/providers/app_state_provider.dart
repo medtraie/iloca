@@ -147,6 +147,9 @@ class AppStateProvider extends ChangeNotifier {
       debugPrint('[AppState] Safe initialize note: $e');
       _isAuthenticated = true;
       notifyListeners();
+      // Even if disk storage had an issue, always trigger live cloud sync!
+      refreshAllData();
+      _setupRealtimeSubscriptions();
     }
   }
 
@@ -273,12 +276,30 @@ class AppStateProvider extends ChangeNotifier {
     try {
       SupabaseSyncService.lastFetchError = null;
       final results = await Future.wait([
-        SupabaseSyncService.fetchClients(),
-        SupabaseSyncService.fetchVehicles(),
-        SupabaseSyncService.fetchContracts(),
-        SupabaseSyncService.fetchInvoices(),
-        SupabaseSyncService.fetchExpenses(),
-        SupabaseSyncService.fetchMonthlyExpensesAndRepairs(),
+        SupabaseSyncService.fetchClients().catchError((e) {
+          debugPrint('[AppState] fetchClients error: $e');
+          return <ClientModel>[];
+        }),
+        SupabaseSyncService.fetchVehicles().catchError((e) {
+          debugPrint('[AppState] fetchVehicles error: $e');
+          return <VehicleModel>[];
+        }),
+        SupabaseSyncService.fetchContracts().catchError((e) {
+          debugPrint('[AppState] fetchContracts error: $e');
+          return <ContractModel>[];
+        }),
+        SupabaseSyncService.fetchInvoices().catchError((e) {
+          debugPrint('[AppState] fetchInvoices error: $e');
+          return <InvoiceModel>[];
+        }),
+        SupabaseSyncService.fetchExpenses().catchError((e) {
+          debugPrint('[AppState] fetchExpenses error: $e');
+          return <ExpenseModel>[];
+        }),
+        SupabaseSyncService.fetchMonthlyExpensesAndRepairs().catchError((e) {
+          debugPrint('[AppState] fetchMonthlyExpenses error: $e');
+          return 0.0;
+        }),
       ]).timeout(const Duration(seconds: 40));
 
       final fetchedClients = results[0] as List<ClientModel>;
@@ -308,14 +329,22 @@ class AppStateProvider extends ChangeNotifier {
       }
 
       _syncVehiclesWithActiveContracts();
-      _lastSyncError = SupabaseSyncService.lastFetchError;
-      if (_lastSyncError == null) {
+
+      // Only report sync error if the essential entities could not be loaded at all
+      final hasData = _vehicles.isNotEmpty || _clients.isNotEmpty || _contracts.isNotEmpty;
+      if (!hasData && SupabaseSyncService.lastFetchError != null) {
+        _lastSyncError = SupabaseSyncService.lastFetchError;
+      } else {
+        _lastSyncError = null;
         _lastSyncTime = DateTime.now();
         _autoRetryAttempt = 0;
       }
       await _saveToLocalCache();
     } catch (e) {
-      _lastSyncError = e.toString();
+      final hasData = _vehicles.isNotEmpty || _clients.isNotEmpty || _contracts.isNotEmpty;
+      if (!hasData) {
+        _lastSyncError = e.toString();
+      }
       debugPrint('[AppState] refreshAllData error: $e');
     } finally {
       _isSyncing = false;

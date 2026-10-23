@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -24,6 +25,36 @@ class SupabaseSyncService {
 
   /// Last network error encountered while fetching (null when the last fetch succeeded).
   static String? lastFetchError;
+
+  /// Safe local storage read that NEVER throws PlatformException or blocks UI
+  static Future<String?> _safeGetLocalString(String key, [String? fallbackKey]) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final val = prefs.getString(key);
+      if (val != null && val.isNotEmpty) return val;
+      if (fallbackKey != null) {
+        final fallbackVal = prefs.getString(fallbackKey);
+        if (fallbackVal != null && fallbackVal.isNotEmpty) return fallbackVal;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[SupabaseSync] safeGetLocalString ($key) notice: $e');
+      return null;
+    }
+  }
+
+  /// Safe local storage write that NEVER throws or blocks critical network paths
+  static Future<void> _safeSetLocalString(String key, String value, [String? secondaryKey]) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(key, value);
+      if (secondaryKey != null) {
+        await prefs.setString(secondaryKey, value);
+      }
+    } catch (e) {
+      debugPrint('[SupabaseSync] safeSetLocalString ($key) notice: $e');
+    }
+  }
 
   /// Dual-Engine Table Fetcher:
   /// 1. High-speed direct HTTPS REST call to Supabase PostgREST (immune to expired GoTrue session tokens or isolate delays)
@@ -143,30 +174,28 @@ class SupabaseSyncService {
   // CLIENTS CRUD (Instant Sync with `public.clients`)
   // ===========================================================================
   static Future<List<ClientModel>> fetchClients() async {
-    final prefs = await SharedPreferences.getInstance();
-    final localRaw = prefs.getString(_localClientsKey) ?? prefs.getString('cache_clients');
-    List<ClientModel> localList = [];
-    if (localRaw != null) {
-      try {
-        final decoded = jsonDecode(localRaw) as List;
-        localList = decoded
-            .map((e) => ClientModel.fromJson(Map<String, dynamic>.from(e)))
-            .toList();
-      } catch (_) {}
-    }
-
     try {
       final rows = await _fetchTableRows('clients', orderBy: 'updated_at', ascending: false);
       final remote = rows
           .map((r) => ClientModel.fromJson(r))
           .toList();
-      final encoded = jsonEncode(remote.map((e) => e.toJson()).toList());
-      await prefs.setString(_localClientsKey, encoded);
-      await prefs.setString('cache_clients', encoded);
+      try {
+        final encoded = jsonEncode(remote.map((e) => e.toJson()).toList());
+        unawaited(_safeSetLocalString(_localClientsKey, encoded, 'cache_clients'));
+      } catch (_) {}
       return remote;
     } catch (e) {
-      debugPrint('[SupabaseSync] fetchClients fallback to local: $e');
-      return localList;
+      debugPrint('[SupabaseSync] fetchClients network error (trying local): $e');
+      final localRaw = await _safeGetLocalString(_localClientsKey, 'cache_clients');
+      if (localRaw != null && localRaw.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(localRaw) as List;
+          return decoded
+              .map((item) => ClientModel.fromJson(Map<String, dynamic>.from(item)))
+              .toList();
+        } catch (_) {}
+      }
+      rethrow;
     }
   }
 
@@ -232,30 +261,28 @@ class SupabaseSyncService {
   // VEHICLES CRUD (Instant Sync with `public.vehicles`)
   // ===========================================================================
   static Future<List<VehicleModel>> fetchVehicles() async {
-    final prefs = await SharedPreferences.getInstance();
-    final localRaw = prefs.getString(_localVehiclesKey) ?? prefs.getString('cache_vehicles');
-    List<VehicleModel> localList = [];
-    if (localRaw != null) {
-      try {
-        final decoded = jsonDecode(localRaw) as List;
-        localList = decoded
-            .map((e) => VehicleModel.fromJson(Map<String, dynamic>.from(e)))
-            .toList();
-      } catch (_) {}
-    }
-
     try {
       final rows = await _fetchTableRows('vehicles', orderBy: 'updated_at', ascending: false);
       final remote = rows
           .map((r) => VehicleModel.fromJson(r))
           .toList();
-      final encoded = jsonEncode(remote.map((e) => e.toJson()).toList());
-      await prefs.setString(_localVehiclesKey, encoded);
-      await prefs.setString('cache_vehicles', encoded);
+      try {
+        final encoded = jsonEncode(remote.map((e) => e.toJson()).toList());
+        unawaited(_safeSetLocalString(_localVehiclesKey, encoded, 'cache_vehicles'));
+      } catch (_) {}
       return remote;
     } catch (e) {
-      debugPrint('[SupabaseSync] fetchVehicles fallback to local: $e');
-      return localList;
+      debugPrint('[SupabaseSync] fetchVehicles network error (trying local): $e');
+      final localRaw = await _safeGetLocalString(_localVehiclesKey, 'cache_vehicles');
+      if (localRaw != null && localRaw.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(localRaw) as List;
+          return decoded
+              .map((item) => VehicleModel.fromJson(Map<String, dynamic>.from(item)))
+              .toList();
+        } catch (_) {}
+      }
+      rethrow;
     }
   }
 
@@ -328,30 +355,28 @@ class SupabaseSyncService {
   // CONTRACTS CRUD (Instant Sync with `public.contracts` + Vehicle Rental Sync)
   // ===========================================================================
   static Future<List<ContractModel>> fetchContracts() async {
-    final prefs = await SharedPreferences.getInstance();
-    final localRaw = prefs.getString(_localContractsKey) ?? prefs.getString('cache_contracts');
-    List<ContractModel> localList = [];
-    if (localRaw != null) {
-      try {
-        final decoded = jsonDecode(localRaw) as List;
-        localList = decoded
-            .map((e) => ContractModel.fromJson(Map<String, dynamic>.from(e)))
-            .toList();
-      } catch (_) {}
-    }
-
     try {
       final rows = await _fetchTableRows('contracts', orderBy: 'created_at', ascending: false);
       final remote = rows
           .map((r) => ContractModel.fromJson(r))
           .toList();
-      final encoded = jsonEncode(remote.map((e) => e.toJson()).toList());
-      await prefs.setString(_localContractsKey, encoded);
-      await prefs.setString('cache_contracts', encoded);
+      try {
+        final encoded = jsonEncode(remote.map((e) => e.toJson()).toList());
+        unawaited(_safeSetLocalString(_localContractsKey, encoded, 'cache_contracts'));
+      } catch (_) {}
       return remote;
     } catch (e) {
-      debugPrint('[SupabaseSync] fetchContracts fallback to local: $e');
-      return localList;
+      debugPrint('[SupabaseSync] fetchContracts network error (trying local): $e');
+      final localRaw = await _safeGetLocalString(_localContractsKey, 'cache_contracts');
+      if (localRaw != null && localRaw.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(localRaw) as List;
+          return decoded
+              .map((item) => ContractModel.fromJson(Map<String, dynamic>.from(item)))
+              .toList();
+        } catch (_) {}
+      }
+      rethrow;
     }
   }
 
@@ -409,30 +434,28 @@ class SupabaseSyncService {
   // INVOICES CRUD (Instant Sync with `public.invoices`)
   // ===========================================================================
   static Future<List<InvoiceModel>> fetchInvoices() async {
-    final prefs = await SharedPreferences.getInstance();
-    final localRaw = prefs.getString(_localInvoicesKey) ?? prefs.getString('cache_invoices');
-    List<InvoiceModel> localList = [];
-    if (localRaw != null) {
-      try {
-        final decoded = jsonDecode(localRaw) as List;
-        localList = decoded
-            .map((e) => InvoiceModel.fromJson(Map<String, dynamic>.from(e)))
-            .toList();
-      } catch (_) {}
-    }
-
     try {
       final rows = await _fetchTableRows('invoices', orderBy: 'updated_at', ascending: false);
       final remote = rows
           .map((r) => InvoiceModel.fromJson(r))
           .toList();
-      final encoded = jsonEncode(remote.map((e) => e.toJson()).toList());
-      await prefs.setString(_localInvoicesKey, encoded);
-      await prefs.setString('cache_invoices', encoded);
+      try {
+        final encoded = jsonEncode(remote.map((e) => e.toJson()).toList());
+        unawaited(_safeSetLocalString(_localInvoicesKey, encoded, 'cache_invoices'));
+      } catch (_) {}
       return remote;
     } catch (e) {
-      debugPrint('[SupabaseSync] fetchInvoices fallback to local: $e');
-      return localList;
+      debugPrint('[SupabaseSync] fetchInvoices network error (trying local): $e');
+      final localRaw = await _safeGetLocalString(_localInvoicesKey, 'cache_invoices');
+      if (localRaw != null && localRaw.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(localRaw) as List;
+          return decoded
+              .map((item) => InvoiceModel.fromJson(Map<String, dynamic>.from(item)))
+              .toList();
+        } catch (_) {}
+      }
+      rethrow;
     }
   }
 
@@ -512,33 +535,28 @@ class SupabaseSyncService {
   // EXPENSES CRUD
   // ===========================================================================
   static Future<List<ExpenseModel>> fetchExpenses() async {
-    final prefs = await SharedPreferences.getInstance();
-    final localJson = prefs.getString(_localExpensesKey) ?? prefs.getString('cache_expenses');
-    List<ExpenseModel> localList = [];
-    if (localJson != null && localJson.isNotEmpty) {
-      try {
-        final list = jsonDecode(localJson) as List<dynamic>;
-        localList = list
-            .map((e) => ExpenseModel.fromJson(Map<String, dynamic>.from(e)))
-            .toList();
-      } catch (e) {
-        debugPrint('[SupabaseSync] fetchExpenses local cache parse error: $e');
-      }
-    }
-
     try {
       final rows = await _fetchTableRows('expenses', orderBy: 'created_at', ascending: false);
       final remoteList = rows
           .map((e) => ExpenseModel.fromJson(e))
           .toList();
-
-      final encoded = jsonEncode(remoteList.map((e) => e.toJson()).toList());
-      await prefs.setString(_localExpensesKey, encoded);
-      await prefs.setString('cache_expenses', encoded);
+      try {
+        final encoded = jsonEncode(remoteList.map((e) => e.toJson()).toList());
+        unawaited(_safeSetLocalString(_localExpensesKey, encoded, 'cache_expenses'));
+      } catch (_) {}
       return remoteList;
     } catch (e) {
-      debugPrint('[SupabaseSync] fetchExpenses network error (using cache): $e');
-      return localList;
+      debugPrint('[SupabaseSync] fetchExpenses network error (trying local): $e');
+      final localJson = await _safeGetLocalString(_localExpensesKey, 'cache_expenses');
+      if (localJson != null && localJson.isNotEmpty) {
+        try {
+          final list = jsonDecode(localJson) as List<dynamic>;
+          return list
+              .map((item) => ExpenseModel.fromJson(Map<String, dynamic>.from(item)))
+              .toList();
+        } catch (_) {}
+      }
+      rethrow;
     }
   }
 
