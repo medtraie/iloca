@@ -7,23 +7,6 @@ import '../../core/widgets/vehicle_image_preview.dart';
 import '../../models/app_models.dart';
 import '../../providers/app_state_provider.dart';
 
-const List<String> kPopularCarBrands = [
-  'Dacia',
-  'Renault',
-  'Peugeot',
-  'Volkswagen',
-  'Hyundai',
-  'Toyota',
-  'Mercedes-Benz',
-  'BMW',
-  'Audi',
-  'Kia',
-  'Citroën',
-  'Fiat',
-  'Jeep',
-  'Nissan',
-];
-
 const List<String> kFuelTypes = [
   'Diesel',
   'Essence',
@@ -582,27 +565,6 @@ class _VehicleFormDialogState extends State<VehicleFormDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionTitle('Sélection Rapide de Marque', LucideIcons.sparkles),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: kPopularCarBrands.map((brand) {
-            final sel = _brandCtrl.text.toUpperCase() == brand.toUpperCase();
-            return ChoiceChip(
-              label: Text(brand, style: const TextStyle(fontSize: 11)),
-              selected: sel,
-              selectedColor: AppColors2026.cyanBright,
-              labelStyle: TextStyle(
-                color: sel ? AppColors2026.abyss : Colors.white,
-                fontWeight: sel ? FontWeight.w900 : FontWeight.w600,
-              ),
-              backgroundColor: Colors.white.withOpacity(0.05),
-              onSelected: (_) => setState(() => _brandCtrl.text = brand),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 16),
         _buildSectionTitle('Identification du Véhicule', LucideIcons.car),
         const SizedBox(height: 12),
         Row(
