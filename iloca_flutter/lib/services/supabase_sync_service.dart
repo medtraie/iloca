@@ -22,6 +22,9 @@ class SupabaseSyncService {
   static String get _effectiveUserId =>
       _sb.auth.currentUser?.id ?? _defaultSuperAdminId;
 
+  /// Last network error encountered while fetching (null when the last fetch succeeded).
+  static String? lastFetchError;
+
   /// Dual-Engine Table Fetcher:
   /// 1. High-speed direct HTTPS REST call to Supabase PostgREST (immune to expired GoTrue session tokens or isolate delays)
   /// 2. Fallback to Supabase SDK client
@@ -30,6 +33,7 @@ class SupabaseSyncService {
     String? orderBy,
     bool ascending = false,
   }) async {
+    String restError = '';
     try {
       final orderParam = orderBy != null
           ? '&order=$orderBy.${ascending ? 'asc' : 'desc'}'
@@ -46,7 +50,7 @@ class SupabaseSyncService {
               'Accept': 'application/json',
             },
           )
-          .timeout(const Duration(seconds: 7));
+          .timeout(const Duration(seconds: 12));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = jsonDecode(response.body);
@@ -57,20 +61,27 @@ class SupabaseSyncService {
               .toList();
         }
       }
+      restError = 'HTTP ${response.statusCode}';
     } catch (e) {
+      restError = e.toString();
       debugPrint('[SupabaseSync] Direct REST note ($table): $e');
     }
 
-    final query = _sb.from(table).select('*');
-    final rows = orderBy != null
-        ? await query
-            .order(orderBy, ascending: ascending)
-            .timeout(const Duration(seconds: 7))
-        : await query.timeout(const Duration(seconds: 7));
-    return (rows as List)
-        .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
+    try {
+      final query = _sb.from(table).select('*');
+      final rows = orderBy != null
+          ? await query
+              .order(orderBy, ascending: ascending)
+              .timeout(const Duration(seconds: 12))
+          : await query.timeout(const Duration(seconds: 12));
+      return (rows as List)
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    } catch (e) {
+      lastFetchError = restError.isNotEmpty ? restError : e.toString();
+      rethrow;
+    }
   }
 
   /// Subscribe to Supabase Postgres Realtime Changes on all tables

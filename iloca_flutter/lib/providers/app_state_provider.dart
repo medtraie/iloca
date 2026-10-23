@@ -251,12 +251,27 @@ class AppStateProvider extends ChangeNotifier {
     }
   }
 
-  /// High-speed parallel refresh from Supabase (Zero GPS blocking)
-  Future<void> refreshAllData() async {
+  /// Human-readable reason of the last failed sync (null when data loaded fine).
+  String? _lastSyncError;
+  String? get lastSyncError => _lastSyncError;
+
+  Future<void>? _inFlightRefresh;
+  int _autoRetryAttempt = 0;
+  Timer? _autoRetryTimer;
+
+  /// High-speed parallel refresh from Supabase (Zero GPS blocking).
+  /// Concurrent calls share the same in-flight request; failures are retried automatically.
+  Future<void> refreshAllData() {
+    return _inFlightRefresh ??=
+        _doRefreshAllData().whenComplete(() => _inFlightRefresh = null);
+  }
+
+  Future<void> _doRefreshAllData() async {
     _isSyncing = true;
     notifyListeners();
 
     try {
+      SupabaseSyncService.lastFetchError = null;
       final results = await Future.wait([
         SupabaseSyncService.fetchClients(),
         SupabaseSyncService.fetchVehicles(),
@@ -264,7 +279,7 @@ class AppStateProvider extends ChangeNotifier {
         SupabaseSyncService.fetchInvoices(),
         SupabaseSyncService.fetchExpenses(),
         SupabaseSyncService.fetchMonthlyExpensesAndRepairs(),
-      ]).timeout(const Duration(seconds: 12));
+      ]).timeout(const Duration(seconds: 40));
 
       final fetchedClients = results[0] as List<ClientModel>;
       final fetchedVehicles = results[1] as List<VehicleModel>;
@@ -293,14 +308,41 @@ class AppStateProvider extends ChangeNotifier {
       }
 
       _syncVehiclesWithActiveContracts();
-      _lastSyncTime = DateTime.now();
+      _lastSyncError = SupabaseSyncService.lastFetchError;
+      if (_lastSyncError == null) {
+        _lastSyncTime = DateTime.now();
+        _autoRetryAttempt = 0;
+      }
       await _saveToLocalCache();
     } catch (e) {
+      _lastSyncError = e.toString();
       debugPrint('[AppState] refreshAllData error: $e');
     } finally {
       _isSyncing = false;
       notifyListeners();
     }
+
+    if (_lastSyncError != null) _scheduleAutoRetry();
+  }
+
+  /// Retries a failed sync with backoff (3s, 8s, 15s, 30s) — e.g. when the
+  /// phone's network is not ready yet right after launch / login.
+  void _scheduleAutoRetry() {
+    const delays = [3, 8, 15, 30];
+    if (_autoRetryAttempt >= delays.length || !_isAuthenticated) return;
+    final delay = Duration(seconds: delays[_autoRetryAttempt]);
+    _autoRetryAttempt++;
+    _autoRetryTimer?.cancel();
+    _autoRetryTimer = Timer(delay, () {
+      if (_isAuthenticated) refreshAllData();
+    });
+  }
+
+  /// Manual retry from the UI (resets the backoff counter).
+  Future<void> retrySync() {
+    _autoRetryAttempt = 0;
+    _autoRetryTimer?.cancel();
+    return refreshAllData();
   }
 
   void _syncVehiclesWithActiveContracts() {
@@ -391,6 +433,7 @@ class AppStateProvider extends ChangeNotifier {
   Future<void> logout() async {
     // 1. Immediately switch auth state & notify UI (0ms transition)
     _isAuthenticated = false;
+    _autoRetryTimer?.cancel();
     notifyListeners();
 
     // 2. Persist state locally
@@ -674,6 +717,7 @@ class AppStateProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _autoRetryTimer?.cancel();
     _realtimeChannel?.unsubscribe();
     super.dispose();
   }

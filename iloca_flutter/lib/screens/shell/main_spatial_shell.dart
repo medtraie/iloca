@@ -182,6 +182,9 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
                     child: Column(
                       children: [
                         _buildTopSpatialHeader(context, appState, currentMeta),
+                        if (appState.lastSyncError != null &&
+                            !appState.isSyncing)
+                          _buildSyncErrorBanner(appState),
                         Expanded(
                           child: IndexedStack(
                             index: currentIndex,
@@ -209,6 +212,47 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
               : _buildMobileSpatialDock(context, appState, currentIndex),
         );
       },
+    );
+  }
+
+  /// Visible sync failure notice with the real cause and a manual retry.
+  Widget _buildSyncErrorBanner(AppStateProvider state) {
+    final err = state.lastSyncError ?? '';
+    final reason = err.contains('SocketException') ||
+            err.contains('Failed host lookup') ||
+            err.contains('ClientException')
+        ? 'Pas de connexion au serveur (vérifiez Internet).'
+        : err.contains('Timeout')
+            ? 'Le serveur met trop de temps à répondre.'
+            : err;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+      decoration: BoxDecoration(
+        color: AppColors2026.roseLaser.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors2026.roseLaser.withOpacity(0.4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(LucideIcons.wifiOff,
+              size: 16, color: AppColors2026.roseLaser),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Données non synchronisées : $reason',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+            ),
+          ),
+          TextButton(
+            onPressed: () => state.retrySync(),
+            child: const Text('Réessayer',
+                style: TextStyle(fontWeight: FontWeight.w900)),
+          ),
+        ],
+      ),
     );
   }
 
