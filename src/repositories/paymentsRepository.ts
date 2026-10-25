@@ -1,41 +1,37 @@
 import { getSupabaseClient } from "@/services/supabaseService";
 import type { Payment } from "@/types/payment";
+import {
+  getActiveTenantUserId,
+  isValidUuid,
+  getScopedLocalStorage,
+  saveScopedLocalStorage,
+} from "./repositoryUtils";
 
 const STORAGE_KEY_LOCAL_PAYMENTS = "iloca:payments:local";
 
-function getLocalPayments(): Payment[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_LOCAL_PAYMENTS);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+function getLocalPayments(userId?: string | null): Payment[] {
+  return getScopedLocalStorage<Payment>(STORAGE_KEY_LOCAL_PAYMENTS, userId);
 }
 
-function saveLocalPayments(payments: Payment[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(STORAGE_KEY_LOCAL_PAYMENTS, JSON.stringify(payments));
-  } catch (e) {
-    console.warn("Could not save local payments:", e);
-  }
+function saveLocalPayments(payments: Payment[], userId?: string | null): void {
+  saveScopedLocalStorage(STORAGE_KEY_LOCAL_PAYMENTS, payments, userId);
 }
-
-const isValidUuid = (id: string | null | undefined): boolean => {
-  if (!id) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-};
 
 const normalizeNotes = (value?: string | null) => (value || "").trim().toLowerCase();
 
 export const paymentsRepository = {
   async getAll(): Promise<Payment[]> {
-    const localList = getLocalPayments();
+    const activeUserId = getActiveTenantUserId();
+    if (!activeUserId) return [];
+    const localList = getLocalPayments(activeUserId);
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data, error } = await supabase.from("payments").select("*").order("payment_date", { ascending: false });
+        const { data, error } = await supabase
+          .from("payments")
+          .select("*")
+          .eq("user_id", activeUserId)
+          .order("payment_date", { ascending: false });
         if (!error && data) {
           const remoteList = data.map(row => ({
             id: row.id,
@@ -61,10 +57,8 @@ export const paymentsRepository = {
             notes: row.notes,
           })) as Payment[];
 
-          const remoteIds = new Set(remoteList.map((p) => p.id));
-          const combined = [...remoteList, ...localList.filter((p) => !remoteIds.has(p.id))];
-          saveLocalPayments(combined);
-          return combined.filter((payment) => normalizeNotes(payment.notes) !== "avance initiale");
+          saveLocalPayments(remoteList, activeUserId);
+          return remoteList.filter((payment) => normalizeNotes(payment.notes) !== "avance initiale");
         }
       }
     } catch (err) {
@@ -74,12 +68,9 @@ export const paymentsRepository = {
   },
 
   async create(payment: Omit<Payment, "id">): Promise<Payment> {
-    const activeUserStr = typeof window !== "undefined" ? localStorage.getItem("iloca:active_user") : null;
-    let activeUserId: string | null = null;
-    if (activeUserStr) {
-      try {
-        activeUserId = JSON.parse(activeUserStr)?.id || null;
-      } catch {}
+    const activeUserId = getActiveTenantUserId();
+    if (!activeUserId) {
+      throw new Error("Action impossible: utilisateur non authentifié.");
     }
 
     const now = new Date().toISOString();
@@ -92,10 +83,6 @@ export const paymentsRepository = {
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data: authData } = await supabase.auth.getUser();
-        const candidateUserId = authData.user?.id || activeUserId;
-        const userId = isValidUuid(candidateUserId) ? candidateUserId : null;
-
         const insertPayload: Record<string, any> = {
           contract_id: payment.contractId,
           repair_id: payment.repairId,
@@ -116,8 +103,8 @@ export const paymentsRepository = {
           relance_history: payment.relanceHistory || [],
           audit_trail: payment.auditTrail || [],
           notes: payment.notes,
+          user_id: activeUserId,
         };
-        if (userId) insertPayload.user_id = userId;
 
         const { data, error } = await supabase
           .from("payments")
@@ -148,8 +135,8 @@ export const paymentsRepository = {
             createdAt: data.created_at,
             notes: data.notes,
           };
-          const local = getLocalPayments().filter((p) => p.id !== saved.id);
-          saveLocalPayments([saved, ...local]);
+          const local = getLocalPayments(activeUserId).filter((p) => p.id !== saved.id);
+          saveLocalPayments([saved, ...local], activeUserId);
           return saved;
         }
         if (error) console.warn("Supabase payment insert rejected (storing locally):", error);
@@ -158,12 +145,13 @@ export const paymentsRepository = {
       console.warn("Supabase payment create exception (storing locally):", err);
     }
 
-    const currentLocal = getLocalPayments().filter((p) => p.id !== fallbackPayment.id);
-    saveLocalPayments([fallbackPayment, ...currentLocal]);
+    const currentLocal = getLocalPayments(activeUserId).filter((p) => p.id !== fallbackPayment.id);
+    saveLocalPayments([fallbackPayment, ...currentLocal], activeUserId);
     return fallbackPayment;
   },
 
   async update(id: string, updates: Partial<Payment>): Promise<Payment> {
+    const activeUserId = getActiveTenantUserId();
     let updatedPayment: Payment | null = null;
     try {
       const supabase = getSupabaseClient();
@@ -189,12 +177,9 @@ export const paymentsRepository = {
         if (updates.auditTrail !== undefined) payload.audit_trail = updates.auditTrail;
         if (updates.notes !== undefined) payload.notes = updates.notes;
 
-        const { data, error } = await supabase
-          .from("payments")
-          .update(payload)
-          .eq("id", id)
-          .select()
-          .single();
+        let query = supabase.from("payments").update(payload).eq("id", id);
+        if (activeUserId) query = query.eq("user_id", activeUserId);
+        const { data, error } = await query.select().single();
         if (!error && data) {
           updatedPayment = {
             id: data.id,
@@ -225,7 +210,7 @@ export const paymentsRepository = {
       console.warn("Supabase payment update exception:", err);
     }
 
-    const local = getLocalPayments();
+    const local = getLocalPayments(activeUserId);
     const existing = local.find((p) => p.id === id);
     const now = new Date().toISOString();
     const merged: Payment = updatedPayment || {
@@ -237,22 +222,24 @@ export const paymentsRepository = {
     if (!existing && !updatedPayment) {
       nextLocal.push(merged);
     }
-    saveLocalPayments(nextLocal);
+    saveLocalPayments(nextLocal, activeUserId);
     return merged;
   },
 
   async delete(id: string): Promise<boolean> {
+    const activeUserId = getActiveTenantUserId();
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        await supabase.from("payments").delete().eq("id", id);
+        let query = supabase.from("payments").delete().eq("id", id);
+        if (activeUserId) query = query.eq("user_id", activeUserId);
+        await query;
       }
     } catch (err) {
       console.warn("Supabase payment delete exception:", err);
     }
-    const local = getLocalPayments().filter((p) => p.id !== id);
-    saveLocalPayments(local);
+    const local = getLocalPayments(activeUserId).filter((p) => p.id !== id);
+    saveLocalPayments(local, activeUserId);
     return true;
   }
 };
-

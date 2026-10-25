@@ -1,5 +1,11 @@
 import { getSupabaseClient, getSupabaseConfigError } from "@/services/supabaseService";
 import type { Vehicle } from "@/types/appData";
+import {
+  getActiveTenantUserId,
+  isValidUuid,
+  getScopedLocalStorage,
+  saveScopedLocalStorage,
+} from "./repositoryUtils";
 
 type VehicleRow = Record<string, any>;
 
@@ -93,41 +99,29 @@ const buildVehicleUpdatePayload = (vehicle: Partial<Vehicle>) => {
   return payload;
 };
 
-function getLocalVehicles(): Vehicle[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_LOCAL_VEHICLES);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+function getLocalVehicles(userId?: string | null): Vehicle[] {
+  return getScopedLocalStorage<Vehicle>(STORAGE_KEY_LOCAL_VEHICLES, userId);
 }
 
-function saveLocalVehicles(vehicles: Vehicle[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(STORAGE_KEY_LOCAL_VEHICLES, JSON.stringify(vehicles));
-  } catch (e) {
-    console.warn("Could not save local vehicles:", e);
-  }
+function saveLocalVehicles(vehicles: Vehicle[], userId?: string | null): void {
+  saveScopedLocalStorage(STORAGE_KEY_LOCAL_VEHICLES, vehicles, userId);
 }
-
-const isValidUuid = (id: string | null | undefined): boolean => {
-  if (!id || typeof id !== "string") return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-};
 
 async function listVehicles(): Promise<Vehicle[]> {
-  const localList = getLocalVehicles();
+  const activeUserId = getActiveTenantUserId();
+  if (!activeUserId) return [];
+  const localList = getLocalVehicles(activeUserId);
   try {
     const supabase = requireSupabase();
-    const { data, error } = await supabase.from("vehicles").select("*").order("updated_at", { ascending: false });
+    const { data, error } = await supabase
+      .from("vehicles")
+      .select("*")
+      .eq("user_id", activeUserId)
+      .order("updated_at", { ascending: false });
     if (!error && data) {
       const remoteVehicles = data.map(mapVehicleRow);
-      const remoteIds = new Set(remoteVehicles.map((v) => v.id));
-      const combined = [...remoteVehicles, ...localList.filter((v) => !remoteIds.has(v.id))];
-      saveLocalVehicles(combined);
-      return combined;
+      saveLocalVehicles(remoteVehicles, activeUserId);
+      return remoteVehicles;
     }
   } catch (err) {
     console.warn("Error loading vehicles from Supabase, using local cache:", err);
@@ -136,12 +130,9 @@ async function listVehicles(): Promise<Vehicle[]> {
 }
 
 async function createVehicle(input: Omit<Vehicle, "id" | "created_at" | "updated_at">): Promise<Vehicle> {
-  const activeUserStr = typeof window !== "undefined" ? localStorage.getItem("iloca:active_user") : null;
-  let activeUserId: string | null = null;
-  if (activeUserStr) {
-    try {
-      activeUserId = JSON.parse(activeUserStr)?.id || null;
-    } catch {}
+  const activeUserId = getActiveTenantUserId();
+  if (!activeUserId) {
+    throw new Error("Action impossible: utilisateur non authentifié.");
   }
 
   const now = new Date().toISOString();
@@ -170,22 +161,16 @@ async function createVehicle(input: Omit<Vehicle, "id" | "created_at" | "updated
 
   try {
     const supabase = requireSupabase();
-    const { data: authData } = await supabase.auth.getUser();
-    const candidateUserId = authData.user?.id || activeUserId;
-    const userId = isValidUuid(candidateUserId) ? candidateUserId : null;
-
     const insertPayload: Record<string, any> = {
       ...buildVehicleInsertPayload(input),
+      user_id: activeUserId,
     };
-    if (userId) {
-      insertPayload.user_id = userId;
-    }
 
     const { data, error } = await supabase.from("vehicles").insert(insertPayload).select("*").single();
     if (!error && data) {
       const saved = mapVehicleRow(data);
-      const local = getLocalVehicles().filter((v) => v.id !== saved.id);
-      saveLocalVehicles([saved, ...local]);
+      const local = getLocalVehicles(activeUserId).filter((v) => v.id !== saved.id);
+      saveLocalVehicles([saved, ...local], activeUserId);
       return saved;
     }
     if (error) {
@@ -196,22 +181,20 @@ async function createVehicle(input: Omit<Vehicle, "id" | "created_at" | "updated
   }
 
   // Fallback storage
-  const currentLocal = getLocalVehicles().filter((v) => v.id !== fallbackVehicle.id);
-  saveLocalVehicles([fallbackVehicle, ...currentLocal]);
+  const currentLocal = getLocalVehicles(activeUserId).filter((v) => v.id !== fallbackVehicle.id);
+  saveLocalVehicles([fallbackVehicle, ...currentLocal], activeUserId);
   return fallbackVehicle;
 }
 
 async function updateVehicle(id: string, updates: Partial<Vehicle>): Promise<Vehicle> {
+  const activeUserId = getActiveTenantUserId();
   let updatedVehicle: Vehicle | null = null;
   try {
     const supabase = requireSupabase();
     const payload = buildVehicleUpdatePayload(updates);
-    const { data, error } = await supabase
-      .from("vehicles")
-      .update(payload)
-      .eq("id", id)
-      .select("*")
-      .single();
+    let query = supabase.from("vehicles").update(payload).eq("id", id);
+    if (activeUserId) query = query.eq("user_id", activeUserId);
+    const { data, error } = await query.select("*").single();
     if (!error && data) {
       updatedVehicle = mapVehicleRow(data);
     }
@@ -219,7 +202,7 @@ async function updateVehicle(id: string, updates: Partial<Vehicle>): Promise<Veh
     console.warn("Supabase vehicle update exception:", err);
   }
 
-  const local = getLocalVehicles();
+  const local = getLocalVehicles(activeUserId);
   const existing = local.find((v) => v.id === id);
   const now = new Date().toISOString();
   const merged: Vehicle = updatedVehicle || {
@@ -232,19 +215,22 @@ async function updateVehicle(id: string, updates: Partial<Vehicle>): Promise<Veh
   if (!existing && !updatedVehicle) {
     nextLocal.push(merged);
   }
-  saveLocalVehicles(nextLocal);
+  saveLocalVehicles(nextLocal, activeUserId);
   return merged;
 }
 
 async function deleteVehicle(id: string): Promise<void> {
+  const activeUserId = getActiveTenantUserId();
   try {
     const supabase = requireSupabase();
-    await supabase.from("vehicles").delete().eq("id", id);
+    let query = supabase.from("vehicles").delete().eq("id", id);
+    if (activeUserId) query = query.eq("user_id", activeUserId);
+    await query;
   } catch (err) {
     console.warn("Supabase vehicle delete exception:", err);
   }
-  const local = getLocalVehicles().filter((v) => v.id !== id);
-  saveLocalVehicles(local);
+  const local = getLocalVehicles(activeUserId).filter((v) => v.id !== id);
+  saveLocalVehicles(local, activeUserId);
 }
 
 async function replaceVehicles(vehicles: Vehicle[]): Promise<void> {

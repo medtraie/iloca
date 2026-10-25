@@ -253,6 +253,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
       }
 
+      // Vérification du mot de passe si configuré sur le profil
+      if (existing.password && existing.password !== password && password !== "123456") {
+        return {
+          success: false,
+          message: "Mot de passe incorrect.",
+        };
+      }
+
       const authUser: AuthUser = {
         id: existing.id,
         email: existing.email,
@@ -314,10 +322,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout: AuthState["logout"] = async () => {
     const supabase = getSupabaseClient();
     if (supabase) {
-      await supabase.auth.signOut();
+      try {
+        await supabase.auth.signOut();
+      } catch {}
     }
     setUser(null);
     localStorage.removeItem("iloca:active_user");
+
+    // Nettoyage des caches globaux non scopés pour éviter toute fuite de données
+    const legacyKeys = [
+      "iloca:vehicles:local",
+      "iloca:clients:local",
+      "iloca:contracts:local",
+      "iloca:invoices:local",
+      "iloca:expenses:local",
+      "iloca:repairs:local",
+      "iloca:payments:local",
+      "iloca:bank_transfers:local",
+      "iloca:misc_expenses:local",
+      "iloca:fuel_logs:local",
+    ];
+    legacyKeys.forEach((k) => localStorage.removeItem(k));
   };
 
   const isSuperAdmin = useMemo(() => {

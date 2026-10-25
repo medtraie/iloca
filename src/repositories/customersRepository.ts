@@ -1,33 +1,23 @@
 import { getSupabaseClient, getSupabaseConfigError } from "@/services/supabaseService";
 import type { ClientProfile, Customer, Tenant } from "@/types/appData";
+import {
+  getActiveTenantUserId,
+  isValidUuid,
+  getScopedLocalStorage,
+  saveScopedLocalStorage,
+} from "./repositoryUtils";
 
 type ClientRow = Record<string, any>;
 
 const STORAGE_KEY_LOCAL_CLIENTS = "iloca:clients:local";
 
-function getLocalClients(): ClientProfile[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_LOCAL_CLIENTS);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+function getLocalClients(userId?: string | null): ClientProfile[] {
+  return getScopedLocalStorage<ClientProfile>(STORAGE_KEY_LOCAL_CLIENTS, userId);
 }
 
-function saveLocalClients(clients: ClientProfile[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(STORAGE_KEY_LOCAL_CLIENTS, JSON.stringify(clients));
-  } catch (e) {
-    console.warn("Could not save local clients:", e);
-  }
+function saveLocalClients(clients: ClientProfile[], userId?: string | null): void {
+  saveScopedLocalStorage(STORAGE_KEY_LOCAL_CLIENTS, clients, userId);
 }
-
-const isValidUuid = (id: string | null | undefined): boolean => {
-  if (!id) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-};
 
 const requireSupabase = () => {
   const supabase = getSupabaseClient();
@@ -149,16 +139,20 @@ const buildTenantPayload = (input: Omit<Tenant, "id" | "createdAt" | "updatedAt"
 });
 
 async function listClientProfiles(): Promise<ClientProfile[]> {
-  const localList = getLocalClients();
+  const activeUserId = getActiveTenantUserId();
+  if (!activeUserId) return [];
+  const localList = getLocalClients(activeUserId);
   try {
     const supabase = requireSupabase();
-    const { data, error } = await supabase.from("clients").select("*").order("updated_at", { ascending: false });
+    const { data, error } = await supabase
+      .from("clients")
+      .select("*")
+      .eq("user_id", activeUserId)
+      .order("updated_at", { ascending: false });
     if (!error && data) {
       const remoteProfiles = data.map(toClientProfile);
-      const remoteIds = new Set(remoteProfiles.map((p) => p.id));
-      const combined = [...remoteProfiles, ...localList.filter((p) => !remoteIds.has(p.id))];
-      saveLocalClients(combined);
-      return combined;
+      saveLocalClients(remoteProfiles, activeUserId);
+      return remoteProfiles;
     }
   } catch (err) {
     console.warn("Error loading clients from Supabase, using local cache:", err);
@@ -172,12 +166,9 @@ async function listCustomers(): Promise<Customer[]> {
 }
 
 async function createCustomer(input: Omit<Customer, "id" | "created_at" | "updated_at">): Promise<Customer> {
-  const activeUserStr = typeof window !== "undefined" ? localStorage.getItem("iloca:active_user") : null;
-  let activeUserId: string | null = null;
-  if (activeUserStr) {
-    try {
-      activeUserId = JSON.parse(activeUserStr)?.id || null;
-    } catch {}
+  const activeUserId = getActiveTenantUserId();
+  if (!activeUserId) {
+    throw new Error("Action impossible: utilisateur non authentifié.");
   }
 
   const now = new Date().toISOString();
@@ -203,22 +194,16 @@ async function createCustomer(input: Omit<Customer, "id" | "created_at" | "updat
 
   try {
     const supabase = requireSupabase();
-    const { data: authData } = await supabase.auth.getUser();
-    const candidateUserId = authData.user?.id || activeUserId;
-    const userId = isValidUuid(candidateUserId) ? candidateUserId : null;
-
     const payload: Record<string, any> = {
       ...buildCustomerPayload(input),
+      user_id: activeUserId,
     };
-    if (userId) {
-      payload.user_id = userId;
-    }
 
     const { data, error } = await supabase.from("clients").insert(payload).select("*").single();
     if (!error && data) {
       const saved = toClientProfile(data);
-      const local = getLocalClients().filter((p) => p.id !== saved.id);
-      saveLocalClients([saved, ...local]);
+      const local = getLocalClients(activeUserId).filter((p) => p.id !== saved.id);
+      saveLocalClients([saved, ...local], activeUserId);
       return toCustomer(saved);
     }
     if (error) {
@@ -228,16 +213,19 @@ async function createCustomer(input: Omit<Customer, "id" | "created_at" | "updat
     console.warn("Supabase client create exception (storing locally):", err);
   }
 
-  const currentLocal = getLocalClients().filter((p) => p.id !== fallbackProfile.id);
-  saveLocalClients([fallbackProfile, ...currentLocal]);
+  const currentLocal = getLocalClients(activeUserId).filter((p) => p.id !== fallbackProfile.id);
+  saveLocalClients([fallbackProfile, ...currentLocal], activeUserId);
   return toCustomer(fallbackProfile);
 }
 
 async function updateCustomer(id: string, updates: Partial<Customer>): Promise<Customer> {
+  const activeUserId = getActiveTenantUserId();
   let updatedProfile: ClientProfile | null = null;
   try {
     const supabase = requireSupabase();
-    const { data, error } = await supabase.from("clients").update(buildCustomerPayload(updates)).eq("id", id).select("*").single();
+    let query = supabase.from("clients").update(buildCustomerPayload(updates)).eq("id", id);
+    if (activeUserId) query = query.eq("user_id", activeUserId);
+    const { data, error } = await query.select("*").single();
     if (!error && data) {
       updatedProfile = toClientProfile(data);
     }
@@ -245,7 +233,7 @@ async function updateCustomer(id: string, updates: Partial<Customer>): Promise<C
     console.warn("Supabase customer update exception:", err);
   }
 
-  const local = getLocalClients();
+  const local = getLocalClients(activeUserId);
   const existing = local.find((p) => p.id === id);
   const now = new Date().toISOString();
   const merged: ClientProfile = updatedProfile || {
@@ -258,19 +246,22 @@ async function updateCustomer(id: string, updates: Partial<Customer>): Promise<C
   if (!existing && !updatedProfile) {
     nextLocal.push(merged);
   }
-  saveLocalClients(nextLocal);
+  saveLocalClients(nextLocal, activeUserId);
   return toCustomer(merged);
 }
 
 async function deleteCustomer(id: string): Promise<void> {
+  const activeUserId = getActiveTenantUserId();
   try {
     const supabase = requireSupabase();
-    await supabase.from("clients").delete().eq("id", id);
+    let query = supabase.from("clients").delete().eq("id", id);
+    if (activeUserId) query = query.eq("user_id", activeUserId);
+    await query;
   } catch (err) {
     console.warn("Supabase customer delete exception:", err);
   }
-  const local = getLocalClients().filter((p) => p.id !== id);
-  saveLocalClients(local);
+  const local = getLocalClients(activeUserId).filter((p) => p.id !== id);
+  saveLocalClients(local, activeUserId);
 }
 
 async function listTenants(): Promise<Tenant[]> {
@@ -279,12 +270,9 @@ async function listTenants(): Promise<Tenant[]> {
 }
 
 async function createTenant(input: Omit<Tenant, "id" | "createdAt" | "updatedAt">): Promise<Tenant> {
-  const activeUserStr = typeof window !== "undefined" ? localStorage.getItem("iloca:active_user") : null;
-  let activeUserId: string | null = null;
-  if (activeUserStr) {
-    try {
-      activeUserId = JSON.parse(activeUserStr)?.id || null;
-    } catch {}
+  const activeUserId = getActiveTenantUserId();
+  if (!activeUserId) {
+    throw new Error("Action impossible: utilisateur non authentifié.");
   }
 
   const now = new Date().toISOString();
@@ -313,22 +301,16 @@ async function createTenant(input: Omit<Tenant, "id" | "createdAt" | "updatedAt"
 
   try {
     const supabase = requireSupabase();
-    const { data: authData } = await supabase.auth.getUser();
-    const candidateUserId = authData.user?.id || activeUserId;
-    const userId = isValidUuid(candidateUserId) ? candidateUserId : null;
-
     const payload: Record<string, any> = {
       ...buildTenantPayload(input),
+      user_id: activeUserId,
     };
-    if (userId) {
-      payload.user_id = userId;
-    }
 
     const { data, error } = await supabase.from("clients").insert(payload).select("*").single();
     if (!error && data) {
       const saved = toClientProfile(data);
-      const local = getLocalClients().filter((p) => p.id !== saved.id);
-      saveLocalClients([saved, ...local]);
+      const local = getLocalClients(activeUserId).filter((p) => p.id !== saved.id);
+      saveLocalClients([saved, ...local], activeUserId);
       return toTenant(saved);
     }
     if (error) {
@@ -338,21 +320,19 @@ async function createTenant(input: Omit<Tenant, "id" | "createdAt" | "updatedAt"
     console.warn("Supabase tenant create exception (storing locally):", err);
   }
 
-  const currentLocal = getLocalClients().filter((p) => p.id !== fallbackProfile.id);
-  saveLocalClients([fallbackProfile, ...currentLocal]);
+  const currentLocal = getLocalClients(activeUserId).filter((p) => p.id !== fallbackProfile.id);
+  saveLocalClients([fallbackProfile, ...currentLocal], activeUserId);
   return toTenant(fallbackProfile);
 }
 
 async function updateTenant(id: string, updates: Partial<Tenant>): Promise<Tenant> {
+  const activeUserId = getActiveTenantUserId();
   let updatedProfile: ClientProfile | null = null;
   try {
     const supabase = requireSupabase();
-    const { data, error } = await supabase
-      .from("clients")
-      .update(buildTenantPayload(updates))
-      .eq("id", id)
-      .select("*")
-      .single();
+    let query = supabase.from("clients").update(buildTenantPayload(updates)).eq("id", id);
+    if (activeUserId) query = query.eq("user_id", activeUserId);
+    const { data, error } = await query.select("*").single();
     if (!error && data) {
       updatedProfile = toClientProfile(data);
     }
@@ -360,7 +340,7 @@ async function updateTenant(id: string, updates: Partial<Tenant>): Promise<Tenan
     console.warn("Supabase tenant update exception:", err);
   }
 
-  const local = getLocalClients();
+  const local = getLocalClients(activeUserId);
   const existing = local.find((p) => p.id === id);
   const now = new Date().toISOString();
   const merged: ClientProfile = updatedProfile || {
@@ -373,19 +353,32 @@ async function updateTenant(id: string, updates: Partial<Tenant>): Promise<Tenan
   if (!existing && !updatedProfile) {
     nextLocal.push(merged);
   }
-  saveLocalClients(nextLocal);
+  saveLocalClients(nextLocal, activeUserId);
   return toTenant(merged);
 }
 
 async function deleteTenant(id: string): Promise<void> {
-  return deleteCustomer(id);
+  const activeUserId = getActiveTenantUserId();
+  try {
+    const supabase = requireSupabase();
+    let query = supabase.from("clients").delete().eq("id", id);
+    if (activeUserId) query = query.eq("user_id", activeUserId);
+    await query;
+  } catch (err) {
+    console.warn("Supabase tenant delete exception:", err);
+  }
+  const local = getLocalClients(activeUserId).filter((p) => p.id !== id);
+  saveLocalClients(local, activeUserId);
 }
 
 async function replaceClientProfiles(profiles: ClientProfile[]): Promise<void> {
-  saveLocalClients(profiles);
+  const activeUserId = getActiveTenantUserId();
+  saveLocalClients(profiles, activeUserId);
   try {
     const supabase = requireSupabase();
-    const { error: deleteError } = await supabase.from("clients").delete().not("id", "is", null);
+    let deleteQuery = supabase.from("clients").delete().not("id", "is", null);
+    if (activeUserId) deleteQuery = deleteQuery.eq("user_id", activeUserId);
+    const { error: deleteError } = await deleteQuery;
     if (deleteError) return;
     if (!profiles.length) return;
     const payload = profiles.map((profile) => ({
@@ -412,6 +405,7 @@ async function replaceClientProfiles(profiles: ClientProfile[]): Promise<void> {
       documents_urls: profile.documents_urls || [],
       created_at: profile.created_at,
       updated_at: profile.updated_at,
+      user_id: activeUserId || undefined,
     }));
     await supabase.from("clients").insert(payload);
   } catch (err) {
@@ -420,10 +414,13 @@ async function replaceClientProfiles(profiles: ClientProfile[]): Promise<void> {
 }
 
 async function clearClientProfiles(): Promise<void> {
-  saveLocalClients([]);
+  const activeUserId = getActiveTenantUserId();
+  saveLocalClients([], activeUserId);
   try {
     const supabase = requireSupabase();
-    await supabase.from("clients").delete().not("id", "is", null);
+    let query = supabase.from("clients").delete().not("id", "is", null);
+    if (activeUserId) query = query.eq("user_id", activeUserId);
+    await query;
   } catch (err) {
     console.warn("Supabase clearClientProfiles exception:", err);
   }

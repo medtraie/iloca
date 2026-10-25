@@ -1,39 +1,35 @@
 import { getSupabaseClient } from "@/services/supabaseService";
 import { FuelLog } from "@/services/fuelService";
+import {
+  getActiveTenantUserId,
+  isValidUuid,
+  getScopedLocalStorage,
+  saveScopedLocalStorage,
+} from "./repositoryUtils";
 
 const STORAGE_KEY_LOCAL_FUEL = "iloca:fuel_logs:local";
 
-function getLocalFuel(): FuelLog[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_LOCAL_FUEL);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+function getLocalFuel(userId?: string | null): FuelLog[] {
+  return getScopedLocalStorage<FuelLog>(STORAGE_KEY_LOCAL_FUEL, userId);
 }
 
-function saveLocalFuel(logs: FuelLog[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(STORAGE_KEY_LOCAL_FUEL, JSON.stringify(logs));
-  } catch (e) {
-    console.warn("Could not save local fuel logs:", e);
-  }
+function saveLocalFuel(logs: FuelLog[], userId?: string | null): void {
+  saveScopedLocalStorage(STORAGE_KEY_LOCAL_FUEL, logs, userId);
 }
-
-const isValidUuid = (id: string | null | undefined): boolean => {
-  if (!id) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-};
 
 export const fuelRepository = {
   async getAll(): Promise<FuelLog[]> {
-    const localList = getLocalFuel();
+    const activeUserId = getActiveTenantUserId();
+    if (!activeUserId) return [];
+    const localList = getLocalFuel(activeUserId);
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data, error } = await supabase.from("fuel_logs").select("*").order("date", { ascending: false });
+        const { data, error } = await supabase
+          .from("fuel_logs")
+          .select("*")
+          .eq("user_id", activeUserId)
+          .order("date", { ascending: false });
         if (!error && data) {
           const remoteList = data.map(log => ({
             id: log.id,
@@ -46,10 +42,8 @@ export const fuelRepository = {
             odometer: log.odometer,
           })) as FuelLog[];
 
-          const remoteIds = new Set(remoteList.map((f) => f.id));
-          const combined = [...remoteList, ...localList.filter((f) => !remoteIds.has(f.id))];
-          saveLocalFuel(combined);
-          return combined;
+          saveLocalFuel(remoteList, activeUserId);
+          return remoteList;
         }
       }
     } catch (err) {
@@ -67,12 +61,9 @@ export const fuelRepository = {
   },
 
   async create(log: Omit<FuelLog, "id">): Promise<FuelLog> {
-    const activeUserStr = typeof window !== "undefined" ? localStorage.getItem("iloca:active_user") : null;
-    let activeUserId: string | null = null;
-    if (activeUserStr) {
-      try {
-        activeUserId = JSON.parse(activeUserStr)?.id || null;
-      } catch {}
+    const activeUserId = getActiveTenantUserId();
+    if (!activeUserId) {
+      throw new Error("Action impossible: utilisateur non authentifié.");
     }
 
     const fallbackLog: FuelLog = {
@@ -83,10 +74,6 @@ export const fuelRepository = {
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data: authData } = await supabase.auth.getUser();
-        const candidateUserId = authData.user?.id || activeUserId;
-        const userId = isValidUuid(candidateUserId) ? candidateUserId : null;
-
         const payload: Record<string, any> = {
           vehicle_id: log.vehicleId,
           driver: log.driver,
@@ -95,8 +82,8 @@ export const fuelRepository = {
           station: log.station,
           date: log.date,
           odometer: log.odometer,
+          user_id: activeUserId,
         };
-        if (userId) payload.user_id = userId;
 
         const { data, error } = await supabase
           .from("fuel_logs")
@@ -114,8 +101,8 @@ export const fuelRepository = {
             date: data.date,
             odometer: data.odometer,
           };
-          const local = getLocalFuel().filter((f) => f.id !== saved.id);
-          saveLocalFuel([saved, ...local]);
+          const local = getLocalFuel(activeUserId).filter((f) => f.id !== saved.id);
+          saveLocalFuel([saved, ...local], activeUserId);
           return saved;
         }
       }
@@ -123,9 +110,8 @@ export const fuelRepository = {
       console.warn("Supabase fuel log insert exception (storing locally):", err);
     }
 
-    const currentLocal = getLocalFuel().filter((f) => f.id !== fallbackLog.id);
-    saveLocalFuel([fallbackLog, ...currentLocal]);
+    const currentLocal = getLocalFuel(activeUserId).filter((f) => f.id !== fallbackLog.id);
+    saveLocalFuel([fallbackLog, ...currentLocal], activeUserId);
     return fallbackLog;
   }
 };
-

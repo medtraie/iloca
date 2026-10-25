@@ -124,63 +124,80 @@ class AppStateProvider extends ChangeNotifier {
         _isAuthenticated = true;
         _userEmail = prefs.getString('iloca_user_email') ?? AppConfig.superAdminEmail;
         _userName = prefs.getString('iloca_user_name') ?? 'Administrateur BonaTours';
+        final savedUserId = prefs.getString('iloca_user_id');
+        if (savedUserId != null && savedUserId.isNotEmpty) {
+          SupabaseSyncService.currentUserId = savedUserId;
+        } else if (_userEmail == AppConfig.superAdminEmail) {
+          SupabaseSyncService.currentUserId = SupabaseSyncService.defaultSuperAdminId;
+        }
       } else {
         _isAuthenticated = false;
+        SupabaseSyncService.currentUserId = null;
       }
       try {
         final session = Supabase.instance.client.auth.currentSession;
         if (session?.user != null) {
           _userEmail = session!.user.email ?? _userEmail;
+          SupabaseSyncService.currentUserId = session!.user.id;
         }
       } catch (e) {
         debugPrint('[AppState] Supabase session check note: $e');
       }
 
       // 3. Instant Cold-boot from Local Cache (0ms load time)
-      _loadFromLocalCache(prefs);
+      if (_isAuthenticated) {
+        _loadFromLocalCache(prefs);
+      } else {
+        _clients = [];
+        _vehicles = [];
+        _contracts = [];
+        _invoices = [];
+        _expenses = [];
+        _monthlyExpensesAndRepairs = 0;
+      }
       notifyListeners();
 
       // 4. Background non-blocking network refresh & realtime setup
-      refreshAllData();
-      _setupRealtimeSubscriptions();
+      if (_isAuthenticated) {
+        refreshAllData();
+        _setupRealtimeSubscriptions();
+      }
     } catch (e) {
       debugPrint('[AppState] Safe initialize note: $e');
-      _isAuthenticated = true;
+      _isAuthenticated = false;
       notifyListeners();
-      // Even if disk storage had an issue, always trigger live cloud sync!
-      refreshAllData();
-      _setupRealtimeSubscriptions();
     }
   }
 
   void _loadFromLocalCache(SharedPreferences prefs) {
     try {
-      final cJson = prefs.getString('cache_clients') ?? prefs.getString('iloca:clients:local');
+      final uid = SupabaseSyncService.activeUserId ?? _userEmail;
+      final cJson = prefs.getString('iloca:$uid:clients:local');
       if (cJson != null) {
         final list = jsonDecode(cJson) as List<dynamic>;
         _clients = list.map((e) => ClientModel.fromJson(Map<String, dynamic>.from(e))).toList();
       }
-      final vJson = prefs.getString('cache_vehicles') ?? prefs.getString('iloca:vehicles:local');
+      final vJson = prefs.getString('iloca:$uid:vehicles:local');
       if (vJson != null) {
         final list = jsonDecode(vJson) as List<dynamic>;
         _vehicles = list.map((e) => VehicleModel.fromJson(Map<String, dynamic>.from(e))).toList();
       }
-      final kJson = prefs.getString('cache_contracts') ?? prefs.getString('iloca:contracts:local');
+      final kJson = prefs.getString('iloca:$uid:contracts:local');
       if (kJson != null) {
         final list = jsonDecode(kJson) as List<dynamic>;
         _contracts = list.map((e) => ContractModel.fromJson(Map<String, dynamic>.from(e))).toList();
       }
-      final iJson = prefs.getString('cache_invoices') ?? prefs.getString('iloca:invoices:local');
+      final iJson = prefs.getString('iloca:$uid:invoices:local');
       if (iJson != null) {
         final list = jsonDecode(iJson) as List<dynamic>;
         _invoices = list.map((e) => InvoiceModel.fromJson(Map<String, dynamic>.from(e))).toList();
       }
-      final eJson = prefs.getString('cache_expenses') ?? prefs.getString('iloca:expenses:local');
+      final eJson = prefs.getString('iloca:$uid:expenses:local');
       if (eJson != null) {
         final list = jsonDecode(eJson) as List<dynamic>;
         _expenses = list.map((e) => ExpenseModel.fromJson(Map<String, dynamic>.from(e))).toList();
       }
-      _monthlyExpensesAndRepairs = prefs.getDouble('cache_monthly_expenses') ?? 0;
+      _monthlyExpensesAndRepairs = prefs.getDouble('iloca:$uid:monthly_expenses') ?? 0;
       _syncVehiclesWithActiveContracts();
     } catch (e) {
       debugPrint('[AppState] Local cache restore note: $e');
@@ -189,13 +206,14 @@ class AppStateProvider extends ChangeNotifier {
 
   Future<void> _saveToLocalCache() async {
     try {
+      final uid = SupabaseSyncService.activeUserId ?? _userEmail;
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('cache_clients', jsonEncode(_clients.map((c) => c.toJson()).toList()));
-      await prefs.setString('cache_vehicles', jsonEncode(_vehicles.map((v) => v.toJson()).toList()));
-      await prefs.setString('cache_contracts', jsonEncode(_contracts.map((c) => c.toJson()).toList()));
-      await prefs.setString('cache_invoices', jsonEncode(_invoices.map((i) => i.toJson()).toList()));
-      await prefs.setString('cache_expenses', jsonEncode(_expenses.map((e) => e.toJson()).toList()));
-      await prefs.setDouble('cache_monthly_expenses', _monthlyExpensesAndRepairs);
+      await prefs.setString('iloca:$uid:clients:local', jsonEncode(_clients.map((c) => c.toJson()).toList()));
+      await prefs.setString('iloca:$uid:vehicles:local', jsonEncode(_vehicles.map((v) => v.toJson()).toList()));
+      await prefs.setString('iloca:$uid:contracts:local', jsonEncode(_contracts.map((c) => c.toJson()).toList()));
+      await prefs.setString('iloca:$uid:invoices:local', jsonEncode(_invoices.map((i) => i.toJson()).toList()));
+      await prefs.setString('iloca:$uid:expenses:local', jsonEncode(_expenses.map((e) => e.toJson()).toList()));
+      await prefs.setDouble('iloca:$uid:monthly_expenses', _monthlyExpensesAndRepairs);
     } catch (_) {}
   }
 
@@ -403,7 +421,22 @@ class AppStateProvider extends ChangeNotifier {
     if (cleanEmail.isEmpty) return false;
     final cleanPass = password.isEmpty ? '123456' : password;
 
-    // 1. Immediately activate authenticated session for instant 0ms transition
+    // Immediately isolate tenant ID if super admin, else reset
+    if (cleanEmail.toLowerCase() == AppConfig.superAdminEmail.toLowerCase()) {
+      SupabaseSyncService.currentUserId = SupabaseSyncService.defaultSuperAdminId;
+    } else {
+      SupabaseSyncService.currentUserId = null;
+    }
+
+    // 1. Immediately wipe any in-memory data from previous sessions (strict multi-tenant isolation)
+    _clients = [];
+    _vehicles = [];
+    _contracts = [];
+    _invoices = [];
+    _expenses = [];
+    _monthlyExpensesAndRepairs = 0;
+
+    // 2. Activate authenticated session
     _isAuthenticated = true;
     _userEmail = cleanEmail;
     _userName = cleanEmail.contains('@')
@@ -412,36 +445,38 @@ class AppStateProvider extends ChangeNotifier {
 
     notifyListeners();
 
-    // 2. Persist state safely
+    // 3. Persist state safely
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('iloca_authenticated', true);
       await prefs.setString('iloca_user_email', _userEmail);
       await prefs.setString('iloca_user_name', _userName);
+      if (SupabaseSyncService.currentUserId != null) {
+        await prefs.setString('iloca_user_id', SupabaseSyncService.currentUserId!);
+      }
     } catch (e) {
       debugPrint('[AppState] Persist login note: $e');
     }
 
-    // 3. Background server auth & parallel cloud sync (zero UI blocking)
+    // 4. Background tenant resolution & cloud sync (zero UI blocking)
     unawaited(_performBackgroundAuthAndSync(cleanEmail, cleanPass));
 
     return true;
   }
 
   Future<void> _performBackgroundAuthAndSync(String email, String password) async {
-    // 1. Trigger immediate parallel data fetch right away without waiting for auth
-    final initialRefresh = refreshAllData();
-
-    // 2. Authenticate with Supabase in parallel
+    // 1. Authenticate with Supabase GoTrue Auth
     try {
       final res = await Supabase.instance.client.auth
           .signInWithPassword(email: email, password: password)
           .timeout(const Duration(seconds: 4));
       if (res.user != null) {
+        SupabaseSyncService.currentUserId = res.user!.id;
         _userEmail = res.user!.email ?? email;
         _userName = res.user!.userMetadata?['full_name']?.toString() ?? _userName;
         try {
           final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('iloca_user_id', res.user!.id);
           await prefs.setString('iloca_user_email', _userEmail);
           await prefs.setString('iloca_user_name', _userName);
         } catch (_) {}
@@ -450,9 +485,28 @@ class AppStateProvider extends ChangeNotifier {
       debugPrint('[AppState] Background auth note: $e');
     }
 
-    // 3. Ensure initial refresh completes and Realtime subscriptions are active
+    // 2. If user ID is still not set (e.g., custom admin-created user), lookup via admin registry
+    if (SupabaseSyncService.currentUserId == null) {
+      final resolvedId = await SupabaseSyncService.lookupUserIdByEmail(email);
+      if (resolvedId != null) {
+        SupabaseSyncService.currentUserId = resolvedId;
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('iloca_user_id', resolvedId);
+        } catch (_) {}
+      }
+    }
+
+    // 3. Restore any existing user-scoped cached data for this user
     try {
-      await initialRefresh;
+      final prefs = await SharedPreferences.getInstance();
+      _loadFromLocalCache(prefs);
+      notifyListeners();
+    } catch (_) {}
+
+    // 4. Perform cloud refresh with strict tenant user_id filter and activate realtime
+    try {
+      await refreshAllData();
       _setupRealtimeSubscriptions();
     } catch (e) {
       debugPrint('[AppState] Background refresh error: $e');
@@ -463,17 +517,42 @@ class AppStateProvider extends ChangeNotifier {
     // 1. Immediately switch auth state & notify UI (0ms transition)
     _isAuthenticated = false;
     _autoRetryTimer?.cancel();
+    SupabaseSyncService.currentUserId = null;
+
+    // Strict isolation: completely clear in-memory state on logout
+    _clients = [];
+    _vehicles = [];
+    _contracts = [];
+    _invoices = [];
+    _expenses = [];
+    _monthlyExpensesAndRepairs = 0;
+
     notifyListeners();
 
-    // 2. Persist state locally
+    // 2. Persist state and clean up session tokens
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('iloca_authenticated', false);
+      await prefs.remove('iloca_user_id');
+      await prefs.remove('iloca_user_email');
+      await prefs.remove('iloca_user_name');
+      // Remove legacy un-scoped cache keys if present
+      await prefs.remove('cache_clients');
+      await prefs.remove('cache_vehicles');
+      await prefs.remove('cache_contracts');
+      await prefs.remove('cache_invoices');
+      await prefs.remove('cache_expenses');
+      await prefs.remove('cache_monthly_expenses');
+      await prefs.remove('iloca:clients:local');
+      await prefs.remove('iloca:vehicles:local');
+      await prefs.remove('iloca:contracts:local');
+      await prefs.remove('iloca:invoices:local');
+      await prefs.remove('iloca:expenses:local');
     } catch (e) {
       debugPrint('[AppState] logout prefs note: $e');
     }
 
-    // 3. Asynchronously sign out from Supabase in the background without blocking the UI
+    // 3. Asynchronously sign out from Supabase in the background
     try {
       unawaited(Supabase.instance.client.auth.signOut().catchError((_) {}));
     } catch (_) {}

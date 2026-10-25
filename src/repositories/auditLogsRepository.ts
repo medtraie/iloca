@@ -1,4 +1,10 @@
 import { getSupabaseClient } from "@/services/supabaseService";
+import {
+  getActiveTenantUserId,
+  isValidUuid,
+  getScopedLocalStorage,
+  saveScopedLocalStorage,
+} from "./repositoryUtils";
 
 export interface AuditLogEntry {
   id: string;
@@ -11,37 +17,28 @@ export interface AuditLogEntry {
 
 const STORAGE_KEY_AUDIT_LOGS = "iloca:audit_logs:local";
 
-function getLocalAuditLogs(): AuditLogEntry[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_AUDIT_LOGS);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+function getLocalAuditLogs(userId?: string | null): AuditLogEntry[] {
+  return getScopedLocalStorage<AuditLogEntry>(STORAGE_KEY_AUDIT_LOGS, userId);
 }
 
-function saveLocalAuditLogs(logs: AuditLogEntry[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(STORAGE_KEY_AUDIT_LOGS, JSON.stringify(logs.slice(0, 300)));
-  } catch (e) {
-    console.warn("Could not save local audit logs:", e);
-  }
+function saveLocalAuditLogs(logs: AuditLogEntry[], userId?: string | null): void {
+  saveScopedLocalStorage(STORAGE_KEY_AUDIT_LOGS, logs.slice(0, 300), userId);
 }
-
-const isValidUuid = (id: string | null | undefined): boolean => {
-  if (!id) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-};
 
 export const auditLogsRepository = {
   async getAll(): Promise<AuditLogEntry[]> {
-    const local = getLocalAuditLogs();
+    const activeUserId = getActiveTenantUserId();
+    if (!activeUserId) return [];
+    const local = getLocalAuditLogs(activeUserId);
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data, error } = await supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(300);
+        const { data, error } = await supabase
+          .from("audit_logs")
+          .select("*")
+          .eq("user_id", activeUserId)
+          .order("created_at", { ascending: false })
+          .limit(300);
         if (!error && data) {
           const remote = data.map(row => ({
             id: row.id,
@@ -51,7 +48,7 @@ export const auditLogsRepository = {
             reference: row.reference,
             createdAt: row.created_at,
           })) as AuditLogEntry[];
-          saveLocalAuditLogs(remote);
+          saveLocalAuditLogs(remote, activeUserId);
           return remote;
         }
       }
@@ -62,12 +59,9 @@ export const auditLogsRepository = {
   },
 
   async create(log: Omit<AuditLogEntry, "id" | "createdAt">): Promise<AuditLogEntry> {
-    const activeUserStr = typeof window !== "undefined" ? localStorage.getItem("iloca:active_user") : null;
-    let activeUserId: string | null = null;
-    if (activeUserStr) {
-      try {
-        activeUserId = JSON.parse(activeUserStr)?.id || null;
-      } catch {}
+    const activeUserId = getActiveTenantUserId();
+    if (!activeUserId) {
+      throw new Error("Action impossible: utilisateur non authentifié.");
     }
 
     const now = new Date().toISOString();
@@ -80,17 +74,13 @@ export const auditLogsRepository = {
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data: authData } = await supabase.auth.getUser();
-        const candidateUserId = authData.user?.id || activeUserId;
-        const userId = isValidUuid(candidateUserId) ? candidateUserId : null;
-
         const payload: Record<string, any> = {
           action: log.action,
           details: log.details,
           amount: log.amount,
           reference: log.reference,
+          user_id: activeUserId,
         };
-        if (userId) payload.user_id = userId;
 
         const { data, error } = await supabase
           .from("audit_logs")
@@ -106,8 +96,8 @@ export const auditLogsRepository = {
             reference: data.reference,
             createdAt: data.created_at,
           };
-          const current = getLocalAuditLogs().filter((l) => l.id !== saved.id);
-          saveLocalAuditLogs([saved, ...current]);
+          const current = getLocalAuditLogs(activeUserId).filter((l) => l.id !== saved.id);
+          saveLocalAuditLogs([saved, ...current], activeUserId);
           return saved;
         }
       }
@@ -115,9 +105,8 @@ export const auditLogsRepository = {
       console.warn("Supabase audit log create exception (storing locally):", err);
     }
 
-    const current = getLocalAuditLogs().filter((l) => l.id !== fallbackEntry.id);
-    saveLocalAuditLogs([fallbackEntry, ...current]);
+    const current = getLocalAuditLogs(activeUserId).filter((l) => l.id !== fallbackEntry.id);
+    saveLocalAuditLogs([fallbackEntry, ...current], activeUserId);
     return fallbackEntry;
   }
 };
-

@@ -1,45 +1,39 @@
 import { getSupabaseClient } from "@/services/supabaseService";
 import { MiscellaneousExpense } from "@/hooks/useMiscellaneousExpenses";
+import {
+  getActiveTenantUserId,
+  isValidUuid,
+  getScopedLocalStorage,
+  saveScopedLocalStorage,
+} from "./repositoryUtils";
 
 const STORAGE_KEY_LOCAL_MISC = "iloca:misc_expenses:local";
 
-function getLocalMisc(): MiscellaneousExpense[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_LOCAL_MISC);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+function getLocalMisc(userId?: string | null): MiscellaneousExpense[] {
+  return getScopedLocalStorage<MiscellaneousExpense>(STORAGE_KEY_LOCAL_MISC, userId);
 }
 
-function saveLocalMisc(expenses: MiscellaneousExpense[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(STORAGE_KEY_LOCAL_MISC, JSON.stringify(expenses));
-  } catch (e) {
-    console.warn("Could not save local misc expenses:", e);
-  }
+function saveLocalMisc(expenses: MiscellaneousExpense[], userId?: string | null): void {
+  saveScopedLocalStorage(STORAGE_KEY_LOCAL_MISC, expenses, userId);
 }
-
-const isValidUuid = (id: string | null | undefined): boolean => {
-  if (!id) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-};
 
 export const miscellaneousExpensesRepository = {
   async getAll(): Promise<MiscellaneousExpense[]> {
-    const localList = getLocalMisc();
+    const activeUserId = getActiveTenantUserId();
+    if (!activeUserId) return [];
+    const localList = getLocalMisc(activeUserId);
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data, error } = await supabase.from("miscellaneous_expenses").select("*").order("expense_date", { ascending: false });
+        const { data, error } = await supabase
+          .from("miscellaneous_expenses")
+          .select("*")
+          .eq("user_id", activeUserId)
+          .order("expense_date", { ascending: false });
         if (!error && data) {
           const remoteList = data as MiscellaneousExpense[];
-          const remoteIds = new Set(remoteList.map((m) => m.id));
-          const combined = [...remoteList, ...localList.filter((m) => !remoteIds.has(m.id))];
-          saveLocalMisc(combined);
-          return combined;
+          saveLocalMisc(remoteList, activeUserId);
+          return remoteList;
         }
       }
     } catch (err) {
@@ -49,12 +43,9 @@ export const miscellaneousExpensesRepository = {
   },
 
   async create(expense: Omit<MiscellaneousExpense, "id" | "created_at">): Promise<MiscellaneousExpense> {
-    const activeUserStr = typeof window !== "undefined" ? localStorage.getItem("iloca:active_user") : null;
-    let activeUserId: string | null = null;
-    if (activeUserStr) {
-      try {
-        activeUserId = JSON.parse(activeUserStr)?.id || null;
-      } catch {}
+    const activeUserId = getActiveTenantUserId();
+    if (!activeUserId) {
+      throw new Error("Action impossible: utilisateur non authentifié.");
     }
 
     const now = new Date().toISOString();
@@ -67,12 +58,10 @@ export const miscellaneousExpensesRepository = {
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data: authData } = await supabase.auth.getUser();
-        const candidateUserId = authData.user?.id || activeUserId;
-        const userId = isValidUuid(candidateUserId) ? candidateUserId : null;
-
-        const payload: Record<string, any> = { ...expense };
-        if (userId) payload.user_id = userId;
+        const payload: Record<string, any> = {
+          ...expense,
+          user_id: activeUserId,
+        };
 
         const { data, error } = await supabase
           .from("miscellaneous_expenses")
@@ -81,8 +70,8 @@ export const miscellaneousExpensesRepository = {
           .single();
         if (!error && data) {
           const saved = data as MiscellaneousExpense;
-          const local = getLocalMisc().filter((m) => m.id !== saved.id);
-          saveLocalMisc([saved, ...local]);
+          const local = getLocalMisc(activeUserId).filter((m) => m.id !== saved.id);
+          saveLocalMisc([saved, ...local], activeUserId);
           return saved;
         }
       }
@@ -90,29 +79,27 @@ export const miscellaneousExpensesRepository = {
       console.warn("Supabase misc expense create exception (storing locally):", err);
     }
 
-    const currentLocal = getLocalMisc().filter((m) => m.id !== fallbackExpense.id);
-    saveLocalMisc([fallbackExpense, ...currentLocal]);
+    const currentLocal = getLocalMisc(activeUserId).filter((m) => m.id !== fallbackExpense.id);
+    saveLocalMisc([fallbackExpense, ...currentLocal], activeUserId);
     return fallbackExpense;
   },
 
   async update(id: string, updates: Partial<MiscellaneousExpense>): Promise<MiscellaneousExpense> {
+    const activeUserId = getActiveTenantUserId();
     let updatedExpense: MiscellaneousExpense | null = null;
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data, error } = await supabase
-          .from("miscellaneous_expenses")
-          .update(updates)
-          .eq("id", id)
-          .select()
-          .single();
+        let query = supabase.from("miscellaneous_expenses").update(updates).eq("id", id);
+        if (activeUserId) query = query.eq("user_id", activeUserId);
+        const { data, error } = await query.select().single();
         if (!error && data) updatedExpense = data as MiscellaneousExpense;
       }
     } catch (err) {
       console.warn("Supabase misc expense update exception:", err);
     }
 
-    const local = getLocalMisc();
+    const local = getLocalMisc(activeUserId);
     const existing = local.find((m) => m.id === id);
     const now = new Date().toISOString();
     const merged: MiscellaneousExpense = updatedExpense || {
@@ -122,22 +109,24 @@ export const miscellaneousExpensesRepository = {
 
     const nextLocal = local.map((m) => (m.id === id ? merged : m));
     if (!existing && !updatedExpense) nextLocal.push(merged);
-    saveLocalMisc(nextLocal);
+    saveLocalMisc(nextLocal, activeUserId);
     return merged;
   },
 
   async delete(id: string): Promise<boolean> {
+    const activeUserId = getActiveTenantUserId();
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        await supabase.from("miscellaneous_expenses").delete().eq("id", id);
+        let query = supabase.from("miscellaneous_expenses").delete().eq("id", id);
+        if (activeUserId) query = query.eq("user_id", activeUserId);
+        await query;
       }
     } catch (err) {
       console.warn("Supabase misc expense delete exception:", err);
     }
-    const local = getLocalMisc().filter((m) => m.id !== id);
-    saveLocalMisc(local);
+    const local = getLocalMisc(activeUserId).filter((m) => m.id !== id);
+    saveLocalMisc(local, activeUserId);
     return true;
   }
 };
-

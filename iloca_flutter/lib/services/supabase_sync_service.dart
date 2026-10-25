@@ -11,17 +11,69 @@ import '../models/app_models.dart';
 /// Bidirectional Instant Synchronization Engine (Flutter Android/iOS <-> Supabase <-> Web)
 class SupabaseSyncService {
   static const _uuid = Uuid();
-  static const _defaultSuperAdminId = '5096a8c8-178e-4829-827d-b4881713435b';
-  static const _localClientsKey = 'iloca:clients:local';
-  static const _localVehiclesKey = 'iloca:vehicles:local';
-  static const _localContractsKey = 'iloca:contracts:local';
-  static const _localInvoicesKey = 'iloca:invoices:local';
-  static const _localExpensesKey = 'iloca:expenses:local';
+  static const defaultSuperAdminId = '5096a8c8-178e-4829-827d-b4881713435b';
+
+  /// Currently active tenant User ID. If set, queries strictly isolate data to this tenant.
+  static String? currentUserId;
 
   static SupabaseClient get _sb => Supabase.instance.client;
 
-  static String get _effectiveUserId =>
-      _sb.auth.currentUser?.id ?? _defaultSuperAdminId;
+  /// Active User ID for strict tenant isolation.
+  static String? get activeUserId {
+    if (currentUserId != null && currentUserId!.isNotEmpty) {
+      return currentUserId;
+    }
+    final authId = _sb.auth.currentUser?.id;
+    if (authId != null && authId.isNotEmpty) {
+      return authId;
+    }
+    final email = _sb.auth.currentUser?.email;
+    if (email == AppConfig.superAdminEmail) {
+      return defaultSuperAdminId;
+    }
+    return null;
+  }
+
+  static String get _effectiveUserId => activeUserId ?? defaultSuperAdminId;
+
+  static String get _localClientsKey => 'iloca:${activeUserId ?? "default"}:clients:local';
+  static String get _localVehiclesKey => 'iloca:${activeUserId ?? "default"}:vehicles:local';
+  static String get _localContractsKey => 'iloca:${activeUserId ?? "default"}:contracts:local';
+  static String get _localInvoicesKey => 'iloca:${activeUserId ?? "default"}:invoices:local';
+  static String get _localExpensesKey => 'iloca:${activeUserId ?? "default"}:expenses:local';
+
+  /// Resolves the user ID by email via the Supabase admin audit registry (fallback)
+  static Future<String?> lookupUserIdByEmail(String email) async {
+    final clean = email.trim().toLowerCase();
+    if (clean == AppConfig.superAdminEmail.toLowerCase()) {
+      return defaultSuperAdminId;
+    }
+    try {
+      final uri = Uri.parse(
+        '${AppConfig.supabaseUrl}/rest/v1/audit_logs?action=eq.global_admin_users&select=payload&order=created_at.desc&limit=1',
+      );
+      final resp = await http.get(uri, headers: {
+        'apikey': AppConfig.supabasePublishableKey,
+        'Authorization': 'Bearer ${AppConfig.supabasePublishableKey}',
+      }).timeout(const Duration(seconds: 5));
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        final data = jsonDecode(resp.body);
+        if (data is List && data.isNotEmpty) {
+          final payload = data[0]['payload'];
+          if (payload is List) {
+            final target = payload.firstWhere(
+              (u) => (u['email'] ?? '').toString().toLowerCase() == clean,
+              orElse: () => null,
+            );
+            if (target != null && target['id'] != null) {
+              return target['id'].toString();
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
 
   /// Last network error encountered while fetching (null when the last fetch succeeded).
   static String? lastFetchError;
@@ -64,13 +116,20 @@ class SupabaseSyncService {
     String? orderBy,
     bool ascending = false,
   }) async {
+    final tenantId = activeUserId;
+    if (tenantId == null || tenantId.isEmpty) {
+      // Strict multi-tenant isolation: if no active user, return empty list immediately
+      return [];
+    }
+
     String restError = '';
     try {
       final orderParam = orderBy != null
           ? '&order=$orderBy.${ascending ? 'asc' : 'desc'}'
           : '';
+      // PostgREST strict query: user_id=eq.$tenantId
       final uri = Uri.parse(
-        '${AppConfig.supabaseUrl}/rest/v1/$table?select=*$orderParam',
+        '${AppConfig.supabaseUrl}/rest/v1/$table?user_id=eq.$tenantId&select=*$orderParam',
       );
       final response = await http
           .get(
@@ -99,13 +158,21 @@ class SupabaseSyncService {
     }
 
     try {
-      final query = _sb.from(table).select('*');
+      final query = _sb.from(table).select('*').eq('user_id', tenantId);
       final rows = orderBy != null
           ? await query
               .order(orderBy, ascending: ascending)
               .timeout(const Duration(seconds: 12))
           : await query.timeout(const Duration(seconds: 12));
       return (rows as List)
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    } catch (e) {
+      lastFetchError = restError.isNotEmpty ? restError : e.toString();
+      rethrow;
+    }
+  }
           .whereType<Map>()
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
@@ -181,12 +248,12 @@ class SupabaseSyncService {
           .toList();
       try {
         final encoded = jsonEncode(remote.map((e) => e.toJson()).toList());
-        unawaited(_safeSetLocalString(_localClientsKey, encoded, 'cache_clients'));
+        unawaited(_safeSetLocalString(_localClientsKey, encoded));
       } catch (_) {}
       return remote;
     } catch (e) {
       debugPrint('[SupabaseSync] fetchClients network error (trying local): $e');
-      final localRaw = await _safeGetLocalString(_localClientsKey, 'cache_clients');
+      final localRaw = await _safeGetLocalString(_localClientsKey);
       if (localRaw != null && localRaw.isNotEmpty) {
         try {
           final decoded = jsonDecode(localRaw) as List;
@@ -209,6 +276,7 @@ class SupabaseSyncService {
             .from('clients')
             .update(payload)
             .eq('id', client.id)
+            .eq('user_id', _effectiveUserId)
             .select('*')
             .single();
         return ClientModel.fromJson(Map<String, dynamic>.from(res));
@@ -251,7 +319,7 @@ class SupabaseSyncService {
 
   static Future<void> deleteClient(String id) async {
     try {
-      await _sb.from('clients').delete().eq('id', id);
+      await _sb.from('clients').delete().eq('id', id).eq('user_id', _effectiveUserId);
     } catch (e) {
       debugPrint('[SupabaseSync] deleteClient error: $e');
     }
@@ -268,12 +336,12 @@ class SupabaseSyncService {
           .toList();
       try {
         final encoded = jsonEncode(remote.map((e) => e.toJson()).toList());
-        unawaited(_safeSetLocalString(_localVehiclesKey, encoded, 'cache_vehicles'));
+        unawaited(_safeSetLocalString(_localVehiclesKey, encoded));
       } catch (_) {}
       return remote;
     } catch (e) {
       debugPrint('[SupabaseSync] fetchVehicles network error (trying local): $e');
-      final localRaw = await _safeGetLocalString(_localVehiclesKey, 'cache_vehicles');
+      final localRaw = await _safeGetLocalString(_localVehiclesKey);
       if (localRaw != null && localRaw.isNotEmpty) {
         try {
           final decoded = jsonDecode(localRaw) as List;
@@ -296,6 +364,7 @@ class SupabaseSyncService {
             .from('vehicles')
             .update(payload)
             .eq('id', vehicle.id)
+            .eq('user_id', _effectiveUserId)
             .select('*')
             .single();
         return VehicleModel.fromJson(Map<String, dynamic>.from(res));
@@ -339,13 +408,17 @@ class SupabaseSyncService {
   static Future<void> updateVehicleStatus(String vehicleId, String status) async {
     if (vehicleId.isEmpty) return;
     try {
-      await _sb.from('vehicles').update({'status': status}).eq('id', vehicleId);
+      await _sb
+          .from('vehicles')
+          .update({'status': status})
+          .eq('id', vehicleId)
+          .eq('user_id', _effectiveUserId);
     } catch (_) {}
   }
 
   static Future<void> deleteVehicle(String id) async {
     try {
-      await _sb.from('vehicles').delete().eq('id', id);
+      await _sb.from('vehicles').delete().eq('id', id).eq('user_id', _effectiveUserId);
     } catch (e) {
       debugPrint('[SupabaseSync] deleteVehicle error: $e');
     }
@@ -362,12 +435,12 @@ class SupabaseSyncService {
           .toList();
       try {
         final encoded = jsonEncode(remote.map((e) => e.toJson()).toList());
-        unawaited(_safeSetLocalString(_localContractsKey, encoded, 'cache_contracts'));
+        unawaited(_safeSetLocalString(_localContractsKey, encoded));
       } catch (_) {}
       return remote;
     } catch (e) {
       debugPrint('[SupabaseSync] fetchContracts network error (trying local): $e');
-      final localRaw = await _safeGetLocalString(_localContractsKey, 'cache_contracts');
+      final localRaw = await _safeGetLocalString(_localContractsKey);
       if (localRaw != null && localRaw.isNotEmpty) {
         try {
           final decoded = jsonDecode(localRaw) as List;
@@ -391,6 +464,7 @@ class SupabaseSyncService {
             .from('contracts')
             .update(payload)
             .eq('id', contract.id)
+            .eq('user_id', _effectiveUserId)
             .select('*')
             .single();
         saved = ContractModel.fromJson(Map<String, dynamic>.from(res));
@@ -421,7 +495,7 @@ class SupabaseSyncService {
 
   static Future<void> deleteContract(ContractModel contract) async {
     try {
-      await _sb.from('contracts').delete().eq('id', contract.id);
+      await _sb.from('contracts').delete().eq('id', contract.id).eq('user_id', _effectiveUserId);
       if (contract.vehicleId.isNotEmpty) {
         await updateVehicleStatus(contract.vehicleId, 'disponible');
       }
@@ -441,12 +515,12 @@ class SupabaseSyncService {
           .toList();
       try {
         final encoded = jsonEncode(remote.map((e) => e.toJson()).toList());
-        unawaited(_safeSetLocalString(_localInvoicesKey, encoded, 'cache_invoices'));
+        unawaited(_safeSetLocalString(_localInvoicesKey, encoded));
       } catch (_) {}
       return remote;
     } catch (e) {
       debugPrint('[SupabaseSync] fetchInvoices network error (trying local): $e');
-      final localRaw = await _safeGetLocalString(_localInvoicesKey, 'cache_invoices');
+      final localRaw = await _safeGetLocalString(_localInvoicesKey);
       if (localRaw != null && localRaw.isNotEmpty) {
         try {
           final decoded = jsonDecode(localRaw) as List;
@@ -470,6 +544,7 @@ class SupabaseSyncService {
             .from('invoices')
             .update(payload)
             .eq('id', invoice.id)
+            .eq('user_id', _effectiveUserId)
             .select('*')
             .single();
         saved = InvoiceModel.fromJson(Map<String, dynamic>.from(res));
@@ -494,7 +569,7 @@ class SupabaseSyncService {
 
   static Future<void> deleteInvoice(String id) async {
     try {
-      await _sb.from('invoices').delete().eq('id', id);
+      await _sb.from('invoices').delete().eq('id', id).eq('user_id', _effectiveUserId);
     } catch (e) {
       debugPrint('[SupabaseSync] deleteInvoice error: $e');
     }
@@ -542,12 +617,12 @@ class SupabaseSyncService {
           .toList();
       try {
         final encoded = jsonEncode(remoteList.map((e) => e.toJson()).toList());
-        unawaited(_safeSetLocalString(_localExpensesKey, encoded, 'cache_expenses'));
+        unawaited(_safeSetLocalString(_localExpensesKey, encoded));
       } catch (_) {}
       return remoteList;
     } catch (e) {
       debugPrint('[SupabaseSync] fetchExpenses network error (trying local): $e');
-      final localJson = await _safeGetLocalString(_localExpensesKey, 'cache_expenses');
+      final localJson = await _safeGetLocalString(_localExpensesKey);
       if (localJson != null && localJson.isNotEmpty) {
         try {
           final list = jsonDecode(localJson) as List<dynamic>;
@@ -592,6 +667,7 @@ class SupabaseSyncService {
             .from('expenses')
             .update(payload)
             .eq('id', expense.id)
+            .eq('user_id', _effectiveUserId)
             .select('*')
             .single();
         saved = ExpenseModel.fromJson(Map<String, dynamic>.from(res));
@@ -621,7 +697,7 @@ class SupabaseSyncService {
 
   static Future<void> deleteExpense(String id) async {
     try {
-      await _sb.from('expenses').delete().eq('id', id);
+      await _sb.from('expenses').delete().eq('id', id).eq('user_id', _effectiveUserId);
     } catch (e) {
       debugPrint('[SupabaseSync] deleteExpense error: $e');
     }

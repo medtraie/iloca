@@ -1,33 +1,23 @@
 import { getSupabaseClient } from "@/services/supabaseService";
 import { Expense, MonthlyExpense, ExpenseBudget, ExpenseAuditLog } from "@/types/expense";
+import {
+  getActiveTenantUserId,
+  isValidUuid,
+  getScopedLocalStorage,
+  saveScopedLocalStorage,
+} from "./repositoryUtils";
 
 const STORAGE_KEY_EXPENSES = "iloca:expenses:local";
 const STORAGE_KEY_MONTHLY_EXPENSES = "iloca:monthly_expenses:local";
 const STORAGE_KEY_BUDGETS = "iloca:budgets:local";
 
-function getLocalData<T>(key: string): T[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+function getLocalData<T>(key: string, userId?: string | null): T[] {
+  return getScopedLocalStorage<T>(key, userId);
 }
 
-function saveLocalData<T>(key: string, data: T[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (e) {
-    console.warn(`Could not save local data for ${key}:`, e);
-  }
+function saveLocalData<T>(key: string, data: T[], userId?: string | null): void {
+  saveScopedLocalStorage<T>(key, data, userId);
 }
-
-const isValidUuid = (id: string | null | undefined): boolean => {
-  if (!id) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-};
 
 const buildExpenseWritePayload = (expense: Partial<Expense>) => ({
   vehicle_id: expense.vehicle_id,
@@ -54,17 +44,21 @@ const buildExpenseUpdatePayload = (expense: Partial<Expense>) =>
 
 export const expensesRepository = {
   async getAllExpenses(): Promise<Expense[]> {
-    const localList = getLocalData<Expense>(STORAGE_KEY_EXPENSES);
+    const activeUserId = getActiveTenantUserId();
+    if (!activeUserId) return [];
+    const localList = getLocalData<Expense>(STORAGE_KEY_EXPENSES, activeUserId);
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data, error } = await supabase.from("expenses").select("*").order("created_at", { ascending: false });
+        const { data, error } = await supabase
+          .from("expenses")
+          .select("*")
+          .eq("user_id", activeUserId)
+          .order("created_at", { ascending: false });
         if (!error && data) {
           const remoteList = data as Expense[];
-          const remoteIds = new Set(remoteList.map((e) => e.id));
-          const combined = [...remoteList, ...localList.filter((e) => !remoteIds.has(e.id))];
-          saveLocalData(STORAGE_KEY_EXPENSES, combined);
-          return combined;
+          saveLocalData(STORAGE_KEY_EXPENSES, remoteList, activeUserId);
+          return remoteList;
         }
       }
     } catch (err) {
@@ -74,12 +68,9 @@ export const expensesRepository = {
   },
 
   async createExpense(expense: Omit<Expense, "id" | "created_at" | "updated_at">): Promise<Expense> {
-    const activeUserStr = typeof window !== "undefined" ? localStorage.getItem("iloca:active_user") : null;
-    let activeUserId: string | null = null;
-    if (activeUserStr) {
-      try {
-        activeUserId = JSON.parse(activeUserStr)?.id || null;
-      } catch {}
+    const activeUserId = getActiveTenantUserId();
+    if (!activeUserId) {
+      throw new Error("Action impossible: utilisateur non authentifié.");
     }
 
     const now = new Date().toISOString();
@@ -93,18 +84,16 @@ export const expensesRepository = {
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data: authData } = await supabase.auth.getUser();
-        const candidateUserId = authData.user?.id || activeUserId;
-        const userId = isValidUuid(candidateUserId) ? candidateUserId : null;
-
-        const payload: Record<string, any> = { ...buildExpenseWritePayload(expense) };
-        if (userId) payload.user_id = userId;
+        const payload: Record<string, any> = {
+          ...buildExpenseWritePayload(expense),
+          user_id: activeUserId,
+        };
 
         const { data, error } = await supabase.from("expenses").insert([payload]).select().single();
         if (!error && data) {
           const saved = data as Expense;
-          const local = getLocalData<Expense>(STORAGE_KEY_EXPENSES).filter((e) => e.id !== saved.id);
-          saveLocalData(STORAGE_KEY_EXPENSES, [saved, ...local]);
+          const local = getLocalData<Expense>(STORAGE_KEY_EXPENSES, activeUserId).filter((e) => e.id !== saved.id);
+          saveLocalData(STORAGE_KEY_EXPENSES, [saved, ...local], activeUserId);
           return saved;
         }
         if (error) console.warn("Supabase expense insert rejected (storing locally):", error);
@@ -113,18 +102,20 @@ export const expensesRepository = {
       console.warn("Supabase expense create exception (storing locally):", err);
     }
 
-    const currentLocal = getLocalData<Expense>(STORAGE_KEY_EXPENSES).filter((e) => e.id !== fallbackExpense.id);
-    saveLocalData(STORAGE_KEY_EXPENSES, [fallbackExpense, ...currentLocal]);
+    const currentLocal = getLocalData<Expense>(STORAGE_KEY_EXPENSES, activeUserId).filter((e) => e.id !== fallbackExpense.id);
+    saveLocalData(STORAGE_KEY_EXPENSES, [fallbackExpense, ...currentLocal], activeUserId);
     return fallbackExpense;
   },
 
   async updateExpense(id: string, updates: Partial<Expense>): Promise<Expense> {
+    const activeUserId = getActiveTenantUserId();
     let updatedExpense: Expense | null = null;
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const payload = buildExpenseUpdatePayload(updates);
-        const { data, error } = await supabase.from("expenses").update(payload).eq("id", id).select().single();
+        let query = supabase.from("expenses").update(buildExpenseUpdatePayload(updates)).eq("id", id);
+        if (activeUserId) query = query.eq("user_id", activeUserId);
+        const { data, error } = await query.select().single();
         if (!error && data) {
           updatedExpense = data as Expense;
         }
@@ -133,11 +124,11 @@ export const expensesRepository = {
       console.warn("Supabase expense update exception:", err);
     }
 
-    const local = getLocalData<Expense>(STORAGE_KEY_EXPENSES);
+    const local = getLocalData<Expense>(STORAGE_KEY_EXPENSES, activeUserId);
     const existing = local.find((e) => e.id === id);
     const now = new Date().toISOString();
     const merged: Expense = updatedExpense || {
-      ...(existing || { id, vehicle_id: "", type: "Autre", total_cost: 0, start_date: now, monthly_cost: 0, created_at: now, updated_at: now }),
+      ...(existing || { id, vehicle_id: "", type: "Assurance", total_cost: 0, start_date: "", end_date: "", period_months: 1, monthly_cost: 0, created_at: now, updated_at: now }),
       ...updates,
       updated_at: now,
     };
@@ -146,33 +137,41 @@ export const expensesRepository = {
     if (!existing && !updatedExpense) {
       nextLocal.push(merged);
     }
-    saveLocalData(STORAGE_KEY_EXPENSES, nextLocal);
+    saveLocalData(STORAGE_KEY_EXPENSES, nextLocal, activeUserId);
     return merged;
   },
 
   async deleteExpense(id: string): Promise<boolean> {
+    const activeUserId = getActiveTenantUserId();
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        await supabase.from("expenses").delete().eq("id", id);
+        let query = supabase.from("expenses").delete().eq("id", id);
+        if (activeUserId) query = query.eq("user_id", activeUserId);
+        await query;
       }
     } catch (err) {
       console.warn("Supabase expense delete exception:", err);
     }
-    const local = getLocalData<Expense>(STORAGE_KEY_EXPENSES).filter((e) => e.id !== id);
-    saveLocalData(STORAGE_KEY_EXPENSES, local);
+    const local = getLocalData<Expense>(STORAGE_KEY_EXPENSES, activeUserId).filter((e) => e.id !== id);
+    saveLocalData(STORAGE_KEY_EXPENSES, local, activeUserId);
     return true;
   },
 
   // Monthly Expenses
   async getAllMonthlyExpenses(): Promise<MonthlyExpense[]> {
-    const local = getLocalData<MonthlyExpense>(STORAGE_KEY_MONTHLY_EXPENSES);
+    const activeUserId = getActiveTenantUserId();
+    if (!activeUserId) return [];
+    const local = getLocalData<MonthlyExpense>(STORAGE_KEY_MONTHLY_EXPENSES, activeUserId);
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data, error } = await supabase.from("monthly_expenses").select("*");
+        const { data, error } = await supabase
+          .from("monthly_expenses")
+          .select("*")
+          .eq("user_id", activeUserId);
         if (!error && data) {
-          saveLocalData(STORAGE_KEY_MONTHLY_EXPENSES, data as MonthlyExpense[]);
+          saveLocalData(STORAGE_KEY_MONTHLY_EXPENSES, data as MonthlyExpense[], activeUserId);
           return data as MonthlyExpense[];
         }
       }
@@ -183,6 +182,10 @@ export const expensesRepository = {
   },
 
   async createMonthlyExpense(record: Omit<MonthlyExpense, "id" | "created_at" | "updated_at">): Promise<MonthlyExpense> {
+    const activeUserId = getActiveTenantUserId();
+    if (!activeUserId) {
+      throw new Error("Action impossible: utilisateur non authentifié.");
+    }
     const now = new Date().toISOString();
     const fallback: MonthlyExpense = {
       id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `mexp-${Date.now()}`,
@@ -194,16 +197,16 @@ export const expensesRepository = {
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data: authData } = await supabase.auth.getUser();
-        const userId = isValidUuid(authData.user?.id) ? authData.user?.id : null;
-        const payload: Record<string, any> = { ...record };
-        if (userId) payload.user_id = userId;
+        const payload: Record<string, any> = {
+          ...record,
+          user_id: activeUserId,
+        };
 
         const { data, error } = await supabase.from("monthly_expenses").insert([payload]).select().single();
         if (!error && data) {
           const saved = data as MonthlyExpense;
-          const local = getLocalData<MonthlyExpense>(STORAGE_KEY_MONTHLY_EXPENSES).filter((m) => m.id !== saved.id);
-          saveLocalData(STORAGE_KEY_MONTHLY_EXPENSES, [saved, ...local]);
+          const local = getLocalData<MonthlyExpense>(STORAGE_KEY_MONTHLY_EXPENSES, activeUserId).filter((m) => m.id !== saved.id);
+          saveLocalData(STORAGE_KEY_MONTHLY_EXPENSES, [saved, ...local], activeUserId);
           return saved;
         }
       }
@@ -211,34 +214,42 @@ export const expensesRepository = {
       console.warn("Supabase monthly expense insert exception:", err);
     }
 
-    const local = getLocalData<MonthlyExpense>(STORAGE_KEY_MONTHLY_EXPENSES).filter((m) => m.id !== fallback.id);
-    saveLocalData(STORAGE_KEY_MONTHLY_EXPENSES, [fallback, ...local]);
+    const local = getLocalData<MonthlyExpense>(STORAGE_KEY_MONTHLY_EXPENSES, activeUserId).filter((m) => m.id !== fallback.id);
+    saveLocalData(STORAGE_KEY_MONTHLY_EXPENSES, [fallback, ...local], activeUserId);
     return fallback;
   },
 
   async deleteMonthlyExpensesByExpenseId(expenseId: string): Promise<boolean> {
+    const activeUserId = getActiveTenantUserId();
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        await supabase.from("monthly_expenses").delete().eq("expense_id", expenseId);
+        let query = supabase.from("monthly_expenses").delete().eq("expense_id", expenseId);
+        if (activeUserId) query = query.eq("user_id", activeUserId);
+        await query;
       }
     } catch (err) {
       console.warn("Supabase deleteMonthlyExpenses exception:", err);
     }
-    const local = getLocalData<MonthlyExpense>(STORAGE_KEY_MONTHLY_EXPENSES).filter((m) => m.expense_id !== expenseId);
-    saveLocalData(STORAGE_KEY_MONTHLY_EXPENSES, local);
+    const local = getLocalData<MonthlyExpense>(STORAGE_KEY_MONTHLY_EXPENSES, activeUserId).filter((m) => m.expense_id !== expenseId);
+    saveLocalData(STORAGE_KEY_MONTHLY_EXPENSES, local, activeUserId);
     return true;
   },
 
   // Budgets
   async getAllBudgets(): Promise<ExpenseBudget[]> {
-    const local = getLocalData<ExpenseBudget>(STORAGE_KEY_BUDGETS);
+    const activeUserId = getActiveTenantUserId();
+    if (!activeUserId) return [];
+    const local = getLocalData<ExpenseBudget>(STORAGE_KEY_BUDGETS, activeUserId);
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data, error } = await supabase.from("expense_budgets").select("*");
+        const { data, error } = await supabase
+          .from("expense_budgets")
+          .select("*")
+          .eq("user_id", activeUserId);
         if (!error && data) {
-          saveLocalData(STORAGE_KEY_BUDGETS, data as ExpenseBudget[]);
+          saveLocalData(STORAGE_KEY_BUDGETS, data as ExpenseBudget[], activeUserId);
           return data as ExpenseBudget[];
         }
       }
@@ -249,6 +260,10 @@ export const expensesRepository = {
   },
 
   async createBudget(budget: Omit<ExpenseBudget, "id" | "created_at" | "updated_at">): Promise<ExpenseBudget> {
+    const activeUserId = getActiveTenantUserId();
+    if (!activeUserId) {
+      throw new Error("Action impossible: utilisateur non authentifié.");
+    }
     const now = new Date().toISOString();
     const fallback: ExpenseBudget = {
       id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `bgt-${Date.now()}`,
@@ -260,16 +275,16 @@ export const expensesRepository = {
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data: authData } = await supabase.auth.getUser();
-        const userId = isValidUuid(authData.user?.id) ? authData.user?.id : null;
-        const payload: Record<string, any> = { ...budget };
-        if (userId) payload.user_id = userId;
+        const payload: Record<string, any> = {
+          ...budget,
+          user_id: activeUserId,
+        };
 
         const { data, error } = await supabase.from("expense_budgets").insert([payload]).select().single();
         if (!error && data) {
           const saved = data as ExpenseBudget;
-          const local = getLocalData<ExpenseBudget>(STORAGE_KEY_BUDGETS).filter((b) => b.id !== saved.id);
-          saveLocalData(STORAGE_KEY_BUDGETS, [saved, ...local]);
+          const local = getLocalData<ExpenseBudget>(STORAGE_KEY_BUDGETS, activeUserId).filter((b) => b.id !== saved.id);
+          saveLocalData(STORAGE_KEY_BUDGETS, [saved, ...local], activeUserId);
           return saved;
         }
       }
@@ -277,24 +292,27 @@ export const expensesRepository = {
       console.warn("Supabase createBudget exception:", err);
     }
 
-    const local = getLocalData<ExpenseBudget>(STORAGE_KEY_BUDGETS).filter((b) => b.id !== fallback.id);
-    saveLocalData(STORAGE_KEY_BUDGETS, [fallback, ...local]);
+    const local = getLocalData<ExpenseBudget>(STORAGE_KEY_BUDGETS, activeUserId).filter((b) => b.id !== fallback.id);
+    saveLocalData(STORAGE_KEY_BUDGETS, [fallback, ...local], activeUserId);
     return fallback;
   },
 
   async updateBudget(id: string, updates: Partial<ExpenseBudget>): Promise<ExpenseBudget> {
+    const activeUserId = getActiveTenantUserId();
     let updated: ExpenseBudget | null = null;
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data, error } = await supabase.from("expense_budgets").update(updates).eq("id", id).select().single();
+        let query = supabase.from("expense_budgets").update(updates).eq("id", id);
+        if (activeUserId) query = query.eq("user_id", activeUserId);
+        const { data, error } = await query.select().single();
         if (!error && data) updated = data as ExpenseBudget;
       }
     } catch (err) {
       console.warn("Supabase updateBudget exception:", err);
     }
 
-    const local = getLocalData<ExpenseBudget>(STORAGE_KEY_BUDGETS);
+    const local = getLocalData<ExpenseBudget>(STORAGE_KEY_BUDGETS, activeUserId);
     const existing = local.find((b) => b.id === id);
     const now = new Date().toISOString();
     const merged: ExpenseBudget = updated || {
@@ -305,44 +323,57 @@ export const expensesRepository = {
 
     const nextLocal = local.map((b) => (b.id === id ? merged : b));
     if (!existing && !updated) nextLocal.push(merged);
-    saveLocalData(STORAGE_KEY_BUDGETS, nextLocal);
+    saveLocalData(STORAGE_KEY_BUDGETS, nextLocal, activeUserId);
     return merged;
   },
 
-  // Audit Logs
-  async getAllAuditLogs(): Promise<ExpenseAuditLog[]> {
+  async deleteBudget(id: string): Promise<boolean> {
+    const activeUserId = getActiveTenantUserId();
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data, error } = await supabase.from("expense_audit_logs").select("*").order("created_at", { ascending: false });
+        let query = supabase.from("expense_budgets").delete().eq("id", id);
+        if (activeUserId) query = query.eq("user_id", activeUserId);
+        await query;
+      }
+    } catch (err) {
+      console.warn("Supabase deleteBudget exception:", err);
+    }
+    const local = getLocalData<ExpenseBudget>(STORAGE_KEY_BUDGETS, activeUserId).filter((b) => b.id !== id);
+    saveLocalData(STORAGE_KEY_BUDGETS, local, activeUserId);
+    return true;
+  },
+
+  // Audit Logs
+  async getAuditLogs(): Promise<ExpenseAuditLog[]> {
+    const activeUserId = getActiveTenantUserId();
+    if (!activeUserId) return [];
+    try {
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        const { data, error } = await supabase
+          .from("expense_audit_logs")
+          .select("*")
+          .eq("user_id", activeUserId)
+          .order("created_at", { ascending: false });
         if (!error && data) return data as ExpenseAuditLog[];
       }
     } catch (err) {
-      console.warn("Supabase getAllAuditLogs exception:", err);
+      console.warn("Error loading expense audit logs:", err);
     }
     return [];
   },
 
-  async createAuditLog(log: Omit<ExpenseAuditLog, "id" | "created_at" | "updated_at">): Promise<ExpenseAuditLog> {
-    const now = new Date().toISOString();
-    const fallback: ExpenseAuditLog = {
-      id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `alog-${Date.now()}`,
-      ...log,
-      created_at: now,
-      updated_at: now,
-    };
-
+  async addAuditLog(log: Omit<ExpenseAuditLog, "id" | "created_at">): Promise<void> {
+    const activeUserId = getActiveTenantUserId();
+    if (!activeUserId) return;
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data, error } = await supabase.from("expense_audit_logs").insert([log]).select().single();
-        if (!error && data) return data as ExpenseAuditLog;
+        await supabase.from("expense_audit_logs").insert([{ ...log, user_id: activeUserId }]);
       }
     } catch (err) {
-      console.warn("Supabase createAuditLog exception:", err);
+      console.warn("Supabase addAuditLog exception:", err);
     }
-
-    return fallback;
   }
 };
-

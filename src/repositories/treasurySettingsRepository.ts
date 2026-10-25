@@ -1,4 +1,9 @@
 import { getSupabaseClient } from "@/services/supabaseService";
+import {
+  getActiveTenantUserId,
+  isValidUuid,
+  getScopedStorageKey,
+} from "./repositoryUtils";
 
 export interface TreasurySettings {
   entryTarget: number;
@@ -24,37 +29,42 @@ const DEFAULT_SETTINGS: TreasurySettings = {
   bankAlertThreshold: 5000,
 };
 
-function getLocalTreasury(): TreasurySettings {
+function getLocalTreasury(userId?: string | null): TreasurySettings {
   if (typeof window === "undefined") return DEFAULT_SETTINGS;
+  const key = getScopedStorageKey(STORAGE_KEY_TREASURY_SETTINGS, userId);
+  if (!key) return DEFAULT_SETTINGS;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_TREASURY_SETTINGS);
+    const raw = localStorage.getItem(key);
     return raw ? { ...DEFAULT_SETTINGS, ...JSON.parse(raw) } : DEFAULT_SETTINGS;
   } catch {
     return DEFAULT_SETTINGS;
   }
 }
 
-function saveLocalTreasury(settings: TreasurySettings): void {
+function saveLocalTreasury(settings: TreasurySettings, userId?: string | null): void {
   if (typeof window === "undefined") return;
+  const key = getScopedStorageKey(STORAGE_KEY_TREASURY_SETTINGS, userId);
+  if (!key) return;
   try {
-    localStorage.setItem(STORAGE_KEY_TREASURY_SETTINGS, JSON.stringify(settings));
+    localStorage.setItem(key, JSON.stringify(settings));
   } catch (e) {
     console.warn("Could not save local treasury settings:", e);
   }
 }
 
-const isValidUuid = (id: string | null | undefined): boolean => {
-  if (!id) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-};
-
 export const treasurySettingsRepository = {
   async get(): Promise<TreasurySettings> {
-    const local = getLocalTreasury();
+    const activeUserId = getActiveTenantUserId();
+    const local = getLocalTreasury(activeUserId);
+    if (!activeUserId) return DEFAULT_SETTINGS;
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data, error } = await supabase.from("treasury_settings").select("*").single();
+        const { data, error } = await supabase
+          .from("treasury_settings")
+          .select("*")
+          .eq("user_id", activeUserId)
+          .maybeSingle();
         if (!error && data) {
           const fetched: TreasurySettings = {
             entryTarget: data.entry_target,
@@ -66,7 +76,7 @@ export const treasurySettingsRepository = {
             cashAlertThreshold: data.cash_alert_threshold,
             bankAlertThreshold: data.bank_alert_threshold,
           };
-          saveLocalTreasury(fetched);
+          saveLocalTreasury(fetched, activeUserId);
           return fetched;
         }
       }
@@ -77,14 +87,19 @@ export const treasurySettingsRepository = {
   },
 
   async update(settings: Partial<TreasurySettings>): Promise<TreasurySettings> {
-    const local = getLocalTreasury();
+    const activeUserId = getActiveTenantUserId();
+    const local = getLocalTreasury(activeUserId);
     const merged: TreasurySettings = { ...local, ...settings };
-    saveLocalTreasury(merged);
+    saveLocalTreasury(merged, activeUserId);
+
+    if (!activeUserId) return merged;
 
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const payload: any = {};
+        const payload: any = {
+          user_id: activeUserId,
+        };
         if (settings.entryTarget !== undefined) payload.entry_target = settings.entryTarget;
         if (settings.exitCap !== undefined) payload.exit_cap = settings.exitCap;
         if (settings.minAvailable !== undefined) payload.min_available = settings.minAvailable;
@@ -94,24 +109,11 @@ export const treasurySettingsRepository = {
         if (settings.cashAlertThreshold !== undefined) payload.cash_alert_threshold = settings.cashAlertThreshold;
         if (settings.bankAlertThreshold !== undefined) payload.bank_alert_threshold = settings.bankAlertThreshold;
 
-        const { data: authData } = await supabase.auth.getUser();
-        const activeUserStr = typeof window !== "undefined" ? localStorage.getItem("iloca:active_user") : null;
-        let activeUserId: string | null = null;
-        if (activeUserStr) {
-          try {
-            activeUserId = JSON.parse(activeUserStr)?.id || null;
-          } catch {}
-        }
-        const candidateId = authData.user?.id || activeUserId;
-        const userId = isValidUuid(candidateId) ? candidateId : null;
-
-        if (userId) payload.user_id = userId;
-
         const { data, error } = await supabase
           .from("treasury_settings")
-          .upsert(payload)
+          .upsert(payload, { onConflict: "user_id" })
           .select()
-          .single();
+          .maybeSingle();
         if (!error && data) {
           const saved: TreasurySettings = {
             entryTarget: data.entry_target,
@@ -123,7 +125,7 @@ export const treasurySettingsRepository = {
             cashAlertThreshold: data.cash_alert_threshold,
             bankAlertThreshold: data.bank_alert_threshold,
           };
-          saveLocalTreasury(saved);
+          saveLocalTreasury(saved, activeUserId);
           return saved;
         }
       }
@@ -134,4 +136,3 @@ export const treasurySettingsRepository = {
     return merged;
   }
 };
-

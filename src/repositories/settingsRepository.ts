@@ -1,6 +1,11 @@
 import { getSupabaseClient, getSupabaseConfigError } from "@/services/supabaseService";
 import type { AutoBackupFrequency, BackupPreferences, CompanySettings, GpsSettings } from "@/types/appData";
 import { DEFAULT_BRAND_COLOR } from "@/utils/brandTheme";
+import {
+  getActiveTenantUserId,
+  isValidUuid,
+  getScopedStorageKey,
+} from "./repositoryUtils";
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -25,21 +30,25 @@ const DEFAULT_BACKUP_PREFERENCES: BackupPreferences = {
   lastAutoBackupCheck: null,
 };
 
-function getLocalSettings(): Record<string, JsonValue> {
+function getLocalSettings(userId?: string | null): Record<string, JsonValue> {
   if (typeof window === "undefined") return {};
+  const key = getScopedStorageKey(STORAGE_KEY_LOCAL_SETTINGS, userId);
+  if (!key) return {};
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_LOCAL_SETTINGS);
+    const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : {};
   } catch {
     return {};
   }
 }
 
-function saveLocalSettings(values: Record<string, JsonValue>): void {
+function saveLocalSettings(values: Record<string, JsonValue>, userId?: string | null): void {
   if (typeof window === "undefined") return;
+  const key = getScopedStorageKey(STORAGE_KEY_LOCAL_SETTINGS, userId);
+  if (!key) return;
   try {
-    const existing = getLocalSettings();
-    localStorage.setItem(STORAGE_KEY_LOCAL_SETTINGS, JSON.stringify({ ...existing, ...values }));
+    const existing = getLocalSettings(userId);
+    localStorage.setItem(key, JSON.stringify({ ...existing, ...values }));
   } catch (e) {
     console.warn("Could not save local settings:", e);
   }
@@ -54,17 +63,20 @@ const readString = (value: unknown, fallback = "") => (typeof value === "string"
 const readNullableString = (value: unknown) => (typeof value === "string" && value !== "" ? value : null);
 
 async function listAppSettings(): Promise<Record<string, JsonValue>> {
-  const local = getLocalSettings();
+  const activeUserId = getActiveTenantUserId();
+  const local = getLocalSettings(activeUserId);
   try {
     const supabase = getSupabaseClient();
     if (supabase) {
-      const { data, error } = await supabase.from(APP_SETTINGS_TABLE).select("setting_key, setting_value");
+      let query = supabase.from(APP_SETTINGS_TABLE).select("setting_key, setting_value");
+      if (activeUserId) query = query.eq("user_id", activeUserId);
+      const { data, error } = await query;
       if (!error && data) {
         const remote = (data || []).reduce<Record<string, JsonValue>>((acc, row: any) => {
           acc[String(row.setting_key)] = row.setting_value as JsonValue;
           return acc;
         }, {});
-        saveLocalSettings(remote);
+        saveLocalSettings(remote, activeUserId);
         return { ...local, ...remote };
       }
     }
@@ -75,34 +87,24 @@ async function listAppSettings(): Promise<Record<string, JsonValue>> {
 }
 
 async function upsertAppSettings(values: Record<string, JsonValue>): Promise<void> {
-  saveLocalSettings(values);
+  const activeUserId = getActiveTenantUserId();
+  saveLocalSettings(values, activeUserId);
   const entries = Object.entries(values);
   if (!entries.length) return;
 
   try {
     const supabase = getSupabaseClient();
     if (supabase) {
-      const { data: authData } = await supabase.auth.getUser();
-      const activeUserStr = typeof window !== "undefined" ? localStorage.getItem("iloca:active_user") : null;
-      let activeUserId: string | null = null;
-      if (activeUserStr) {
-        try {
-          activeUserId = JSON.parse(activeUserStr)?.id || null;
-        } catch {}
-      }
-      const candidateId = authData.user?.id || activeUserId;
-      const userId = isValidUuid(candidateId) ? candidateId : null;
-
       const payload = entries.map(([setting_key, setting_value]) => {
         const row: any = {
           setting_key,
           setting_value: setting_value === null ? "" : setting_value,
         };
-        if (userId) row.user_id = userId;
+        if (activeUserId) row.user_id = activeUserId;
         return row;
       });
 
-      await supabase.from(APP_SETTINGS_TABLE).upsert(payload, { onConflict: userId ? "user_id,setting_key" : "setting_key" });
+      await supabase.from(APP_SETTINGS_TABLE).upsert(payload, { onConflict: activeUserId ? "user_id,setting_key" : "setting_key" });
     }
   } catch (err) {
     console.warn("Supabase upsertAppSettings exception (saved locally):", err);

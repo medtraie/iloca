@@ -14,6 +14,7 @@ export interface UserProfile {
   max_vehicles_quota?: number;
   max_users_quota?: number;
   subscription_plan?: "Trial" | "Pro" | "Enterprise" | "Unlimited";
+  password?: string;
 }
 
 export interface UserSession {
@@ -126,6 +127,7 @@ function cleanProfile(p: any): UserProfile {
     max_vehicles_quota: p.max_vehicles_quota || (isSuper ? 500 : 50),
     max_users_quota: p.max_users_quota || (isSuper ? 50 : 5),
     subscription_plan: p.subscription_plan || (isSuper ? "Unlimited" : "Pro"),
+    password: p.password ? String(p.password) : undefined,
   };
 }
 
@@ -387,19 +389,47 @@ export const adminService = {
     subscription_plan?: UserProfile["subscription_plan"];
   }): Promise<UserProfile> {
     const newId = generateUUID();
+    const cleanEmail = data.email.toLowerCase().trim();
+    const initialPassword = data.password?.trim() || "123456";
+
     const newProfile: UserProfile = cleanProfile({
       id: newId,
-      email: data.email.toLowerCase().trim(),
+      email: cleanEmail,
       full_name: data.full_name.trim(),
       company_name: sanitizeText(data.company_name, "SFTLOCATION"),
       phone: data.phone?.trim() || "",
       role: data.role || "admin",
-      status: data.status || "en_attente",
+      status: data.status || "valide",
+      password: initialPassword,
       total_seconds_spent: 0,
       created_at: new Date().toISOString(),
       max_vehicles_quota: data.max_vehicles_quota || 50,
       subscription_plan: data.subscription_plan || "Pro",
     });
+
+    // Optionnellement créer le compte dans Supabase Auth s'il est configuré
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { data: signUpRes } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password: initialPassword,
+          options: {
+            data: {
+              full_name: newProfile.full_name,
+              company_name: newProfile.company_name,
+              role: newProfile.role,
+              phone: newProfile.phone,
+            },
+          },
+        });
+        if (signUpRes?.user?.id) {
+          newProfile.id = signUpRes.user.id;
+        }
+      } catch (err) {
+        console.warn("Supabase auth signUp note:", err);
+      }
+    }
 
     const currentUsers = getStoredProfiles();
     const updated = [
@@ -409,7 +439,6 @@ export const adminService = {
     saveStoredProfiles(updated);
     await adminService.syncUsersToCloud(updated);
 
-    const supabase = getSupabaseClient();
     if (supabase) {
       try {
         const { data: { user } } = await supabase.auth.getUser();
@@ -467,6 +496,11 @@ export const adminService = {
   },
 
   async updateUserPassword(userId: string, newPassword: string): Promise<boolean> {
+    const currentUsers = getStoredProfiles();
+    const updated = currentUsers.map((p) => (p.id === userId ? { ...p, password: newPassword } : p));
+    saveStoredProfiles(updated);
+    await adminService.syncUsersToCloud(updated);
+
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
