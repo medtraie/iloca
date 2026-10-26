@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/contexts/AuthContext";
 import { adminService } from "@/services/adminService";
+import { useTelemetryVisibility } from "@/services/telemetryVisibilityService";
 
 const nav = {
   dashboard: [
@@ -64,6 +65,7 @@ const nav = {
 export function AppSidebar() {
   const location = useLocation();
   const { user, isSuperAdmin, logout } = useAuth();
+  const { isGpsHidden } = useTelemetryVisibility();
   const [pendingCount, setPendingCount] = useState(0);
   const [totalUsersCount, setTotalUsersCount] = useState(4);
 
@@ -318,8 +320,24 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="space-y-1">
-              {nav.extras.map((item) => (
-                <SidebarMenuItem key={item.title}>
+              {nav.extras
+                .filter((item) => {
+                  if (isGpsHidden) {
+                    return !(
+                      item.title === "Carte" ||
+                      item.title === "Suivi" ||
+                      item.title === "Alertes" ||
+                      item.title === "Analytique SFT" ||
+                      item.url === "/map" ||
+                      item.url === "/tracking" ||
+                      item.url === "/alerts" ||
+                      item.url === "/analytics"
+                    );
+                  }
+                  return true;
+                })
+                .map((item) => (
+                  <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
                     tooltip={item.title}

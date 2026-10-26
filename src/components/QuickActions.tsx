@@ -2,6 +2,7 @@ import React from "react";
 import { Plus, FileText, Users, Car, Receipt, Wrench, Fuel, MapPin, ArrowRight } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link } from "react-router-dom";
+import { useTelemetryVisibility } from "@/services/telemetryVisibilityService";
 
 const quickActions = [
   {
@@ -73,6 +74,9 @@ const quickActions = [
 ];
 
 export function QuickActions() {
+  const { isGpsHidden } = useTelemetryVisibility();
+  const visibleActions = quickActions.filter((a) => !(isGpsHidden && a.href === "/map"));
+
   return (
     <Card className="rounded-[2rem] border border-border/60 bg-gradient-to-br from-card via-card to-card/95 backdrop-blur-xl shadow-card overflow-hidden h-full flex flex-col justify-between">
       <CardHeader className="p-5 sm:p-6 pb-2">
@@ -95,7 +99,7 @@ export function QuickActions() {
 
       <CardContent className="p-5 sm:p-6 pt-2">
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {quickActions.map((action) => (
+          {visibleActions.map((action) => (
             <Link key={action.title} to={action.href} className="group block">
               <div className={`p-4 rounded-2xl bg-muted/20 border border-border/50 transition-all duration-300 group-hover:-translate-y-1 group-hover:bg-background group-hover:shadow-md flex flex-col items-center text-center gap-2.5 ${action.colors.border}`}>
                 <div className={`w-11 h-11 rounded-2xl border flex items-center justify-center transition-transform duration-300 group-hover:scale-110 ${action.colors.bg}`}>

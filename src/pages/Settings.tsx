@@ -41,6 +41,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -55,6 +63,7 @@ import type { AutoBackupFrequency, CompanySettings, GpsSettings } from "@/types/
 import { useAuth } from "@/contexts/AuthContext";
 import { adminService, SystemGovernanceConfig } from "@/services/adminService";
 import { usePDFGeneration } from "@/hooks/usePDFGeneration";
+import { useTelemetryVisibility } from "@/services/telemetryVisibilityService";
 
 const Settings = () => {
   const { toast } = useToast();
@@ -100,6 +109,51 @@ const Settings = () => {
   });
   const [isSavingGov, setIsSavingGov] = useState(false);
   const [cloudPingMs, setCloudPingMs] = useState<number | null>(24);
+
+  // Telemetry Modules Visibility Protection State (Code: SFTM@1.)
+  const { isGpsHidden, toggleWithCode } = useTelemetryVisibility();
+  const [isPasscodeDialogOpen, setIsPasscodeDialogOpen] = useState(false);
+  const [passcodeAttempt, setPasscodeAttempt] = useState("");
+  const [passcodeError, setPasscodeError] = useState("");
+  const [showPasscodeInput, setShowPasscodeInput] = useState(false);
+
+  const handleOpenPasscodeDialog = () => {
+    setPasscodeAttempt("");
+    setPasscodeError("");
+    setShowPasscodeInput(false);
+    setIsPasscodeDialogOpen(true);
+  };
+
+  const handleConfirmPasscode = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!passcodeAttempt.trim()) {
+      setPasscodeError("Veuillez saisir le code d'autorisation.");
+      return;
+    }
+    const result = toggleWithCode(passcodeAttempt);
+    if (!result.success) {
+      setPasscodeError("Code d'autorisation incorrect. Action refusée.");
+      return;
+    }
+
+    setIsPasscodeDialogOpen(false);
+    setPasscodeAttempt("");
+    setPasscodeError("");
+
+    if (result.newHiddenState) {
+      toast({
+        title: "Protection Activée",
+        description:
+          "Les modules Télémétrie SFT Tracker, Carte, Suivi, Alertes et Analytique sont désormais masqués de la navigation.",
+      });
+    } else {
+      toast({
+        title: "Modules Réactivés",
+        description:
+          "Les modules Télémétrie SFT Tracker, Carte, Suivi, Alertes et Analytique sont de nouveau visibles.",
+      });
+    }
+  };
 
   const { companyName, companyLogo, companyAddress, companyPhone, companyFax, companyGsm, companyEmail, brandColor } =
     companySettings;
@@ -792,6 +846,46 @@ const Settings = () => {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Card: Mode de Télémétrie & Visibilité GPSwox (Super Admin view) */}
+              <Card className="rounded-3xl border border-indigo-500/20 bg-gradient-to-r from-card via-card to-indigo-500/5 shadow-sm overflow-hidden col-span-1 md:col-span-2">
+                <CardHeader className="pb-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <CardTitle className="text-base font-bold flex items-center gap-2">
+                        <Lock className="h-5 w-5 text-indigo-500" />
+                        <span>Visibilité des Modules Télémétrie SFT & GPSwox (Carte, Suivi, Alertes, Analytique)</span>
+                        {isGpsHidden ? (
+                          <Badge variant="outline" className="border-rose-500/40 text-rose-500 bg-rose-500/10 text-[10px] font-extrabold uppercase tracking-wider">
+                            Modules Masqués
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="border-emerald-500/40 text-emerald-500 bg-emerald-500/10 text-[10px] font-extrabold uppercase tracking-wider">
+                            Modules Visibles
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Permet de masquer ou d'afficher globalement les sections <strong>Carte</strong>, <strong>Suivi</strong>, <strong>Alertes</strong>, <strong>Analytique SFT</strong> de la barre de navigation ainsi que le panneau <strong>Paramètres SFT Tracker</strong>.
+                      </CardDescription>
+                    </div>
+
+                    <Button
+                      type="button"
+                      onClick={handleOpenPasscodeDialog}
+                      variant={isGpsHidden ? "default" : "outline"}
+                      className={`h-9 px-4 text-xs font-bold rounded-xl gap-2 transition-all shadow-sm ${
+                        isGpsHidden
+                          ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                          : "border-indigo-500/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10"
+                      }`}
+                    >
+                      <Lock className="h-3.5 w-3.5" />
+                      <span>{isGpsHidden ? "Réactiver / Afficher les modules" : "Masquer les modules"}</span>
+                    </Button>
+                  </div>
+                </CardHeader>
+              </Card>
             </div>
           </TabsContent>
 
@@ -1010,6 +1104,87 @@ const Settings = () => {
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Dialogue de sécurité pour la saisie du code secret (SFTM@1.) */}
+        <Dialog open={isPasscodeDialogOpen} onOpenChange={setIsPasscodeDialogOpen}>
+          <DialogContent className="sm:max-w-md rounded-2xl bg-card border border-border shadow-xl">
+            <form onSubmit={handleConfirmPasscode} className="space-y-4">
+              <DialogHeader>
+                <div className="mx-auto w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center mb-1">
+                  <Lock className="w-6 h-6" />
+                </div>
+                <DialogTitle className="text-center text-lg font-black tracking-tight">
+                  Code de Sécurité Requis
+                </DialogTitle>
+                <DialogDescription className="text-center text-xs text-muted-foreground">
+                  Veuillez saisir le code secret pour{" "}
+                  <span className="font-bold text-foreground">
+                    {isGpsHidden ? "réactiver et afficher" : "masquer"}
+                  </span>{" "}
+                  les modules SFT Tracker, Carte, Suivi, Alertes et Analytique.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-2 py-2">
+                <Label htmlFor="sec-passcode-admin" className="text-xs font-bold text-foreground">
+                  Code d'Autorisation
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="sec-passcode-admin"
+                    type={showPasscodeInput ? "text" : "password"}
+                    value={passcodeAttempt}
+                    onChange={(e) => {
+                      setPasscodeAttempt(e.target.value);
+                      if (passcodeError) setPasscodeError("");
+                    }}
+                    autoFocus
+                    placeholder="••••••••"
+                    className={`h-10 pr-10 rounded-xl font-mono text-sm tracking-wider ${
+                      passcodeError ? "border-rose-500 focus-visible:ring-rose-500" : ""
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => setShowPasscodeInput((v) => !v)}
+                    title={showPasscodeInput ? "Masquer le code" : "Afficher le code"}
+                  >
+                    {showPasscodeInput ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                {passcodeError ? (
+                  <p className="text-[11px] font-bold text-rose-500 flex items-center gap-1.5 mt-1">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    <span>{passcodeError}</span>
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-muted-foreground">
+                    Le code reste strictement masqué par mesure de sécurité.
+                  </p>
+                )}
+              </div>
+
+              <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsPasscodeDialogOpen(false)}
+                  className="rounded-xl text-xs font-semibold h-9"
+                >
+                  Annuler
+                </Button>
+                <Button
+                  type="submit"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold h-9 shadow-md shadow-indigo-600/20"
+                >
+                  Valider l'autorisation
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }
@@ -1037,75 +1212,142 @@ const Settings = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Card 1: Paramètres SFT Tracker / GPS */}
-        <Card className="lg:col-span-2 rounded-2xl border border-border/50 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base font-bold flex items-center gap-2">
-              <Radio className="h-5 w-5 text-amber-500" />
-              Paramètres SFT Tracker (Suivi GPSwox)
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Connectez le système de géolocalisation et de suivi de flotte en renseignant vos accès API SFT/TrackPremier.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 text-xs">
-            <div className="space-y-2">
-              <Label htmlFor="gpsApiUrl">URL API du Serveur GPS</Label>
-              <Input
-                id="gpsApiUrl"
-                value={gpsApiUrl}
-                onChange={(e) => setGpsApiUrl(e.target.value)}
-                placeholder="sf-tracker.pro"
-                disabled={gpsLoading || gpsSaving}
-                className="h-9 font-mono"
-              />
-              <p className="text-[11px] text-muted-foreground">Adresse du serveur de suivi sans `http://` ni `/api`</p>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="gpsEmail">E-mail Compte Tracker</Label>
-                <Input
-                  id="gpsEmail"
-                  type="email"
-                  value={gpsEmail}
-                  onChange={(e) => setGpsEmail(e.target.value)}
-                  placeholder="abdou@gmail.com"
-                  disabled={gpsLoading || gpsSaving}
-                  className="h-9"
-                />
+        {/* Card: Mode de Télémétrie & Visibilité GPS (Code SFTM@1.) */}
+        <Card className="lg:col-span-2 rounded-2xl border border-indigo-500/20 bg-gradient-to-r from-card via-card to-indigo-500/5 shadow-sm overflow-hidden">
+          <CardHeader className="pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <CardTitle className="text-base font-bold flex items-center gap-2">
+                  <Lock className="h-5 w-5 text-indigo-500" />
+                  <span>Module de Télémétrie & Visibilité GPSwox</span>
+                  {isGpsHidden ? (
+                    <Badge variant="outline" className="border-rose-500/40 text-rose-500 bg-rose-500/10 text-[10px] font-extrabold uppercase tracking-wider">
+                      Modules Masqués
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="border-emerald-500/40 text-emerald-500 bg-emerald-500/10 text-[10px] font-extrabold uppercase tracking-wider">
+                      Modules Visibles
+                    </Badge>
+                  )}
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Cette option permet de masquer complètement les sections <strong>Carte</strong>, <strong>Suivi</strong>, <strong>Alertes</strong>, <strong>Analytique SFT</strong> du menu de navigation ainsi que le panneau <strong>Paramètres SFT Tracker (Suivi GPSwox)</strong>.
+                </CardDescription>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="gpsPassword">Mot de Passe Tracker</Label>
-                <div className="relative">
-                  <Input
-                    id="gpsPassword"
-                    type={showGpsPassword ? "text" : "password"}
-                    value={gpsPassword}
-                    onChange={(e) => setGpsPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="h-9 pr-10"
-                    disabled={gpsLoading || gpsSaving}
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    onClick={() => setShowGpsPassword((v) => !v)}
-                  >
-                    {showGpsPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
+
+              <div className="flex items-center gap-3 shrink-0">
+                <div className="flex flex-col items-end mr-1 text-right">
+                  <span className="text-xs font-bold text-foreground">
+                    {isGpsHidden ? "Télémétrie Masquée" : "Télémétrie Active"}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {isGpsHidden ? "Code requis pour réactiver" : "Code requis pour masquer"}
+                  </span>
                 </div>
+                <Button
+                  type="button"
+                  onClick={handleOpenPasscodeDialog}
+                  variant={isGpsHidden ? "default" : "outline"}
+                  className={`h-9 px-4 text-xs font-bold rounded-xl gap-2 transition-all shadow-sm ${
+                    isGpsHidden
+                      ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                      : "border-indigo-500/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10"
+                  }`}
+                >
+                  <Lock className="h-3.5 w-3.5" />
+                  <span>{isGpsHidden ? "Réafficher les modules" : "Masquer les modules"}</span>
+                </Button>
               </div>
             </div>
-            <Button
-              className="w-full bg-slate-900 dark:bg-white text-white dark:text-zinc-950 font-bold text-xs h-9 rounded-xl"
-              onClick={handleSaveGpsSettings}
-              disabled={gpsSaving || gpsLoading}
-            >
-              <Save className={`h-4 w-4 mr-2 ${gpsSaving ? "animate-spin" : ""}`} />
-              {gpsSaving ? "Enregistrement..." : "Enregistrer les paramètres SFT Tracker"}
-            </Button>
+          </CardHeader>
+          <CardContent className="pt-0 text-xs text-muted-foreground">
+            <div className="p-3 rounded-xl bg-muted/40 border border-border/60 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <KeyRound className="h-4 w-4 text-amber-500 shrink-0" />
+                <span>
+                  {isGpsHidden
+                    ? "Les sections Carte, Suivi, Alertes, Analytique SFT et Paramètres SFT Tracker sont actuellement masquées."
+                    : "Toutes les fonctionnalités GPSwox et de suivi de flotte sont actuellement accessibles dans la navigation."}
+                </span>
+              </div>
+              <span className="text-[10px] font-mono text-muted-foreground shrink-0 uppercase tracking-wider">
+                Sécurisé par code
+              </span>
+            </div>
           </CardContent>
         </Card>
+
+        {/* Card 1: Paramètres SFT Tracker / GPS */}
+        {!isGpsHidden && (
+          <Card className="lg:col-span-2 rounded-2xl border border-border/50 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-base font-bold flex items-center gap-2">
+                <Radio className="h-5 w-5 text-amber-500" />
+                Paramètres SFT Tracker (Suivi GPSwox)
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Connectez le système de géolocalisation et de suivi de flotte en renseignant vos accès API SFT/TrackPremier.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 text-xs">
+              <div className="space-y-2">
+                <Label htmlFor="gpsApiUrl">URL API du Serveur GPS</Label>
+                <Input
+                  id="gpsApiUrl"
+                  value={gpsApiUrl}
+                  onChange={(e) => setGpsApiUrl(e.target.value)}
+                  placeholder="sf-tracker.pro"
+                  disabled={gpsLoading || gpsSaving}
+                  className="h-9 font-mono"
+                />
+                <p className="text-[11px] text-muted-foreground">Adresse du serveur de suivi sans `http://` ni `/api`</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="gpsEmail">E-mail Compte Tracker</Label>
+                  <Input
+                    id="gpsEmail"
+                    type="email"
+                    value={gpsEmail}
+                    onChange={(e) => setGpsEmail(e.target.value)}
+                    placeholder="abdou@gmail.com"
+                    disabled={gpsLoading || gpsSaving}
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="gpsPassword">Mot de Passe Tracker</Label>
+                  <div className="relative">
+                    <Input
+                      id="gpsPassword"
+                      type={showGpsPassword ? "text" : "password"}
+                      value={gpsPassword}
+                      onChange={(e) => setGpsPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="h-9 pr-10"
+                      disabled={gpsLoading || gpsSaving}
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowGpsPassword((v) => !v)}
+                    >
+                      {showGpsPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <Button
+                className="w-full bg-slate-900 dark:bg-white text-white dark:text-zinc-950 font-bold text-xs h-9 rounded-xl"
+                onClick={handleSaveGpsSettings}
+                disabled={gpsSaving || gpsLoading}
+              >
+                <Save className={`h-4 w-4 mr-2 ${gpsSaving ? "animate-spin" : ""}`} />
+                {gpsSaving ? "Enregistrement..." : "Enregistrer les paramètres SFT Tracker"}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Card 2: Informations de l'Entreprise & Logo */}
         <Card className="rounded-2xl border border-border/50 shadow-sm">
@@ -1493,6 +1735,87 @@ const Settings = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Dialogue de sécurité pour la saisie du code secret (SFTM@1.) */}
+      <Dialog open={isPasscodeDialogOpen} onOpenChange={setIsPasscodeDialogOpen}>
+        <DialogContent className="sm:max-w-md rounded-2xl bg-card border border-border shadow-xl">
+          <form onSubmit={handleConfirmPasscode} className="space-y-4">
+            <DialogHeader>
+              <div className="mx-auto w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center mb-1">
+                <Lock className="w-6 h-6" />
+              </div>
+              <DialogTitle className="text-center text-lg font-black tracking-tight">
+                Code de Sécurité Requis
+              </DialogTitle>
+              <DialogDescription className="text-center text-xs text-muted-foreground">
+                Veuillez saisir le code secret pour{" "}
+                <span className="font-bold text-foreground">
+                  {isGpsHidden ? "réactiver et afficher" : "masquer"}
+                </span>{" "}
+                les modules SFT Tracker, Carte, Suivi, Alertes et Analytique.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-2 py-2">
+              <Label htmlFor="sec-passcode" className="text-xs font-bold text-foreground">
+                Code d'Autorisation
+              </Label>
+              <div className="relative">
+                <Input
+                  id="sec-passcode"
+                  type={showPasscodeInput ? "text" : "password"}
+                  value={passcodeAttempt}
+                  onChange={(e) => {
+                    setPasscodeAttempt(e.target.value);
+                    if (passcodeError) setPasscodeError("");
+                  }}
+                  autoFocus
+                  placeholder="••••••••"
+                  className={`h-10 pr-10 rounded-xl font-mono text-sm tracking-wider ${
+                    passcodeError ? "border-rose-500 focus-visible:ring-rose-500" : ""
+                  }`}
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setShowPasscodeInput((v) => !v)}
+                  title={showPasscodeInput ? "Masquer le code" : "Afficher le code"}
+                >
+                  {showPasscodeInput ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {passcodeError ? (
+                <p className="text-[11px] font-bold text-rose-500 flex items-center gap-1.5 mt-1">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  <span>{passcodeError}</span>
+                </p>
+              ) : (
+                <p className="text-[10px] text-muted-foreground">
+                  Le code reste strictement masqué par mesure de sécurité.
+                </p>
+              )}
+            </div>
+
+            <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsPasscodeDialogOpen(false)}
+                className="rounded-xl text-xs font-semibold h-9"
+              >
+                Annuler
+              </Button>
+              <Button
+                type="submit"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold h-9 shadow-md shadow-indigo-600/20"
+              >
+                Valider l'autorisation
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -28,6 +28,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ReactNode, lazy, Suspense, useEffect } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { realtimeSyncService } from "./services/realtimeSyncService";
+import { useTelemetryVisibility } from "./services/telemetryVisibilityService";
 
 const FleetMap = lazy(() => import("./pages/FleetMap"));
 const Tracking = lazy(() => import("./pages/Tracking"));
@@ -95,6 +96,7 @@ function MobileBottomNav() {
 function ProtectedLayout() {
   const location = useLocation();
   const { isAuthenticated, isReady, isSuperAdmin } = useAuth();
+  const { isGpsHidden } = useTelemetryVisibility();
 
   if (!isReady) {
     return <div className="min-h-screen grid place-items-center text-muted-foreground font-tajawal">Chargement...</div>;
@@ -102,6 +104,11 @@ function ProtectedLayout() {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  // Si les modules GPS sont masqués, rediriger vers l'accueil
+  if (isGpsHidden && ["/map", "/tracking", "/alerts", "/analytics"].includes(location.pathname)) {
+    return <Navigate to="/" replace />;
   }
 
   // Le Super Administrateur n'a accès qu'à l'administration et aux paramètres
