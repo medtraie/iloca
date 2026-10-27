@@ -138,7 +138,7 @@ const Contracts: React.FC = () => {
             Centre des <span className="text-primary">Contrats & Locations</span>
           </h1>
           <p className="text-muted-foreground text-xs sm:text-sm font-medium mt-1">
-            Supervisez le cycle complet de vos locations, prolongations et règlements في مكان واحد.
+            Supervisez le cycle complet de vos locations, prolongations et règlements.
           </p>
         </div>
 
