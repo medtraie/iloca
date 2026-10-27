@@ -64,6 +64,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { adminService, SystemGovernanceConfig } from "@/services/adminService";
 import { usePDFGeneration } from "@/hooks/usePDFGeneration";
 import { useTelemetryVisibility } from "@/services/telemetryVisibilityService";
+import { RolesAndAccessManager } from "@/components/settings/RolesAndAccessManager";
 
 const Settings = () => {
   const { toast } = useToast();
@@ -1212,6 +1213,9 @@ const Settings = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Card: Rôles & Accès Superviseurs (Application Mobile) */}
+        <RolesAndAccessManager />
+
         {/* Card: Mode de Télémétrie & Visibilité GPS (Code SFTM@1.) */}
         <Card className="lg:col-span-2 rounded-2xl border border-indigo-500/20 bg-gradient-to-r from-card via-card to-indigo-500/5 shadow-sm overflow-hidden">
           <CardHeader className="pb-3">

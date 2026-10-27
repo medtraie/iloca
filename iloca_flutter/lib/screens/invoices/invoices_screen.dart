@@ -144,6 +144,15 @@ _Document officiel généré via BonaTours Cockpit._''';
   }
 
   Future<void> _confirmDelete(InvoiceModel inv) async {
+    if (!widget.appState.canDelete) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Suppression non autorisée pour votre compte'),
+          backgroundColor: AppColors2026.roseLaser,
+        ),
+      );
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -562,13 +571,14 @@ _Document officiel généré via BonaTours Cockpit._''';
                                 icon: const Icon(LucideIcons.edit3, size: 16, color: AppColors2026.cyanBright),
                                 onPressed: () => _openInvoiceForm(inv),
                               ),
-                              IconButton(
-                                tooltip: 'Supprimer',
-                                constraints: const BoxConstraints(),
-                                padding: const EdgeInsets.all(6),
-                                icon: const Icon(LucideIcons.trash2, size: 16, color: AppColors2026.roseLaser),
-                                onPressed: () => _confirmDelete(inv),
-                              ),
+                              if (widget.appState.canDelete)
+                                IconButton(
+                                  tooltip: 'Supprimer',
+                                  constraints: const BoxConstraints(),
+                                  padding: const EdgeInsets.all(6),
+                                  icon: const Icon(LucideIcons.trash2, size: 16, color: AppColors2026.roseLaser),
+                                  onPressed: () => _confirmDelete(inv),
+                                ),
                             ],
                           ),
                         ],

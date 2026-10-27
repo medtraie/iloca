@@ -1,12 +1,26 @@
 import { getSupabaseClient } from "@/services/supabaseService";
 
+export interface SupervisorPermissions {
+  allowedTabs: string[]; // e.g. ["overview", "clients", "vehicles", "contracts", "factures", "depenses", "rapports", "alertes"]
+  canDelete: boolean;
+  canCreateContracts?: boolean;
+  canEditContracts?: boolean;
+}
+
+export const DEFAULT_SUPERVISOR_PERMISSIONS: SupervisorPermissions = {
+  allowedTabs: ["overview", "clients", "vehicles", "contracts"],
+  canDelete: false,
+  canCreateContracts: true,
+  canEditContracts: true,
+};
+
 export interface UserProfile {
   id: string;
   email: string;
   full_name: string;
   company_name: string;
   phone?: string;
-  role: "super_admin" | "admin" | "flotte" | "commercial" | "comptable";
+  role: "super_admin" | "admin" | "flotte" | "commercial" | "comptable" | "superviseur";
   status: "valide" | "en_attente" | "suspendu";
   last_login_at?: string;
   total_seconds_spent: number;
@@ -15,6 +29,8 @@ export interface UserProfile {
   max_users_quota?: number;
   subscription_plan?: "Trial" | "Pro" | "Enterprise" | "Unlimited";
   password?: string;
+  parent_user_id?: string;
+  permissions?: SupervisorPermissions;
 }
 
 export interface UserSession {
@@ -128,6 +144,17 @@ function cleanProfile(p: any): UserProfile {
     max_users_quota: p.max_users_quota || (isSuper ? 50 : 5),
     subscription_plan: p.subscription_plan || (isSuper ? "Unlimited" : "Pro"),
     password: p.password ? String(p.password) : undefined,
+    parent_user_id: p.parent_user_id ? String(p.parent_user_id) : undefined,
+    permissions: p.permissions
+      ? {
+          allowedTabs: Array.isArray(p.permissions.allowedTabs) ? p.permissions.allowedTabs : DEFAULT_SUPERVISOR_PERMISSIONS.allowedTabs,
+          canDelete: Boolean(p.permissions.canDelete),
+          canCreateContracts: p.permissions.canCreateContracts !== false,
+          canEditContracts: p.permissions.canEditContracts !== false,
+        }
+      : p.role === "superviseur"
+      ? DEFAULT_SUPERVISOR_PERMISSIONS
+      : undefined,
   };
 }
 
@@ -387,6 +414,8 @@ export const adminService = {
     password?: string;
     max_vehicles_quota?: number;
     subscription_plan?: UserProfile["subscription_plan"];
+    parent_user_id?: string;
+    permissions?: SupervisorPermissions;
   }): Promise<UserProfile> {
     const newId = generateUUID();
     const cleanEmail = data.email.toLowerCase().trim();
@@ -405,6 +434,8 @@ export const adminService = {
       created_at: new Date().toISOString(),
       max_vehicles_quota: data.max_vehicles_quota || 50,
       subscription_plan: data.subscription_plan || "Pro",
+      parent_user_id: data.parent_user_id,
+      permissions: data.permissions,
     });
 
     // Optionnellement créer le compte dans Supabase Auth s'il est configuré
@@ -654,5 +685,60 @@ export const adminService = {
     }
 
     return updated;
+  },
+
+  /**
+   * Récupère tous les superviseurs rattachés à un compte administrateur d'agence
+   */
+  async getAgencySupervisors(parentAdminId: string): Promise<UserProfile[]> {
+    const all = await this.getAllUsers();
+    return all.filter((u) => u.parent_user_id === parentAdminId || (u.role === "superviseur" && u.parent_user_id === parentAdminId));
+  },
+
+  /**
+   * Crée un nouveau superviseur rattaché à l'administrateur
+   */
+  async createSupervisor(
+    parentAdmin: { id: string; company_name: string; email: string },
+    data: {
+      full_name: string;
+      email: string;
+      phone?: string;
+      password: string;
+      permissions: SupervisorPermissions;
+    }
+  ): Promise<UserProfile> {
+    return this.createUser({
+      full_name: data.full_name,
+      company_name: parentAdmin.company_name,
+      email: data.email,
+      phone: data.phone,
+      role: "superviseur",
+      status: "valide",
+      password: data.password,
+      parent_user_id: parentAdmin.id,
+      permissions: data.permissions,
+    });
+  },
+
+  /**
+   * Met à jour les permissions ou informations d'un superviseur
+   */
+  async updateSupervisor(
+    supervisorId: string,
+    patch: Partial<UserProfile>
+  ): Promise<boolean> {
+    const all = await this.getAllUsers();
+    const updated = all.map((u) => (u.id === supervisorId ? { ...u, ...patch } : u));
+    saveStoredProfiles(updated);
+    await this.syncUsersToCloud(updated);
+    return true;
+  },
+
+  /**
+   * Supprime un compte superviseur
+   */
+  async deleteSupervisor(supervisorId: string): Promise<boolean> {
+    return this.deleteUser(supervisorId);
   },
 };

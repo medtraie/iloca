@@ -150,8 +150,24 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
     return ListenableBuilder(
       listenable: appState,
       builder: (context, _) {
-        final currentIndex = appState.activeTabIndex
+        final allowedIndices = <int>[];
+        for (int i = 0; i < MainSpatialShell.sections.length; i++) {
+          if (appState.isSectionAllowed(MainSpatialShell.sections[i].title)) {
+            allowedIndices.add(i);
+          }
+        }
+        final rawIndex = appState.activeTabIndex
             .clamp(0, MainSpatialShell.sections.length - 1);
+        final currentIndex = allowedIndices.contains(rawIndex)
+            ? rawIndex
+            : (allowedIndices.isNotEmpty ? allowedIndices.first : 0);
+
+        if (currentIndex != appState.activeTabIndex) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            appState.setActiveTab(currentIndex);
+          });
+        }
+
         final currentMeta = MainSpatialShell.sections[currentIndex];
         final isWide = MediaQuery.of(context).size.width >= 840;
 
@@ -177,7 +193,7 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
                 children: [
                   if (isWide)
                     _buildSpatialNavigationRail(
-                        context, appState, currentIndex),
+                        context, appState, currentIndex, allowedIndices),
                   Expanded(
                     child: Column(
                       children: [
@@ -209,7 +225,7 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
           ),
           bottomNavigationBar: isWide
               ? null
-              : _buildMobileSpatialDock(context, appState, currentIndex),
+              : _buildMobileSpatialDock(context, appState, currentIndex, allowedIndices),
         );
       },
     );
@@ -412,6 +428,7 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
     BuildContext context,
     AppStateProvider state,
     int currentIndex,
+    List<int> allowedIndices,
   ) {
     return Container(
       width: 230,
@@ -467,18 +484,19 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
             const SizedBox(height: 20),
             Expanded(
               child: ListView.separated(
-                itemCount: MainSpatialShell.sections.length,
+                itemCount: allowedIndices.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 6),
                 itemBuilder: (context, index) {
-                  final item = MainSpatialShell.sections[index];
-                  final selected = index == currentIndex;
+                  final originalIndex = allowedIndices[index];
+                  final item = MainSpatialShell.sections[originalIndex];
+                  final selected = originalIndex == currentIndex;
                   final alertBadge = item.title == 'Alertes' && state.allAlerts.isNotEmpty
                       ? state.allAlerts.length
                       : 0;
 
                   return InkWell(
                     borderRadius: BorderRadius.circular(16),
-                    onTap: () => state.setActiveTab(index),
+                    onTap: () => state.setActiveTab(originalIndex),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 220),
                       padding: const EdgeInsets.symmetric(
@@ -556,6 +574,7 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
     BuildContext context,
     AppStateProvider state,
     int currentIndex,
+    List<int> allowedIndices,
   ) {
     return ClipRRect(
       child: BackdropFilter(
@@ -578,17 +597,18 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            itemCount: MainSpatialShell.sections.length,
+            itemCount: allowedIndices.length,
             separatorBuilder: (_, __) => const SizedBox(width: 6),
             itemBuilder: (context, index) {
-              final item = MainSpatialShell.sections[index];
-              final selected = index == currentIndex;
+              final originalIndex = allowedIndices[index];
+              final item = MainSpatialShell.sections[originalIndex];
+              final selected = originalIndex == currentIndex;
               final alertBadge = item.title == 'Alertes' && state.allAlerts.isNotEmpty
                   ? state.allAlerts.length
                   : 0;
 
               return GestureDetector(
-                onTap: () => state.setActiveTab(index),
+                onTap: () => state.setActiveTab(originalIndex),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 220),
                   curve: Curves.easeOutCubic,

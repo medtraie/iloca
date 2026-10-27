@@ -55,13 +55,27 @@ class _ContractsScreenState extends State<ContractsScreen> {
     ContractModel? contract,
     ContractFormMode mode = ContractFormMode.create,
   }) {
+    if (mode == ContractFormMode.create && !widget.appState.canCreateContracts) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Création de contrats non autorisée'),
+          backgroundColor: AppColors2026.roseLaser,
+        ),
+      );
+      return;
+    }
+    var effectiveMode = mode;
+    if (mode == ContractFormMode.edit && !widget.appState.canEditContracts) {
+      effectiveMode = ContractFormMode.view;
+    }
+
     Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (ctx) => ContractFormDialog(
           appState: widget.appState,
           existingContract: contract,
-          mode: mode,
+          mode: effectiveMode,
         ),
       ),
     );
@@ -192,6 +206,15 @@ _Merci pour votre confiance en BonaTours Location & Tours._
   }
 
   Future<void> _confirmDeleteContract(ContractModel c) async {
+    if (!widget.appState.canDelete) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Suppression non autorisée pour votre compte'),
+          backgroundColor: AppColors2026.roseLaser,
+        ),
+      );
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1157,12 +1180,13 @@ _Merci pour votre confiance en BonaTours Location & Tours._
                               size: 16, color: AppColors2026.emeraldBright),
                           onPressed: () => _shareContractWhatsApp(c),
                         ),
-                        IconButton(
-                          tooltip: 'Supprimer',
-                          icon: const Icon(LucideIcons.trash2,
-                              size: 16, color: AppColors2026.roseLaser),
-                          onPressed: () => _confirmDeleteContract(c),
-                        ),
+                        if (widget.appState.canDelete)
+                          IconButton(
+                            tooltip: 'Supprimer',
+                            icon: const Icon(LucideIcons.trash2,
+                                size: 16, color: AppColors2026.roseLaser),
+                            onPressed: () => _confirmDeleteContract(c),
+                          ),
                       ],
                     ),
                   ),
@@ -1538,20 +1562,21 @@ class _ContractSpatialCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(LucideIcons.trash2,
-                            size: 15, color: AppColors2026.roseLaser),
-                        SizedBox(width: 8),
-                        Text(
-                          'Supprimer définitivement',
-                          style: TextStyle(color: AppColors2026.roseLaser),
-                        ),
-                      ],
+                  if (widget.appState.canDelete)
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(LucideIcons.trash2,
+                              size: 15, color: AppColors2026.roseLaser),
+                          SizedBox(width: 8),
+                          Text(
+                            'Supprimer définitivement',
+                            style: TextStyle(color: AppColors2026.roseLaser),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
                 ],
               ),
             ],

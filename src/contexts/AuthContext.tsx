@@ -8,10 +8,12 @@ export interface AuthUser {
   fullName: string;
   companyName: string;
   phone?: string;
-  role: "super_admin" | "admin" | "flotte" | "commercial" | "comptable";
+  role: "super_admin" | "admin" | "flotte" | "commercial" | "comptable" | "superviseur";
   status: "valide" | "en_attente" | "suspendu";
   lastLoginAt?: string;
   totalSecondsSpent: number;
+  parent_user_id?: string;
+  permissions?: any;
 }
 
 interface RegisterData {
@@ -70,10 +72,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       fullName: profile?.full_name || meta?.full_name || email.split("@")[0] || "Utilisateur",
       companyName: profile?.company_name || meta?.company_name || "Entreprise",
       phone: profile?.phone || meta?.phone,
-      role: profile?.role || meta?.role || "admin",
+      role: (profile?.role || meta?.role || "admin") as any,
       status: profile?.status || meta?.status || "en_attente",
       lastLoginAt: profile?.last_login_at,
       totalSecondsSpent: profile?.total_seconds_spent || 0,
+      parent_user_id: profile?.parent_user_id,
+      permissions: profile?.permissions,
     };
   };
 

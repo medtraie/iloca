@@ -16,6 +16,18 @@ class SupabaseSyncService {
   /// Currently active tenant User ID. If set, queries strictly isolate data to this tenant.
   static String? currentUserId;
 
+  /// User Role: 'super_admin' | 'admin' | 'superviseur'
+  static String currentUserRole = 'admin';
+
+  /// If this user is a supervisor, this holds their agency parent admin ID
+  static String? parentAdminId;
+
+  /// If this user is an admin, this holds the list of supervisor IDs belonging to this admin
+  static List<String> childSupervisorIds = [];
+
+  /// Granular permissions for supervisor
+  static SupervisorPermissionsModel? supervisorPermissions;
+
   static SupabaseClient get _sb => Supabase.instance.client;
 
   /// Active User ID for strict tenant isolation.
@@ -42,12 +54,9 @@ class SupabaseSyncService {
   static String get _localInvoicesKey => 'iloca:${activeUserId ?? "default"}:invoices:local';
   static String get _localExpensesKey => 'iloca:${activeUserId ?? "default"}:expenses:local';
 
-  /// Resolves the user ID by email via the Supabase admin audit registry (fallback)
-  static Future<String?> lookupUserIdByEmail(String email) async {
+  /// Resolves the full user profile by email via the Supabase admin audit registry
+  static Future<Map<String, dynamic>?> lookupUserProfileByEmail(String email) async {
     final clean = email.trim().toLowerCase();
-    if (clean == AppConfig.superAdminEmail.toLowerCase()) {
-      return defaultSuperAdminId;
-    }
     try {
       final uri = Uri.parse(
         '${AppConfig.supabaseUrl}/rest/v1/audit_logs?action=eq.global_admin_users&select=payload&order=created_at.desc&limit=1',
@@ -56,6 +65,7 @@ class SupabaseSyncService {
         'apikey': AppConfig.supabasePublishableKey,
         'Authorization': 'Bearer ${AppConfig.supabasePublishableKey}',
       }).timeout(const Duration(seconds: 5));
+
       if (resp.statusCode >= 200 && resp.statusCode < 300) {
         final data = jsonDecode(resp.body);
         if (data is List && data.isNotEmpty) {
@@ -65,13 +75,53 @@ class SupabaseSyncService {
               (u) => (u['email'] ?? '').toString().toLowerCase() == clean,
               orElse: () => null,
             );
-            if (target != null && target['id'] != null) {
-              return target['id'].toString();
+            if (target != null && target is Map) {
+              final targetMap = Map<String, dynamic>.from(target);
+              final myId = (targetMap['id'] ?? '').toString();
+
+              // If this user is an admin, collect IDs of all supervisors linked to them
+              final childIds = <String>[];
+              if (myId.isNotEmpty) {
+                for (final u in payload) {
+                  if (u is Map && (u['parent_user_id'] ?? '').toString() == myId) {
+                    final sId = (u['id'] ?? '').toString();
+                    if (sId.isNotEmpty) childIds.add(sId);
+                  }
+                }
+              }
+              targetMap['child_supervisor_ids'] = childIds;
+              return targetMap;
             }
           }
         }
       }
     } catch (_) {}
+    return null;
+  }
+
+  /// Resolves user ID and initializes role & supervisor permissions
+  static Future<String?> lookupUserIdByEmail(String email) async {
+    final clean = email.trim().toLowerCase();
+    if (clean == AppConfig.superAdminEmail.toLowerCase()) {
+      currentUserRole = 'super_admin';
+      return defaultSuperAdminId;
+    }
+
+    final profile = await lookupUserProfileByEmail(clean);
+    if (profile != null) {
+      if (profile['id'] != null) currentUserId = profile['id'].toString();
+      currentUserRole = (profile['role'] ?? 'admin').toString().toLowerCase();
+      parentAdminId = profile['parent_user_id']?.toString();
+      final childs = profile['child_supervisor_ids'];
+      if (childs is List) {
+        childSupervisorIds = childs.map((e) => e.toString()).toList();
+      }
+      if (profile['permissions'] is Map) {
+        supervisorPermissions = SupervisorPermissionsModel.fromJson(
+            Map<String, dynamic>.from(profile['permissions']));
+      }
+      return profile['id']?.toString();
+    }
     return null;
   }
 
@@ -122,14 +172,57 @@ class SupabaseSyncService {
       return [];
     }
 
+    // Role-based Multi-tenant & Supervisor filtering
+    String userIdFilter;
+    List<String> allowedUserIds = [tenantId];
+
+    if (table == 'contracts') {
+      if (currentUserRole == 'superviseur') {
+        // Supervisor sees ONLY their own contracts
+        userIdFilter = 'user_id=eq.$tenantId';
+      } else if (currentUserRole != 'superviseur' && childSupervisorIds.isNotEmpty) {
+        // Admin sees their own contracts + all contracts of their supervisors
+        allowedUserIds = [tenantId, ...childSupervisorIds];
+        userIdFilter = 'user_id=in.(${allowedUserIds.join(",")})';
+      } else {
+        userIdFilter = 'user_id=eq.$tenantId';
+      }
+    } else if (table == 'vehicles') {
+      if (currentUserRole == 'superviseur' && parentAdminId != null && parentAdminId!.isNotEmpty) {
+        // Supervisor accesses agency fleet
+        allowedUserIds = [parentAdminId!];
+        userIdFilter = 'user_id=eq.$parentAdminId';
+      } else {
+        userIdFilter = 'user_id=eq.$tenantId';
+      }
+    } else if (table == 'clients') {
+      if (currentUserRole == 'superviseur' && parentAdminId != null && parentAdminId!.isNotEmpty) {
+        allowedUserIds = [parentAdminId!, tenantId];
+        userIdFilter = 'user_id=in.($parentAdminId,$tenantId)';
+      } else if (currentUserRole != 'superviseur' && childSupervisorIds.isNotEmpty) {
+        allowedUserIds = [tenantId, ...childSupervisorIds];
+        userIdFilter = 'user_id=in.(${allowedUserIds.join(",")})';
+      } else {
+        userIdFilter = 'user_id=eq.$tenantId';
+      }
+    } else if (table == 'expenses' || table == 'repairs') {
+      if (currentUserRole == 'superviseur' && parentAdminId != null && parentAdminId!.isNotEmpty) {
+        allowedUserIds = [parentAdminId!];
+        userIdFilter = 'user_id=eq.$parentAdminId';
+      } else {
+        userIdFilter = 'user_id=eq.$tenantId';
+      }
+    } else {
+      userIdFilter = 'user_id=eq.$tenantId';
+    }
+
     String restError = '';
     try {
       final orderParam = orderBy != null
           ? '&order=$orderBy.${ascending ? 'asc' : 'desc'}'
           : '';
-      // PostgREST strict query: user_id=eq.$tenantId
       final uri = Uri.parse(
-        '${AppConfig.supabaseUrl}/rest/v1/$table?user_id=eq.$tenantId&select=*$orderParam',
+        '${AppConfig.supabaseUrl}/rest/v1/$table?$userIdFilter&select=*$orderParam',
       );
       final response = await http
           .get(
@@ -158,21 +251,18 @@ class SupabaseSyncService {
     }
 
     try {
-      final query = _sb.from(table).select('*').eq('user_id', tenantId);
+      dynamic query = _sb.from(table).select('*');
+      if (allowedUserIds.length == 1) {
+        query = query.eq('user_id', allowedUserIds.first);
+      } else {
+        query = query.inFilter('user_id', allowedUserIds);
+      }
       final rows = orderBy != null
           ? await query
               .order(orderBy, ascending: ascending)
               .timeout(const Duration(seconds: 12))
           : await query.timeout(const Duration(seconds: 12));
       return (rows as List)
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
-    } catch (e) {
-      lastFetchError = restError.isNotEmpty ? restError : e.toString();
-      rethrow;
-    }
-  }
           .whereType<Map>()
           .map((e) => Map<String, dynamic>.from(e))
           .toList();

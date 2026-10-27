@@ -52,6 +52,15 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   }
 
   Future<void> _confirmDelete(ExpenseModel expense) async {
+    if (!widget.appState.canDelete) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Suppression non autorisée pour votre compte'),
+          backgroundColor: AppColors2026.roseLaser,
+        ),
+      );
+      return;
+    }
     final vehicle = widget.appState.vehicles
         .where((v) => v.id == expense.vehicleId)
         .firstOrNull
@@ -611,16 +620,17 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                       ],
                     ),
                   ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(LucideIcons.trash2, size: 15, color: AppColors2026.roseLaser),
-                        SizedBox(width: 8),
-                        Text('Supprimer', style: TextStyle(fontSize: 13, color: AppColors2026.roseLaser)),
-                      ],
+                  if (widget.appState.canDelete)
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(LucideIcons.trash2, size: 15, color: AppColors2026.roseLaser),
+                          SizedBox(width: 8),
+                          Text('Supprimer', style: TextStyle(fontSize: 13, color: AppColors2026.roseLaser)),
+                        ],
+                      ),
                     ),
-                  ),
                 ],
               ),
             ],

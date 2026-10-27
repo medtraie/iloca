@@ -21,6 +21,38 @@ class AppStateProvider extends ChangeNotifier {
   String _userName = 'Administrateur BonaTours';
   String get userName => _userName;
 
+  // Multi-tenant & Role-Based Access Control (Admin vs Superviseur)
+  String _userRole = 'admin';
+  String get userRole => _userRole;
+  bool get isSupervisor => _userRole.toLowerCase() == 'superviseur';
+
+  String? _parentAdminId;
+  String? get parentAdminId => _parentAdminId;
+
+  SupervisorPermissionsModel? _supervisorPermissions;
+  SupervisorPermissionsModel? get supervisorPermissions => _supervisorPermissions;
+
+  bool get canDelete => !isSupervisor || (_supervisorPermissions?.canDelete ?? true);
+  bool get canCreateContracts => !isSupervisor || (_supervisorPermissions?.canCreateContracts ?? true);
+  bool get canEditContracts => !isSupervisor || (_supervisorPermissions?.canEditContracts ?? true);
+
+  /// Checks if a top-level section/tab is allowed for the active user
+  bool isSectionAllowed(String sectionTitle) {
+    if (!isSupervisor || _supervisorPermissions == null) return true;
+    final lower = sectionTitle.trim().toLowerCase();
+    String key = lower;
+    if (key.contains('véhicule') || key.contains('vehicule')) key = 'vehicules';
+    else if (key.contains('client')) key = 'clients';
+    else if (key.contains('contrat')) key = 'contrats';
+    else if (key.contains('facture')) key = 'factures';
+    else if (key.contains('dépense') || key.contains('depense')) key = 'depenses';
+    else if (key.contains('rapport')) key = 'rapports';
+    else if (key.contains('alerte')) key = 'alertes';
+    else if (key.contains('overview') || key.contains('tableau')) key = 'overview';
+
+    return _supervisorPermissions!.isTabAllowed(key);
+  }
+
   // Theme Mode
   bool _isDarkMode = true;
   bool get isDarkMode => _isDarkMode;
@@ -130,9 +162,31 @@ class AppStateProvider extends ChangeNotifier {
         } else if (_userEmail == AppConfig.superAdminEmail) {
           SupabaseSyncService.currentUserId = SupabaseSyncService.defaultSuperAdminId;
         }
+
+        // Restore role & supervisor permissions
+        _userRole = prefs.getString('iloca_user_role') ?? 'admin';
+        _parentAdminId = prefs.getString('iloca_parent_admin_id');
+        final savedPermsJson = prefs.getString('iloca_supervisor_permissions');
+        if (savedPermsJson != null && savedPermsJson.isNotEmpty) {
+          try {
+            _supervisorPermissions = SupervisorPermissionsModel.fromJson(
+              Map<String, dynamic>.from(jsonDecode(savedPermsJson)),
+            );
+          } catch (_) {}
+        }
+        SupabaseSyncService.currentUserRole = _userRole;
+        SupabaseSyncService.parentAdminId = _parentAdminId;
+        SupabaseSyncService.supervisorPermissions = _supervisorPermissions;
       } else {
         _isAuthenticated = false;
         SupabaseSyncService.currentUserId = null;
+        _userRole = 'admin';
+        _parentAdminId = null;
+        _supervisorPermissions = null;
+        SupabaseSyncService.currentUserRole = 'admin';
+        SupabaseSyncService.parentAdminId = null;
+        SupabaseSyncService.supervisorPermissions = null;
+        SupabaseSyncService.childSupervisorIds = [];
       }
       try {
         final session = Supabase.instance.client.auth.currentSession;
@@ -428,6 +482,14 @@ class AppStateProvider extends ChangeNotifier {
       SupabaseSyncService.currentUserId = null;
     }
 
+    _userRole = 'admin';
+    _parentAdminId = null;
+    _supervisorPermissions = null;
+    SupabaseSyncService.currentUserRole = 'admin';
+    SupabaseSyncService.parentAdminId = null;
+    SupabaseSyncService.supervisorPermissions = null;
+    SupabaseSyncService.childSupervisorIds = [];
+
     // 1. Immediately wipe any in-memory data from previous sessions (strict multi-tenant isolation)
     _clients = [];
     _vehicles = [];
@@ -497,6 +559,35 @@ class AppStateProvider extends ChangeNotifier {
       }
     }
 
+    // 2.5 Resolve role, supervisor permissions, and tenant parent/child linkages
+    try {
+      final profile = await SupabaseSyncService.lookupUserProfileByEmail(email);
+      if (profile != null) {
+        _userRole = SupabaseSyncService.currentUserRole;
+        _parentAdminId = SupabaseSyncService.parentAdminId;
+        _supervisorPermissions = SupabaseSyncService.supervisorPermissions;
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('iloca_user_role', _userRole);
+        if (_parentAdminId != null) {
+          await prefs.setString('iloca_parent_admin_id', _parentAdminId!);
+        } else {
+          await prefs.remove('iloca_parent_admin_id');
+        }
+        if (_supervisorPermissions != null) {
+          await prefs.setString(
+            'iloca_supervisor_permissions',
+            jsonEncode(_supervisorPermissions!.toJson()),
+          );
+        } else {
+          await prefs.remove('iloca_supervisor_permissions');
+        }
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('[AppState] Profile/Role lookup note: $e');
+    }
+
     // 3. Restore any existing user-scoped cached data for this user
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -518,6 +609,13 @@ class AppStateProvider extends ChangeNotifier {
     _isAuthenticated = false;
     _autoRetryTimer?.cancel();
     SupabaseSyncService.currentUserId = null;
+    _userRole = 'admin';
+    _parentAdminId = null;
+    _supervisorPermissions = null;
+    SupabaseSyncService.currentUserRole = 'admin';
+    SupabaseSyncService.parentAdminId = null;
+    SupabaseSyncService.supervisorPermissions = null;
+    SupabaseSyncService.childSupervisorIds = [];
 
     // Strict isolation: completely clear in-memory state on logout
     _clients = [];
@@ -536,6 +634,9 @@ class AppStateProvider extends ChangeNotifier {
       await prefs.remove('iloca_user_id');
       await prefs.remove('iloca_user_email');
       await prefs.remove('iloca_user_name');
+      await prefs.remove('iloca_user_role');
+      await prefs.remove('iloca_parent_admin_id');
+      await prefs.remove('iloca_supervisor_permissions');
       // Remove legacy un-scoped cache keys if present
       await prefs.remove('cache_clients');
       await prefs.remove('cache_vehicles');
@@ -574,6 +675,7 @@ class AppStateProvider extends ChangeNotifier {
   }
 
   Future<void> deleteClient(String id) async {
+    if (!canDelete) return;
     _clients = _clients.where((c) => c.id != id).toList();
     _saveToLocalCache();
     notifyListeners();
@@ -594,6 +696,7 @@ class AppStateProvider extends ChangeNotifier {
   }
 
   Future<void> deleteVehicle(String id) async {
+    if (!canDelete) return;
     _vehicles = _vehicles.where((v) => v.id != id).toList();
     _saveToLocalCache();
     notifyListeners();
@@ -617,6 +720,7 @@ class AppStateProvider extends ChangeNotifier {
   Future<void> refreshGpsTelemetry() async {}
 
   Future<void> deleteContract(dynamic target) async {
+    if (!canDelete) return;
     final String id = target is ContractModel ? target.id : target.toString();
     final ContractModel? toDelete = target is ContractModel
         ? target
@@ -643,6 +747,7 @@ class AppStateProvider extends ChangeNotifier {
   }
 
   Future<void> deleteInvoice(String id) async {
+    if (!canDelete) return;
     _invoices = _invoices.where((i) => i.id != id).toList();
     _saveToLocalCache();
     notifyListeners();
@@ -662,6 +767,7 @@ class AppStateProvider extends ChangeNotifier {
   }
 
   Future<void> deleteExpense(String id) async {
+    if (!canDelete) return;
     _expenses = _expenses.where((e) => e.id != id).toList();
     _saveToLocalCache();
     notifyListeners();

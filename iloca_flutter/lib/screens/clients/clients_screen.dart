@@ -60,6 +60,15 @@ class _ClientsScreenState extends State<ClientsScreen> {
   }
 
   Future<void> _confirmDelete(ClientModel client) async {
+    if (!widget.appState.canDelete) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Suppression non autorisée pour votre compte'),
+          backgroundColor: AppColors2026.roseLaser,
+        ),
+      );
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -379,16 +388,18 @@ class _ClientsScreenState extends State<ClientsScreen> {
                                           style: TextStyle(
                                               fontWeight: FontWeight.bold)),
                                     ),
-                                    const SizedBox(width: 4),
-                                    IconButton(
-                                      tooltip: 'Supprimer',
-                                      onPressed: () => _confirmDelete(client),
-                                      icon: const Icon(
-                                        LucideIcons.trash2,
-                                        size: 16,
-                                        color: AppColors2026.roseLaser,
+                                    if (widget.appState.canDelete) ...[
+                                      const SizedBox(width: 4),
+                                      IconButton(
+                                        tooltip: 'Supprimer',
+                                        onPressed: () => _confirmDelete(client),
+                                        icon: const Icon(
+                                          LucideIcons.trash2,
+                                          size: 16,
+                                          color: AppColors2026.roseLaser,
+                                        ),
                                       ),
-                                    ),
+                                    ],
                                   ],
                                 ),
                               ],

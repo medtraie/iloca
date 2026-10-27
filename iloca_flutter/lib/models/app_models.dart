@@ -1238,3 +1238,56 @@ class ExpenseModel {
     }
   }
 }
+
+class SupervisorPermissionsModel {
+  final List<String> allowedTabs;
+  final bool canDelete;
+  final bool canCreateContracts;
+  final bool canEditContracts;
+
+  const SupervisorPermissionsModel({
+    this.allowedTabs = const [
+      'overview',
+      'clients',
+      'vehicles',
+      'contracts',
+      'factures',
+      'depenses',
+      'rapports',
+      'alertes',
+    ],
+    this.canDelete = false,
+    this.canCreateContracts = true,
+    this.canEditContracts = true,
+  });
+
+  factory SupervisorPermissionsModel.fromJson(Map<String, dynamic> json) {
+    final tabsRaw = json['allowedTabs'];
+    List<String> tabs = [];
+    if (tabsRaw is List) {
+      tabs = tabsRaw.map((e) => e.toString().toLowerCase().trim()).toList();
+    }
+    if (tabs.isEmpty) {
+      tabs = const [
+        'overview',
+        'clients',
+        'vehicles',
+        'contracts',
+      ];
+    }
+    return SupervisorPermissionsModel(
+      allowedTabs: tabs,
+      canDelete: json['canDelete'] == true,
+      canCreateContracts: json['canCreateContracts'] != false,
+      canEditContracts: json['canEditContracts'] != false,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'allowedTabs': allowedTabs,
+    'canDelete': canDelete,
+    'canCreateContracts': canCreateContracts,
+    'canEditContracts': canEditContracts,
+  };
+}
+
