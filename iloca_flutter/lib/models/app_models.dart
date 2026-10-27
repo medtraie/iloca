@@ -1289,5 +1289,26 @@ class SupervisorPermissionsModel {
     'canCreateContracts': canCreateContracts,
     'canEditContracts': canEditContracts,
   };
+
+  bool isTabAllowed(String tabKey) {
+    final clean = tabKey.trim().toLowerCase();
+    return allowedTabs.any((t) {
+      final norm = t.toLowerCase().trim();
+      if (norm == clean) return true;
+      if (clean == 'vehicules' && (norm == 'vehicles' || norm == 'véhicules')) return true;
+      if (clean == 'vehicles' && (norm == 'vehicules' || norm == 'véhicules')) return true;
+      if (clean == 'contrats' && norm == 'contracts') return true;
+      if (clean == 'contracts' && norm == 'contrats') return true;
+      if (clean == 'invoices' && norm == 'factures') return true;
+      if (clean == 'factures' && norm == 'invoices') return true;
+      if (clean == 'expenses' && (norm == 'depenses' || norm == 'dépenses')) return true;
+      if ((clean == 'depenses' || clean == 'dépenses') && norm == 'expenses') return true;
+      if (clean == 'reports' && norm == 'rapports') return true;
+      if (clean == 'rapports' && norm == 'reports') return true;
+      if (clean == 'alerts' && norm == 'alertes') return true;
+      if (clean == 'alertes' && norm == 'alerts') return true;
+      return false;
+    });
+  }
 }
 

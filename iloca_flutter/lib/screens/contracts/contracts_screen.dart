@@ -976,7 +976,7 @@ _Merci pour votre confiance en BonaTours Location & Tours._
           onShareWhatsApp: () => _shareContractWhatsApp(c),
           onCall: () => _callCustomer(c.customerPhone),
           onToggleClose: () => _toggleCloseReopen(c),
-          onDelete: () => _confirmDeleteContract(c),
+          onDelete: widget.appState.canDelete ? () => _confirmDeleteContract(c) : null,
         );
       },
     );
@@ -1438,7 +1438,7 @@ class _ContractSpatialCard extends StatelessWidget {
   final VoidCallback onShareWhatsApp;
   final VoidCallback onCall;
   final VoidCallback onToggleClose;
-  final VoidCallback onDelete;
+  final VoidCallback? onDelete;
 
   const _ContractSpatialCard({
     required this.contract,
@@ -1449,7 +1449,7 @@ class _ContractSpatialCard extends StatelessWidget {
     required this.onShareWhatsApp,
     required this.onCall,
     required this.onToggleClose,
-    required this.onDelete,
+    this.onDelete,
   });
 
   @override
@@ -1508,7 +1508,7 @@ class _ContractSpatialCard extends StatelessWidget {
                   if (action == 'edit') onEditForm();
                   if (action == 'call') onCall();
                   if (action == 'toggle') onToggleClose();
-                  if (action == 'delete') onDelete();
+                  if (action == 'delete') onDelete?.call();
                 },
                 itemBuilder: (ctx) => [
                   const PopupMenuItem(
@@ -1562,7 +1562,7 @@ class _ContractSpatialCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  if (widget.appState.canDelete)
+                  if (onDelete != null)
                     const PopupMenuItem(
                       value: 'delete',
                       child: Row(
