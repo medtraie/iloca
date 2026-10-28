@@ -23,6 +23,24 @@ export function getActiveTenantUserId(): string | null {
   return null;
 }
 
+export function getAccessibleVehicleUserIds(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem("iloca:active_user");
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    const id = parsed?.id;
+    if (!id || typeof id !== "string") return [];
+    const cleanId = id.trim();
+    if (parsed.role === "superviseur" && parsed.parent_user_id) {
+      return [parsed.parent_user_id.trim(), cleanId];
+    }
+    return [cleanId];
+  } catch {
+    return [];
+  }
+}
+
 export function isValidUuid(id: string | null | undefined): boolean {
   if (!id || typeof id !== "string") return false;
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id.trim());

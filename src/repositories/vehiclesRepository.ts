@@ -2,6 +2,7 @@ import { getSupabaseClient, getSupabaseConfigError } from "@/services/supabaseSe
 import type { Vehicle } from "@/types/appData";
 import {
   getActiveTenantUserId,
+  getAccessibleVehicleUserIds,
   isValidUuid,
   getScopedLocalStorage,
   saveScopedLocalStorage,
@@ -65,7 +66,6 @@ const buildVehicleInsertPayload = (vehicle: Partial<Vehicle>) => ({
   daily_rate: vehicle.prix_par_jour ?? null,
   status: vehicle.etat_vehicule?.trim() || "disponible",
   departure_mileage: vehicle.km_depart ?? null,
-  has_gps: vehicle.has_gps ?? false,
   documents_urls: vehicle.documents || [],
   photos_urls: vehicle.photos || [],
 });
@@ -92,7 +92,6 @@ const buildVehicleUpdatePayload = (vehicle: Partial<Vehicle>) => {
   if (vehicle.prix_par_jour !== undefined) payload.daily_rate = vehicle.prix_par_jour;
   if (vehicle.etat_vehicule !== undefined) payload.status = vehicle.etat_vehicule ? String(vehicle.etat_vehicule).trim() : "disponible";
   if (vehicle.km_depart !== undefined) payload.departure_mileage = vehicle.km_depart;
-  if (vehicle.has_gps !== undefined) payload.has_gps = vehicle.has_gps;
   if (vehicle.documents !== undefined) payload.documents_urls = vehicle.documents;
   if (vehicle.photos !== undefined) payload.photos_urls = vehicle.photos;
 
@@ -113,11 +112,16 @@ async function listVehicles(): Promise<Vehicle[]> {
   const localList = getLocalVehicles(activeUserId);
   try {
     const supabase = requireSupabase();
-    const { data, error } = await supabase
-      .from("vehicles")
-      .select("*")
-      .eq("user_id", activeUserId)
-      .order("updated_at", { ascending: false });
+    const accessibleUserIds = getAccessibleVehicleUserIds();
+    let query = supabase.from("vehicles").select("*");
+    if (accessibleUserIds.length === 1) {
+      query = query.eq("user_id", accessibleUserIds[0]);
+    } else if (accessibleUserIds.length > 1) {
+      query = query.in("user_id", accessibleUserIds);
+    } else {
+      query = query.eq("user_id", activeUserId);
+    }
+    const { data, error } = await query.order("updated_at", { ascending: false });
     if (!error && data) {
       const remoteVehicles = data.map(mapVehicleRow);
       saveLocalVehicles(remoteVehicles, activeUserId);
@@ -134,6 +138,18 @@ async function createVehicle(input: Omit<Vehicle, "id" | "created_at" | "updated
   if (!activeUserId) {
     throw new Error("Action impossible: utilisateur non authentifié.");
   }
+
+  // If active user is supervisor, vehicles belong to parent admin
+  let ownerUserId = activeUserId;
+  try {
+    const raw = localStorage.getItem("iloca:active_user");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.role === "superviseur" && parsed?.parent_user_id) {
+        ownerUserId = parsed.parent_user_id;
+      }
+    }
+  } catch {}
 
   const now = new Date().toISOString();
   const fallbackVehicle: Vehicle = {
@@ -153,6 +169,7 @@ async function createVehicle(input: Omit<Vehicle, "id" | "created_at" | "updated
     prix_par_jour: input.prix_par_jour,
     etat_vehicule: input.etat_vehicule?.trim() || "disponible",
     km_depart: input.km_depart,
+    has_gps: input.has_gps ?? false,
     documents: input.documents || [],
     photos: input.photos || [],
     created_at: now,
@@ -163,7 +180,7 @@ async function createVehicle(input: Omit<Vehicle, "id" | "created_at" | "updated
     const supabase = requireSupabase();
     const insertPayload: Record<string, any> = {
       ...buildVehicleInsertPayload(input),
-      user_id: activeUserId,
+      user_id: ownerUserId,
     };
 
     const { data, error } = await supabase.from("vehicles").insert(insertPayload).select("*").single();

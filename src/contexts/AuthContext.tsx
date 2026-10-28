@@ -67,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     return {
-      id: authId,
+      id: profile?.id || authId,
       email: normalizedEmail,
       fullName: profile?.full_name || meta?.full_name || email.split("@")[0] || "Utilisateur",
       companyName: profile?.company_name || meta?.company_name || "Entreprise",
@@ -114,12 +114,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser(authUser);
             localStorage.setItem("iloca:active_user", JSON.stringify(authUser));
           }
+        } else {
+          // Restauration sécurisée de la session pour les utilisateurs enregistrés via le registre admin
+          const savedUserRaw = localStorage.getItem("iloca:active_user");
+          if (savedUserRaw) {
+            try {
+              const savedUser = JSON.parse(savedUserRaw);
+              if (savedUser?.email) {
+                const refreshed = await resolveUserProfile(savedUser.id, savedUser.email);
+                if (refreshed.role !== "super_admin" && refreshed.status !== "valide") {
+                  setUser(null);
+                  localStorage.removeItem("iloca:active_user");
+                } else {
+                  setUser(refreshed);
+                  localStorage.setItem("iloca:active_user", JSON.stringify(refreshed));
+                }
+              }
+            } catch {
+              localStorage.removeItem("iloca:active_user");
+            }
+          }
         }
       } catch (err) {
         console.warn("Erreur initialisation session auth:", err);
       }
 
-      supabase.auth.onAuthStateChange(async (_event, session) => {
+      supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === "SIGNED_OUT") {
+          setUser(null);
+          localStorage.removeItem("iloca:active_user");
+          return;
+        }
+
         if (session?.user) {
           const authUser = await resolveUserProfile(
             session.user.id,
@@ -134,9 +160,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser(authUser);
             localStorage.setItem("iloca:active_user", JSON.stringify(authUser));
           }
-        } else {
-          setUser(null);
-          localStorage.removeItem("iloca:active_user");
         }
       });
 
