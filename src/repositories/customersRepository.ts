@@ -2,6 +2,8 @@ import { getSupabaseClient, getSupabaseConfigError } from "@/services/supabaseSe
 import type { ClientProfile, Customer, Tenant } from "@/types/appData";
 import {
   getActiveTenantUserId,
+  getDatabaseTenantUserId,
+  getAccessibleVehicleUserIds,
   isValidUuid,
   getScopedLocalStorage,
   saveScopedLocalStorage,
@@ -144,11 +146,15 @@ async function listClientProfiles(): Promise<ClientProfile[]> {
   const localList = getLocalClients(activeUserId);
   try {
     const supabase = requireSupabase();
-    const { data, error } = await supabase
-      .from("clients")
-      .select("*")
-      .eq("user_id", activeUserId)
-      .order("updated_at", { ascending: false });
+    const allowedUserIds = getAccessibleVehicleUserIds();
+    const targetIds = allowedUserIds.length > 0 ? allowedUserIds : [activeUserId];
+    let query = supabase.from("clients").select("*");
+    if (targetIds.length === 1) {
+      query = query.eq("user_id", targetIds[0]);
+    } else {
+      query = query.in("user_id", targetIds);
+    }
+    const { data, error } = await query.order("updated_at", { ascending: false });
     if (!error && data) {
       const remoteProfiles = data.map(toClientProfile);
       saveLocalClients(remoteProfiles, activeUserId);
@@ -170,6 +176,7 @@ async function createCustomer(input: Omit<Customer, "id" | "created_at" | "updat
   if (!activeUserId) {
     throw new Error("Action impossible: utilisateur non authentifié.");
   }
+  const dbUserId = getDatabaseTenantUserId() || activeUserId;
 
   const now = new Date().toISOString();
   const fallbackProfile: ClientProfile = {
@@ -196,7 +203,7 @@ async function createCustomer(input: Omit<Customer, "id" | "created_at" | "updat
     const supabase = requireSupabase();
     const payload: Record<string, any> = {
       ...buildCustomerPayload(input),
-      user_id: activeUserId,
+      user_id: dbUserId,
     };
 
     const { data, error } = await supabase.from("clients").insert(payload).select("*").single();
@@ -274,6 +281,7 @@ async function createTenant(input: Omit<Tenant, "id" | "createdAt" | "updatedAt"
   if (!activeUserId) {
     throw new Error("Action impossible: utilisateur non authentifié.");
   }
+  const dbUserId = getDatabaseTenantUserId() || activeUserId;
 
   const now = new Date().toISOString();
   const fallbackProfile: ClientProfile = {
@@ -303,7 +311,7 @@ async function createTenant(input: Omit<Tenant, "id" | "createdAt" | "updatedAt"
     const supabase = requireSupabase();
     const payload: Record<string, any> = {
       ...buildTenantPayload(input),
-      user_id: activeUserId,
+      user_id: dbUserId,
     };
 
     const { data, error } = await supabase.from("clients").insert(payload).select("*").single();

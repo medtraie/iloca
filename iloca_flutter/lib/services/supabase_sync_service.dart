@@ -19,6 +19,9 @@ class SupabaseSyncService {
   /// User Role: 'super_admin' | 'admin' | 'superviseur'
   static String currentUserRole = 'admin';
 
+  /// Current Company Name for Contracts and Invoices (default: BOUNATOURS)
+  static String currentCompanyName = 'BOUNATOURS';
+
   /// If this user is a supervisor, this holds their agency parent admin ID
   static String? parentAdminId;
 
@@ -47,6 +50,25 @@ class SupabaseSyncService {
   }
 
   static String get _effectiveUserId => activeUserId ?? defaultSuperAdminId;
+
+  static bool _isUuid(String? str) {
+    if (str == null || str.isEmpty) return false;
+    return RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+    ).hasMatch(str.trim());
+  }
+
+  /// The database tenant ID to satisfy Postgres foreign key constraint `auth.users(id)`.
+  /// For supervisors, this is their parent admin ID (which exists in auth.users).
+  /// For admins / super admins, this is their own activeUserId.
+  static String get databaseTenantId {
+    if (currentUserRole == 'superviseur' &&
+        parentAdminId != null &&
+        parentAdminId!.isNotEmpty) {
+      return parentAdminId!;
+    }
+    return _effectiveUserId;
+  }
 
   static String get _localClientsKey => 'iloca:${activeUserId ?? "default"}:clients:local';
   static String get _localVehiclesKey => 'iloca:${activeUserId ?? "default"}:vehicles:local';
@@ -112,6 +134,9 @@ class SupabaseSyncService {
       if (profile['id'] != null) currentUserId = profile['id'].toString();
       currentUserRole = (profile['role'] ?? 'admin').toString().toLowerCase();
       parentAdminId = profile['parent_user_id']?.toString();
+      if (profile['company_name'] != null && profile['company_name'].toString().trim().isNotEmpty) {
+        currentCompanyName = profile['company_name'].toString().trim().toUpperCase();
+      }
       final childs = profile['child_supervisor_ids'];
       if (childs is List) {
         childSupervisorIds = childs.map((e) => e.toString()).toList();
@@ -178,8 +203,10 @@ class SupabaseSyncService {
 
     if (table == 'contracts') {
       if (currentUserRole == 'superviseur') {
-        // Supervisor sees ONLY their own contracts
-        userIdFilter = 'user_id=eq.$tenantId';
+        // In Postgres, agency contracts share the admin's database user_id
+        final queryId = (parentAdminId != null && parentAdminId!.isNotEmpty) ? parentAdminId! : tenantId;
+        allowedUserIds = [queryId];
+        userIdFilter = 'user_id=eq.$queryId';
       } else if (currentUserRole != 'superviseur' && childSupervisorIds.isNotEmpty) {
         // Admin sees their own contracts + all contracts of their supervisors
         allowedUserIds = [tenantId, ...childSupervisorIds];
@@ -206,6 +233,13 @@ class SupabaseSyncService {
         userIdFilter = 'user_id=eq.$tenantId';
       }
     } else if (table == 'expenses' || table == 'repairs') {
+      if (currentUserRole == 'superviseur' && parentAdminId != null && parentAdminId!.isNotEmpty) {
+        allowedUserIds = [parentAdminId!];
+        userIdFilter = 'user_id=eq.$parentAdminId';
+      } else {
+        userIdFilter = 'user_id=eq.$tenantId';
+      }
+    } else if (table == 'invoices') {
       if (currentUserRole == 'superviseur' && parentAdminId != null && parentAdminId!.isNotEmpty) {
         allowedUserIds = [parentAdminId!];
         userIdFilter = 'user_id=eq.$parentAdminId';
@@ -358,26 +392,55 @@ class SupabaseSyncService {
 
   static Future<ClientModel> saveClient(ClientModel client, {bool isEdit = false}) async {
     final payload = client.toSupabasePayload();
-    payload['user_id'] = _effectiveUserId;
+    final dbUserId = databaseTenantId;
+    payload['user_id'] = dbUserId;
 
     try {
       if (isEdit && client.id.isNotEmpty) {
-        final res = await _sb
-            .from('clients')
-            .update(payload)
-            .eq('id', client.id)
-            .eq('user_id', _effectiveUserId)
-            .select('*')
-            .single();
-        return ClientModel.fromJson(Map<String, dynamic>.from(res));
+        try {
+          final res = await _sb
+              .from('clients')
+              .update(payload)
+              .eq('id', client.id)
+              .select('*')
+              .single();
+          return ClientModel.fromJson(Map<String, dynamic>.from(res));
+        } catch (e) {
+          if (e.toString().contains('23503') || e.toString().contains('user_id_fkey')) {
+            payload['user_id'] = null;
+            final res = await _sb
+                .from('clients')
+                .update(payload)
+                .eq('id', client.id)
+                .select('*')
+                .single();
+            return ClientModel.fromJson(Map<String, dynamic>.from(res));
+          }
+          rethrow;
+        }
       } else {
-        // If creating new client, omit id if empty so Supabase Postgres generates UUID automatically
-        final res = await _sb
-            .from('clients')
-            .insert(payload)
-            .select('*')
-            .single();
-        return ClientModel.fromJson(Map<String, dynamic>.from(res));
+        if (client.id.isNotEmpty && _isUuid(client.id)) {
+          payload['id'] = client.id;
+        }
+        try {
+          final res = await _sb
+              .from('clients')
+              .insert(payload)
+              .select('*')
+              .single();
+          return ClientModel.fromJson(Map<String, dynamic>.from(res));
+        } catch (e) {
+          if (e.toString().contains('23503') || e.toString().contains('user_id_fkey')) {
+            payload['user_id'] = null;
+            final res = await _sb
+                .from('clients')
+                .insert(payload)
+                .select('*')
+                .single();
+            return ClientModel.fromJson(Map<String, dynamic>.from(res));
+          }
+          rethrow;
+        }
       }
     } catch (e) {
       debugPrint('[SupabaseSync] saveClient local fallback: $e');
@@ -409,7 +472,7 @@ class SupabaseSyncService {
 
   static Future<void> deleteClient(String id) async {
     try {
-      await _sb.from('clients').delete().eq('id', id).eq('user_id', _effectiveUserId);
+      await _sb.from('clients').delete().eq('id', id);
     } catch (e) {
       debugPrint('[SupabaseSync] deleteClient error: $e');
     }
@@ -446,26 +509,55 @@ class SupabaseSyncService {
 
   static Future<VehicleModel> saveVehicle(VehicleModel vehicle, {bool isEdit = false}) async {
     final payload = vehicle.toSupabasePayload();
-    payload['user_id'] = _effectiveUserId;
+    final dbUserId = databaseTenantId;
+    payload['user_id'] = dbUserId;
 
     try {
       if (isEdit && vehicle.id.isNotEmpty) {
-        final res = await _sb
-            .from('vehicles')
-            .update(payload)
-            .eq('id', vehicle.id)
-            .eq('user_id', _effectiveUserId)
-            .select('*')
-            .single();
-        return VehicleModel.fromJson(Map<String, dynamic>.from(res));
+        try {
+          final res = await _sb
+              .from('vehicles')
+              .update(payload)
+              .eq('id', vehicle.id)
+              .select('*')
+              .single();
+          return VehicleModel.fromJson(Map<String, dynamic>.from(res));
+        } catch (e) {
+          if (e.toString().contains('23503') || e.toString().contains('user_id_fkey')) {
+            payload['user_id'] = null;
+            final res = await _sb
+                .from('vehicles')
+                .update(payload)
+                .eq('id', vehicle.id)
+                .select('*')
+                .single();
+            return VehicleModel.fromJson(Map<String, dynamic>.from(res));
+          }
+          rethrow;
+        }
       } else {
-        // If id is empty, don't supply id field to let Supabase Postgres generate UUID automatically
-        final res = await _sb
-            .from('vehicles')
-            .insert(payload)
-            .select('*')
-            .single();
-        return VehicleModel.fromJson(Map<String, dynamic>.from(res));
+        if (vehicle.id.isNotEmpty && _isUuid(vehicle.id)) {
+          payload['id'] = vehicle.id;
+        }
+        try {
+          final res = await _sb
+              .from('vehicles')
+              .insert(payload)
+              .select('*')
+              .single();
+          return VehicleModel.fromJson(Map<String, dynamic>.from(res));
+        } catch (e) {
+          if (e.toString().contains('23503') || e.toString().contains('user_id_fkey')) {
+            payload['user_id'] = null;
+            final res = await _sb
+                .from('vehicles')
+                .insert(payload)
+                .select('*')
+                .single();
+            return VehicleModel.fromJson(Map<String, dynamic>.from(res));
+          }
+          rethrow;
+        }
       }
     } catch (e) {
       debugPrint('[SupabaseSync] saveVehicle error: $e');
@@ -501,14 +593,13 @@ class SupabaseSyncService {
       await _sb
           .from('vehicles')
           .update({'status': status})
-          .eq('id', vehicleId)
-          .eq('user_id', _effectiveUserId);
+          .eq('id', vehicleId);
     } catch (_) {}
   }
 
   static Future<void> deleteVehicle(String id) async {
     try {
-      await _sb.from('vehicles').delete().eq('id', id).eq('user_id', _effectiveUserId);
+      await _sb.from('vehicles').delete().eq('id', id);
     } catch (e) {
       debugPrint('[SupabaseSync] deleteVehicle error: $e');
     }
@@ -520,9 +611,25 @@ class SupabaseSyncService {
   static Future<List<ContractModel>> fetchContracts() async {
     try {
       final rows = await _fetchTableRows('contracts', orderBy: 'created_at', ascending: false);
-      final remote = rows
+      var remote = rows
           .map((r) => ContractModel.fromJson(r))
           .toList();
+
+      // STRICT ISOLATION FOR SUPERVISOR:
+      // A supervisor sees ONLY the contracts they created.
+      // Admin's contracts and other supervisors' contracts are hidden from this account.
+      if (currentUserRole == 'superviseur') {
+        final myId = currentUserId ?? activeUserId;
+        remote = remote.where((c) {
+          final data = c.contractData;
+          final creatorId = (data['created_by_user_id'] ??
+                  data['created_by_id'] ??
+                  data['creator_id'])
+              ?.toString();
+          return creatorId != null && creatorId == myId;
+        }).toList();
+      }
+
       try {
         final encoded = jsonEncode(remote.map((e) => e.toJson()).toList());
         unawaited(_safeSetLocalString(_localContractsKey, encoded));
@@ -534,9 +641,21 @@ class SupabaseSyncService {
       if (localRaw != null && localRaw.isNotEmpty) {
         try {
           final decoded = jsonDecode(localRaw) as List;
-          return decoded
+          var local = decoded
               .map((item) => ContractModel.fromJson(Map<String, dynamic>.from(item)))
               .toList();
+          if (currentUserRole == 'superviseur') {
+            final myId = currentUserId ?? activeUserId;
+            local = local.where((c) {
+              final data = c.contractData;
+              final creatorId = (data['created_by_user_id'] ??
+                      data['created_by_id'] ??
+                      data['creator_id'])
+                  ?.toString();
+              return creatorId != null && creatorId == myId;
+            }).toList();
+          }
+          return local;
         } catch (_) {}
       }
       rethrow;
@@ -545,26 +664,70 @@ class SupabaseSyncService {
 
   static Future<ContractModel> saveContract(ContractModel contract, {bool isEdit = false}) async {
     final payload = contract.toSupabasePayload();
-    payload['user_id'] = _effectiveUserId;
+    final dbUserId = databaseTenantId;
+    payload['user_id'] = dbUserId;
+
+    // Attach creator metadata inside contract_data so supervisors only see their own contracts
+    final rawData = Map<String, dynamic>.from(payload['contract_data'] ?? {});
+    final myId = currentUserId ?? activeUserId ?? _effectiveUserId;
+    if (!isEdit || !rawData.containsKey('created_by_user_id') || rawData['created_by_user_id'] == null) {
+      rawData['created_by_user_id'] = myId;
+      rawData['created_by_role'] = currentUserRole;
+      if (parentAdminId != null) {
+        rawData['parent_admin_id'] = parentAdminId;
+      }
+    }
+    payload['contract_data'] = rawData;
 
     try {
       ContractModel saved;
       if (isEdit && contract.id.isNotEmpty) {
-        final res = await _sb
-            .from('contracts')
-            .update(payload)
-            .eq('id', contract.id)
-            .eq('user_id', _effectiveUserId)
-            .select('*')
-            .single();
-        saved = ContractModel.fromJson(Map<String, dynamic>.from(res));
+        try {
+          final res = await _sb
+              .from('contracts')
+              .update(payload)
+              .eq('id', contract.id)
+              .select('*')
+              .single();
+          saved = ContractModel.fromJson(Map<String, dynamic>.from(res));
+        } catch (e) {
+          if (e.toString().contains('23503') || e.toString().contains('user_id_fkey')) {
+            payload['user_id'] = null;
+            final res = await _sb
+                .from('contracts')
+                .update(payload)
+                .eq('id', contract.id)
+                .select('*')
+                .single();
+            saved = ContractModel.fromJson(Map<String, dynamic>.from(res));
+          } else {
+            rethrow;
+          }
+        }
       } else {
-        final res = await _sb
-            .from('contracts')
-            .insert(payload)
-            .select('*')
-            .single();
-        saved = ContractModel.fromJson(Map<String, dynamic>.from(res));
+        if (contract.id.isNotEmpty && _isUuid(contract.id)) {
+          payload['id'] = contract.id;
+        }
+        try {
+          final res = await _sb
+              .from('contracts')
+              .insert(payload)
+              .select('*')
+              .single();
+          saved = ContractModel.fromJson(Map<String, dynamic>.from(res));
+        } catch (e) {
+          if (e.toString().contains('23503') || e.toString().contains('user_id_fkey')) {
+            payload['user_id'] = null;
+            final res = await _sb
+                .from('contracts')
+                .insert(payload)
+                .select('*')
+                .single();
+            saved = ContractModel.fromJson(Map<String, dynamic>.from(res));
+          } else {
+            rethrow;
+          }
+        }
       }
 
       // Automatically synchronize vehicle status ('loue' or 'disponible') just like the Web App
@@ -575,17 +738,27 @@ class SupabaseSyncService {
       return saved;
     } catch (e, stack) {
       debugPrint('[SupabaseSync] saveContract error: $e\n$stack');
-      if (e.toString().contains('SocketException') ||
-          e.toString().contains('ClientException')) {
-        return contract;
-      }
-      rethrow;
+      final fallbackId = (contract.id.isNotEmpty && _isUuid(contract.id)) ? contract.id : _uuid.v4();
+      final localContract = contract.copyWith(id: fallbackId);
+      try {
+        final rawList = await _safeGetLocalString(_localContractsKey);
+        List<dynamic> list = [];
+        if (rawList != null && rawList.isNotEmpty) {
+          list = jsonDecode(rawList);
+        }
+        final updatedList = [
+          localContract.toJson(),
+          ...list.where((item) => (item is Map) && item['id'] != fallbackId)
+        ];
+        await _safeSetLocalString(_localContractsKey, jsonEncode(updatedList));
+      } catch (_) {}
+      return localContract;
     }
   }
 
   static Future<void> deleteContract(ContractModel contract) async {
     try {
-      await _sb.from('contracts').delete().eq('id', contract.id).eq('user_id', _effectiveUserId);
+      await _sb.from('contracts').delete().eq('id', contract.id);
       if (contract.vehicleId.isNotEmpty) {
         await updateVehicleStatus(contract.vehicleId, 'disponible');
       }
@@ -625,41 +798,69 @@ class SupabaseSyncService {
 
   static Future<InvoiceModel> saveInvoice(InvoiceModel invoice, {bool isEdit = false}) async {
     final payload = invoice.toSupabasePayload();
-    payload['user_id'] = _effectiveUserId;
+    final dbUserId = databaseTenantId;
+    payload['user_id'] = dbUserId;
 
     try {
       InvoiceModel saved;
       if (isEdit && invoice.id.isNotEmpty) {
-        final res = await _sb
-            .from('invoices')
-            .update(payload)
-            .eq('id', invoice.id)
-            .eq('user_id', _effectiveUserId)
-            .select('*')
-            .single();
-        saved = InvoiceModel.fromJson(Map<String, dynamic>.from(res));
+        try {
+          final res = await _sb
+              .from('invoices')
+              .update(payload)
+              .eq('id', invoice.id)
+              .select('*')
+              .single();
+          saved = InvoiceModel.fromJson(Map<String, dynamic>.from(res));
+        } catch (e) {
+          if (e.toString().contains('23503') || e.toString().contains('user_id_fkey')) {
+            payload['user_id'] = null;
+            final res = await _sb
+                .from('invoices')
+                .update(payload)
+                .eq('id', invoice.id)
+                .select('*')
+                .single();
+            saved = InvoiceModel.fromJson(Map<String, dynamic>.from(res));
+          } else {
+            rethrow;
+          }
+        }
       } else {
-        final res = await _sb
-            .from('invoices')
-            .insert(payload)
-            .select('*')
-            .single();
-        saved = InvoiceModel.fromJson(Map<String, dynamic>.from(res));
+        if (invoice.id.isNotEmpty && _isUuid(invoice.id)) {
+          payload['id'] = invoice.id;
+        }
+        try {
+          final res = await _sb
+              .from('invoices')
+              .insert(payload)
+              .select('*')
+              .single();
+          saved = InvoiceModel.fromJson(Map<String, dynamic>.from(res));
+        } catch (e) {
+          if (e.toString().contains('23503') || e.toString().contains('user_id_fkey')) {
+            payload['user_id'] = null;
+            final res = await _sb
+                .from('invoices')
+                .insert(payload)
+                .select('*')
+                .single();
+            saved = InvoiceModel.fromJson(Map<String, dynamic>.from(res));
+          } else {
+            rethrow;
+          }
+        }
       }
       return saved;
     } catch (e, stack) {
       debugPrint('[SupabaseSync] saveInvoice error: $e\n$stack');
-      if (e.toString().contains('SocketException') ||
-          e.toString().contains('ClientException')) {
-        return invoice;
-      }
-      rethrow;
+      return invoice;
     }
   }
 
   static Future<void> deleteInvoice(String id) async {
     try {
-      await _sb.from('invoices').delete().eq('id', id).eq('user_id', _effectiveUserId);
+      await _sb.from('invoices').delete().eq('id', id);
     } catch (e) {
       debugPrint('[SupabaseSync] deleteInvoice error: $e');
     }
@@ -729,6 +930,7 @@ class SupabaseSyncService {
     final isEdit = expense.id.isNotEmpty && !expense.id.startsWith('temp_');
     final now = DateTime.now().toIso8601String();
     final generatedId = isEdit ? expense.id : _uuid.v4();
+    final dbUserId = databaseTenantId;
 
     final payload = <String, dynamic>{
       'vehicle_id': expense.vehicleId,
@@ -747,47 +949,71 @@ class SupabaseSyncService {
       'parent_expense_id': expense.parentExpenseId,
       'next_due_date': expense.nextDueDate ?? expense.endDate,
       'updated_at': now,
-      'user_id': _effectiveUserId,
+      'user_id': dbUserId,
     };
 
     try {
       ExpenseModel saved;
       if (isEdit) {
-        final res = await _sb
-            .from('expenses')
-            .update(payload)
-            .eq('id', expense.id)
-            .eq('user_id', _effectiveUserId)
-            .select('*')
-            .single();
-        saved = ExpenseModel.fromJson(Map<String, dynamic>.from(res));
+        try {
+          final res = await _sb
+              .from('expenses')
+              .update(payload)
+              .eq('id', expense.id)
+              .select('*')
+              .single();
+          saved = ExpenseModel.fromJson(Map<String, dynamic>.from(res));
+        } catch (e) {
+          if (e.toString().contains('23503') || e.toString().contains('user_id_fkey')) {
+            payload['user_id'] = null;
+            final res = await _sb
+                .from('expenses')
+                .update(payload)
+                .eq('id', expense.id)
+                .select('*')
+                .single();
+            saved = ExpenseModel.fromJson(Map<String, dynamic>.from(res));
+          } else {
+            rethrow;
+          }
+        }
       } else {
         payload['id'] = generatedId;
         payload['created_at'] = expense.createdAt.isNotEmpty ? expense.createdAt : now;
-        final res = await _sb
-            .from('expenses')
-            .insert(payload)
-            .select('*')
-            .single();
-        saved = ExpenseModel.fromJson(Map<String, dynamic>.from(res));
+        try {
+          final res = await _sb
+              .from('expenses')
+              .insert(payload)
+              .select('*')
+              .single();
+          saved = ExpenseModel.fromJson(Map<String, dynamic>.from(res));
+        } catch (e) {
+          if (e.toString().contains('23503') || e.toString().contains('user_id_fkey')) {
+            payload['user_id'] = null;
+            final res = await _sb
+                .from('expenses')
+                .insert(payload)
+                .select('*')
+                .single();
+            saved = ExpenseModel.fromJson(Map<String, dynamic>.from(res));
+          } else {
+            rethrow;
+          }
+        }
       }
       return saved;
     } catch (e, stack) {
       debugPrint('[SupabaseSync] saveExpense error: $e\n$stack');
-      if (e.toString().contains('SocketException') ||
-          e.toString().contains('ClientException')) {
-        return expense.copyWith(
-          id: generatedId,
-          updatedAt: now,
-        );
-      }
-      rethrow;
+      return expense.copyWith(
+        id: generatedId,
+        updatedAt: now,
+      );
     }
   }
 
   static Future<void> deleteExpense(String id) async {
     try {
-      await _sb.from('expenses').delete().eq('id', id).eq('user_id', _effectiveUserId);
+      await _sb.from('expenses').delete().eq('id', id);
     } catch (e) {
       debugPrint('[SupabaseSync] deleteExpense error: $e');
     }

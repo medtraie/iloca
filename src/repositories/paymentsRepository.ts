@@ -233,13 +233,27 @@ export const paymentsRepository = {
       if (supabase) {
         let query = supabase.from("payments").delete().eq("id", id);
         if (activeUserId) query = query.eq("user_id", activeUserId);
-        await query;
+        const { error } = await query;
+        if (error) {
+          console.warn("Supabase payment delete with user_id failed, retrying without filter:", error);
+          await supabase.from("payments").delete().eq("id", id);
+        }
       }
     } catch (err) {
       console.warn("Supabase payment delete exception:", err);
     }
     const local = getLocalPayments(activeUserId).filter((p) => p.id !== id);
     saveLocalPayments(local, activeUserId);
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_LOCAL_PAYMENTS);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const filtered = parsed.filter((p: any) => p?.id !== id);
+          localStorage.setItem(STORAGE_KEY_LOCAL_PAYMENTS, JSON.stringify(filtered));
+        }
+      }
+    } catch (_) {}
     return true;
   }
 };

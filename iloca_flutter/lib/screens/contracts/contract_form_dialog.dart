@@ -11,6 +11,7 @@ import '../../core/utils/whatsapp_helper.dart';
 import '../../core/widgets/spatial_glass_widgets.dart';
 import '../../models/app_models.dart';
 import '../../providers/app_state_provider.dart';
+import '../../services/supabase_sync_service.dart';
 import 'contract_pdf_view_screen.dart';
 
 enum ContractFormMode { create, edit, view }
@@ -598,7 +599,7 @@ class _ContractFormDialogState extends State<ContractFormDialog> {
       contractNumber: _serieCtrl.text.trim().isEmpty
           ? _computeNextSerie()
           : _serieCtrl.text.trim(),
-      customerName: fullName.isEmpty ? 'Client SFT' : fullName,
+      customerName: fullName.isEmpty ? 'Client' : fullName,
       customerPhone: _customerPhoneCtrl.text.trim(),
       customerCin: _customerCinCtrl.text.trim(),
       clientId: _selectedTenantId ?? widget.existingContract?.clientId ?? '',
@@ -816,7 +817,7 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
             ),
             Text(
-              'Formulaire Officiel SFTLOCATION • Synchronisé Web & Mobile',
+              'Formulaire Officiel ${SupabaseSyncService.currentCompanyName.isNotEmpty ? SupabaseSyncService.currentCompanyName : "BOUNATOURS"} • Synchronisé Web & Mobile',
               style: TextStyle(
                 fontSize: 10,
                 color: AppColors2026.cyanBright.withOpacity(0.9),
@@ -938,9 +939,11 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
       padding: const EdgeInsets.all(18),
       child: Column(
         children: [
-          const Text(
-            'SFTLOCATION',
-            style: TextStyle(
+          Text(
+            SupabaseSyncService.currentCompanyName.isNotEmpty
+                ? SupabaseSyncService.currentCompanyName
+                : 'BOUNATOURS',
+            style: const TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w900,
               letterSpacing: 1.2,
@@ -1959,9 +1962,9 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
                 left: BorderSide(color: AppColors2026.blueRoyal, width: 4),
               ),
             ),
-            child: const Text(
-              'Le locataire du véhicule SFTLOCATION reconnaît avoir lu et accepté les conditions générales stipulées au verso du présent contrat, il est le seul responsable en cas de violation du code de la route marocain.',
-              style: TextStyle(
+            child: Text(
+              'Le locataire du véhicule ${SupabaseSyncService.currentCompanyName.isNotEmpty ? SupabaseSyncService.currentCompanyName : "BOUNATOURS"} reconnaît avoir lu et accepté les conditions générales stipulées au verso du présent contrat, il est le seul responsable en cas de violation du code de la route marocain.',
+              style: const TextStyle(
                 fontSize: 11,
                 height: 1.4,
                 color: Colors.white70,

@@ -3,6 +3,7 @@ import { Contract } from "@/types/appData";
 import { adminService } from "@/services/adminService";
 import {
   getActiveTenantUserId,
+  getDatabaseTenantUserId,
   isValidUuid,
   getScopedLocalStorage,
   saveScopedLocalStorage,
@@ -23,19 +24,20 @@ function saveLocalContracts(contracts: Contract[], userId?: string | null): void
  * - A supervisor sees ONLY their own contracts.
  * - An admin sees their own contracts PLUS all contracts of supervisors belonging to this agency.
  */
-async function getAccessibleTenantUserIds(activeUserId: string): Promise<string[]> {
+async function getAccessibleTenantUserIds(activeUserId: string): Promise<{ queryUserIds: string[]; isSupervisor: boolean }> {
   try {
     const allUsers = await adminService.getAllUsers();
     const currentUser = allUsers.find((u) => u.id === activeUserId);
     if (currentUser && currentUser.role === "superviseur") {
-      return [activeUserId];
+      const parentId = currentUser.parent_user_id || activeUserId;
+      return { queryUserIds: [parentId], isSupervisor: true };
     }
     const childSupervisors = allUsers.filter((u) => u.parent_user_id === activeUserId).map((u) => u.id);
     if (childSupervisors.length > 0) {
-      return [activeUserId, ...childSupervisors];
+      return { queryUserIds: [activeUserId, ...childSupervisors], isSupervisor: false };
     }
   } catch (_) {}
-  return [activeUserId];
+  return { queryUserIds: [activeUserId], isSupervisor: false };
 }
 
 export const contractsRepository = {
@@ -43,19 +45,26 @@ export const contractsRepository = {
     const activeUserId = getActiveTenantUserId();
     if (!activeUserId) return [];
     const localList = getLocalContracts(activeUserId);
-    const tenantUserIds = await getAccessibleTenantUserIds(activeUserId);
+    const { queryUserIds, isSupervisor } = await getAccessibleTenantUserIds(activeUserId);
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
         let query = supabase.from("contracts").select("*");
-        if (tenantUserIds.length === 1) {
-          query = query.eq("user_id", tenantUserIds[0]);
+        if (queryUserIds.length === 1) {
+          query = query.eq("user_id", queryUserIds[0]);
         } else {
-          query = query.in("user_id", tenantUserIds);
+          query = query.in("user_id", queryUserIds);
         }
         const { data, error } = await query.order("created_at", { ascending: false });
         if (!error && data) {
-          const remoteList = data as Contract[];
+          let remoteList = data as Contract[];
+          if (isSupervisor) {
+            remoteList = remoteList.filter((c) => {
+              const dataObj = ((c as any).contract_data || {}) as Record<string, any>;
+              const creatorId = dataObj.created_by_user_id || dataObj.created_by_id || (c as any).user_id;
+              return creatorId === activeUserId;
+            });
+          }
           saveLocalContracts(remoteList, activeUserId);
           return remoteList;
         }
@@ -69,18 +78,26 @@ export const contractsRepository = {
   async getById(id: string): Promise<Contract | null> {
     const activeUserId = getActiveTenantUserId();
     if (!activeUserId) return null;
-    const tenantUserIds = await getAccessibleTenantUserIds(activeUserId);
+    const { queryUserIds, isSupervisor } = await getAccessibleTenantUserIds(activeUserId);
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
         let query = supabase.from("contracts").select("*").eq("id", id);
-        if (tenantUserIds.length === 1) {
-          query = query.eq("user_id", tenantUserIds[0]);
+        if (queryUserIds.length === 1) {
+          query = query.eq("user_id", queryUserIds[0]);
         } else {
-          query = query.in("user_id", tenantUserIds);
+          query = query.in("user_id", queryUserIds);
         }
         const { data, error } = await query.single();
-        if (!error && data) return data as Contract;
+        if (!error && data) {
+          const item = data as Contract;
+          if (isSupervisor) {
+            const dataObj = ((item as any).contract_data || {}) as Record<string, any>;
+            const creatorId = dataObj.created_by_user_id || dataObj.created_by_id || (item as any).user_id;
+            if (creatorId !== activeUserId) return null;
+          }
+          return item;
+        }
       }
     } catch (err) {
       console.warn("Error getting contract by ID:", err);
@@ -94,6 +111,7 @@ export const contractsRepository = {
     if (!activeUserId) {
       throw new Error("Action impossible: utilisateur non authentifié.");
     }
+    const dbUserId = getDatabaseTenantUserId() || activeUserId;
 
     const now = new Date().toISOString();
     const fallbackContract: Contract = {
@@ -108,7 +126,11 @@ export const contractsRepository = {
       if (supabase) {
         const payload: Record<string, any> = {
           ...contract,
-          user_id: activeUserId,
+          user_id: dbUserId,
+          contract_data: {
+            ...((contract as any).contract_data || {}),
+            created_by_user_id: activeUserId,
+          },
         };
 
         const { data, error } = await supabase
@@ -135,16 +157,16 @@ export const contractsRepository = {
 
   async update(id: string, updates: Partial<Contract>): Promise<Contract> {
     const activeUserId = getActiveTenantUserId();
-    const tenantUserIds = activeUserId ? await getAccessibleTenantUserIds(activeUserId) : [];
+    const { queryUserIds } = activeUserId ? await getAccessibleTenantUserIds(activeUserId) : { queryUserIds: [] };
     let updatedContract: Contract | null = null;
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
         let query = supabase.from("contracts").update(updates).eq("id", id);
-        if (tenantUserIds.length === 1) {
-          query = query.eq("user_id", tenantUserIds[0]);
-        } else if (tenantUserIds.length > 1) {
-          query = query.in("user_id", tenantUserIds);
+        if (queryUserIds.length === 1) {
+          query = query.eq("user_id", queryUserIds[0]);
+        } else if (queryUserIds.length > 1) {
+          query = query.in("user_id", queryUserIds);
         }
         const { data, error } = await query.select().single();
         if (!error && data) {
@@ -174,15 +196,15 @@ export const contractsRepository = {
 
   async delete(id: string): Promise<boolean> {
     const activeUserId = getActiveTenantUserId();
-    const tenantUserIds = activeUserId ? await getAccessibleTenantUserIds(activeUserId) : [];
+    const { queryUserIds } = activeUserId ? await getAccessibleTenantUserIds(activeUserId) : { queryUserIds: [] };
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
         let query = supabase.from("contracts").delete().eq("id", id);
-        if (tenantUserIds.length === 1) {
-          query = query.eq("user_id", tenantUserIds[0]);
-        } else if (tenantUserIds.length > 1) {
-          query = query.in("user_id", tenantUserIds);
+        if (queryUserIds.length === 1) {
+          query = query.eq("user_id", queryUserIds[0]);
+        } else if (queryUserIds.length > 1) {
+          query = query.in("user_id", queryUserIds);
         }
         await query;
       }

@@ -270,8 +270,16 @@ export const expenseService = {
     }
   },
 
-  async appendAuditLog(log: Omit<ExpenseAuditLog, "id" | "created_at" | "updated_at">): Promise<ExpenseAuditLog> {
-    return expensesRepository.createAuditLog(log);
+  async appendAuditLog(log: Omit<ExpenseAuditLog, "id" | "created_at" | "updated_at">): Promise<ExpenseAuditLog | void> {
+    try {
+      if (typeof expensesRepository.createAuditLog === "function") {
+        return await expensesRepository.createAuditLog(log);
+      } else if (typeof (expensesRepository as any).addAuditLog === "function") {
+        await (expensesRepository as any).addAuditLog(log);
+      }
+    } catch (err) {
+      console.warn("Could not append audit log:", err);
+    }
   },
 
   computeBudgetActual(

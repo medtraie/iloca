@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../../models/app_models.dart';
+import '../../services/supabase_sync_service.dart';
 
 /// 100% Exact Replica of Web Contract PDF (`usePDFGeneration.ts` & `ContractFormPDF.tsx`)
 /// Perfectly scaled to fill the entire A4 page (top-to-bottom) with official agency header.
@@ -58,10 +59,24 @@ class ContractPdfService {
     return null;
   }
 
-  static Future<Uint8List> generateContractPdf(ContractModel contract) async {
+  static Future<Uint8List> generateContractPdf(ContractModel contract, {String? customCompanyName}) async {
     final pdf = pw.Document();
     final fmt = NumberFormat('#,##0', 'fr_FR');
     final cd = contract.contractData;
+
+    // Resolve Company / Agency Name dynamically (Matching Web Parity)
+    String companyName = customCompanyName?.trim() ?? '';
+    if (companyName.isEmpty) {
+      final cdCompany = (cd['companyName'] ?? cd['company_name'] ?? cd['agencyName'] ?? cd['agency'])?.toString().trim();
+      if (cdCompany != null && cdCompany.isNotEmpty) companyName = cdCompany;
+    }
+    if (companyName.isEmpty && SupabaseSyncService.currentCompanyName.isNotEmpty) {
+      companyName = SupabaseSyncService.currentCompanyName;
+    }
+    if (companyName.isEmpty) {
+      companyName = 'BOUNATOURS';
+    }
+    companyName = companyName.toUpperCase();
 
     // Load car diagram image asset
     pw.MemoryImage? carImage;
@@ -177,7 +192,7 @@ class ContractPdfService {
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
                           pw.Text(
-                            'SFTLOCATION',
+                            companyName,
                             style: pw.TextStyle(
                               fontSize: 16,
                               fontWeight: pw.FontWeight.bold,
@@ -446,7 +461,7 @@ class ContractPdfService {
                       text: pw.TextSpan(
                         children: [
                           pw.TextSpan(
-                            text: 'Le locataire du véhicule SFTLOCATION ',
+                            text: 'Le locataire du véhicule $companyName ',
                             style: pw.TextStyle(fontSize: 7.2, fontWeight: pw.FontWeight.bold),
                           ),
                           const pw.TextSpan(

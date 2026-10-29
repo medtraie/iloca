@@ -204,8 +204,15 @@ const Tresorerie = () => {
     try {
       switch (movementType) {
         case 'recette':
-          // Delete payment
+          // Delete payment permanently from database and cache
+          await paymentsRepository.delete(movementId);
           setPayments(prev => prev.filter(p => p.id !== movementId));
+          await auditLogsRepository.create({
+            action: "payment_deleted",
+            details: `Paiement supprimé depuis la trésorerie`,
+            reference: movementId
+          });
+          toast({ title: "Succès", description: "Recette supprimée avec succès" });
           break;
         case 'divers':
           // Delete miscellaneous expense
@@ -215,14 +222,28 @@ const Tresorerie = () => {
           // Delete repair payment (now in payments table)
           await paymentsRepository.delete(movementId);
           setPayments(prev => prev.filter(p => p.id !== movementId));
+          await auditLogsRepository.create({
+            action: "repair_payment_deleted",
+            details: `Paiement de réparation supprimé depuis la trésorerie`,
+            reference: movementId
+          });
+          toast({ title: "Succès", description: "Paiement de réparation supprimé avec succès" });
           break;
         case 'transfert':
-          // Delete bank transfer
+          // Delete bank transfer permanently from database and cache
+          await bankTransfersRepository.delete(movementId);
           setBankTransfers(prev => prev.filter(t => t.id !== movementId));
+          await auditLogsRepository.create({
+            action: "transfer_deleted",
+            details: `Transfert bancaire supprimé`,
+            reference: movementId
+          });
+          toast({ title: "Succès", description: "Transfert supprimé avec succès" });
           break;
       }
     } catch (error) {
       console.error('Error deleting movement:', error);
+      toast({ title: "Erreur", description: "Échec de la suppression du mouvement", variant: "destructive" });
     }
   };
 

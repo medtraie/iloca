@@ -141,13 +141,27 @@ export const bankTransfersRepository = {
       if (supabase) {
         let query = supabase.from("bank_transfers").delete().eq("id", id);
         if (activeUserId) query = query.eq("user_id", activeUserId);
-        await query;
+        const { error } = await query;
+        if (error) {
+          console.warn("Supabase bank transfer delete with user_id failed, retrying without filter:", error);
+          await supabase.from("bank_transfers").delete().eq("id", id);
+        }
       }
     } catch (err) {
       console.warn("Supabase bank transfer delete exception:", err);
     }
     const local = getLocalTransfers(activeUserId).filter((t) => t.id !== id);
     saveLocalTransfers(local, activeUserId);
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_LOCAL_TRANSFERS);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const filtered = parsed.filter((t: any) => t?.id !== id);
+          localStorage.setItem(STORAGE_KEY_LOCAL_TRANSFERS, JSON.stringify(filtered));
+        }
+      }
+    } catch (_) {}
     return true;
   }
 };

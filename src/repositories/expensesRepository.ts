@@ -2,6 +2,7 @@ import { getSupabaseClient } from "@/services/supabaseService";
 import { Expense, MonthlyExpense, ExpenseBudget, ExpenseAuditLog } from "@/types/expense";
 import {
   getActiveTenantUserId,
+  getDatabaseTenantUserId,
   isValidUuid,
   getScopedLocalStorage,
   saveScopedLocalStorage,
@@ -46,15 +47,19 @@ export const expensesRepository = {
   async getAllExpenses(): Promise<Expense[]> {
     const activeUserId = getActiveTenantUserId();
     if (!activeUserId) return [];
+    const dbUserId = getDatabaseTenantUserId() || activeUserId;
+    const targetIds = [activeUserId, ...(dbUserId !== activeUserId ? [dbUserId] : [])];
     const localList = getLocalData<Expense>(STORAGE_KEY_EXPENSES, activeUserId);
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data, error } = await supabase
-          .from("expenses")
-          .select("*")
-          .eq("user_id", activeUserId)
-          .order("created_at", { ascending: false });
+        let query = supabase.from("expenses").select("*");
+        if (targetIds.length === 1) {
+          query = query.eq("user_id", targetIds[0]);
+        } else {
+          query = query.in("user_id", targetIds);
+        }
+        const { data, error } = await query.order("created_at", { ascending: false });
         if (!error && data) {
           const remoteList = data as Expense[];
           saveLocalData(STORAGE_KEY_EXPENSES, remoteList, activeUserId);
@@ -72,6 +77,7 @@ export const expensesRepository = {
     if (!activeUserId) {
       throw new Error("Action impossible: utilisateur non authentifié.");
     }
+    const dbUserId = getDatabaseTenantUserId() || activeUserId;
 
     const now = new Date().toISOString();
     const fallbackExpense: Expense = {
@@ -86,7 +92,7 @@ export const expensesRepository = {
       if (supabase) {
         const payload: Record<string, any> = {
           ...buildExpenseWritePayload(expense),
-          user_id: activeUserId,
+          user_id: dbUserId,
         };
 
         const { data, error } = await supabase.from("expenses").insert([payload]).select().single();
@@ -345,17 +351,25 @@ export const expensesRepository = {
   },
 
   // Audit Logs
+  async getAllAuditLogs(): Promise<ExpenseAuditLog[]> {
+    return this.getAuditLogs();
+  },
+
   async getAuditLogs(): Promise<ExpenseAuditLog[]> {
     const activeUserId = getActiveTenantUserId();
     if (!activeUserId) return [];
+    const dbUserId = getDatabaseTenantUserId() || activeUserId;
+    const targetIds = [activeUserId, ...(dbUserId !== activeUserId ? [dbUserId] : [])];
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data, error } = await supabase
-          .from("expense_audit_logs")
-          .select("*")
-          .eq("user_id", activeUserId)
-          .order("created_at", { ascending: false });
+        let query = supabase.from("expense_audit_logs").select("*");
+        if (targetIds.length === 1) {
+          query = query.eq("user_id", targetIds[0]);
+        } else {
+          query = query.in("user_id", targetIds);
+        }
+        const { data, error } = await query.order("created_at", { ascending: false });
         if (!error && data) return data as ExpenseAuditLog[];
       }
     } catch (err) {
@@ -364,16 +378,31 @@ export const expensesRepository = {
     return [];
   },
 
-  async addAuditLog(log: Omit<ExpenseAuditLog, "id" | "created_at">): Promise<void> {
+  async createAuditLog(log: Omit<ExpenseAuditLog, "id" | "created_at" | "updated_at">): Promise<ExpenseAuditLog> {
     const activeUserId = getActiveTenantUserId();
-    if (!activeUserId) return;
+    const dbUserId = getDatabaseTenantUserId() || activeUserId;
+    const now = new Date().toISOString();
+    const created: ExpenseAuditLog = {
+      id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `log-${Date.now()}`,
+      ...log,
+      created_at: now,
+      updated_at: now,
+      user_id: dbUserId || undefined,
+    } as ExpenseAuditLog;
+
+    if (!activeUserId) return created;
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        await supabase.from("expense_audit_logs").insert([{ ...log, user_id: activeUserId }]);
+        await supabase.from("expense_audit_logs").insert([{ ...log, user_id: dbUserId }]);
       }
     } catch (err) {
-      console.warn("Supabase addAuditLog exception:", err);
+      console.warn("Supabase createAuditLog exception:", err);
     }
+    return created;
+  },
+
+  async addAuditLog(log: Omit<ExpenseAuditLog, "id" | "created_at">): Promise<void> {
+    await this.createAuditLog(log as any);
   }
 };

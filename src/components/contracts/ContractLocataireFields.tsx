@@ -1,19 +1,38 @@
 
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { DatePicker } from "@/components/ui/date-picker";
 
 interface Props {
   formData: any;
   handleInputChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
   handleDateChange?: (field: string, date: Date | undefined) => void;
+  readOnly?: boolean;
 }
 
-export default function ContractLocataireFields({ formData, handleInputChange, handleDateChange }: Props) {
-  const handleDateSelect = (field: string) => (date: Date | undefined) => {
+export default function ContractLocataireFields({ 
+  formData, 
+  handleInputChange, 
+  handleDateChange,
+  readOnly = false 
+}: Props) {
+  const formatDateForInput = (val: any): string => {
+    if (!val) return "";
+    if (typeof val === "string") {
+      if (val.includes("T")) return val.split("T")[0];
+      return val;
+    }
+    if (val instanceof Date && !isNaN(val.getTime())) {
+      return val.toISOString().split("T")[0];
+    }
+    return "";
+  };
+
+  const handleDateInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    handleInputChange(e);
     if (handleDateChange) {
-      handleDateChange(field, date);
+      const val = e.target.value;
+      const parsedDate = val ? new Date(val) : undefined;
+      handleDateChange(e.target.name, parsedDate);
     }
   };
 
@@ -29,79 +48,91 @@ export default function ContractLocataireFields({ formData, handleInputChange, h
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="customerLastName" className="text-sm">Nom *</Label>
-              <Input id="customerLastName" name="customerLastName" value={formData.customerLastName || ""} onChange={handleInputChange} className="text-sm" required />
+              <Input id="customerLastName" name="customerLastName" value={formData.customerLastName || ""} onChange={handleInputChange} className="text-sm" required readOnly={readOnly} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="customerFirstName" className="text-sm">Prénom</Label>
-              <Input id="customerFirstName" name="customerFirstName" value={formData.customerFirstName || ""} onChange={handleInputChange} className="text-sm" />
+              <Input id="customerFirstName" name="customerFirstName" value={formData.customerFirstName || ""} onChange={handleInputChange} className="text-sm" readOnly={readOnly} />
             </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="customerAddressMorocco" className="text-sm">Adresse au Maroc</Label>
-            <Input id="customerAddressMorocco" name="customerAddressMorocco" value={formData.customerAddressMorocco || ""} onChange={handleInputChange} className="text-sm" />
+            <Input id="customerAddressMorocco" name="customerAddressMorocco" value={formData.customerAddressMorocco || ""} onChange={handleInputChange} className="text-sm" readOnly={readOnly} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="customerPhone" className="text-sm">Tél.</Label>
-              <Input id="customerPhone" name="customerPhone" value={formData.customerPhone || ""} onChange={handleInputChange} className="text-sm" type="tel" />
+              <Input id="customerPhone" name="customerPhone" value={formData.customerPhone || ""} onChange={handleInputChange} className="text-sm" type="tel" readOnly={readOnly} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="customerAddressForeign" className="text-sm">Adresse à l'Étranger</Label>
-              <Input id="customerAddressForeign" name="customerAddressForeign" value={formData.customerAddressForeign || ""} onChange={handleInputChange} className="text-sm" />
+              <Input id="customerAddressForeign" name="customerAddressForeign" value={formData.customerAddressForeign || ""} onChange={handleInputChange} className="text-sm" readOnly={readOnly} />
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="customerCin" className="text-sm">C.I.N. N°</Label>
-              <Input id="customerCin" name="customerCin" value={formData.customerCin || ""} onChange={handleInputChange} className="text-sm" />
+              <Input id="customerCin" name="customerCin" value={formData.customerCin || ""} onChange={handleInputChange} className="text-sm" readOnly={readOnly} />
             </div>
             <div className="space-y-2">
-              <Label className="text-sm">Délivré le</Label>
-              <DatePicker
-                value={formData.customerCinDelivered ? new Date(formData.customerCinDelivered) : undefined}
-                onChange={handleDateSelect("customerCinDelivered")}
-                placeholder="Choisir une date"
+              <Label htmlFor="customerCinDelivered" className="text-sm">Délivré le</Label>
+              <Input
+                id="customerCinDelivered"
+                name="customerCinDelivered"
+                type="date"
+                value={formatDateForInput(formData.customerCinDelivered)}
+                onChange={handleDateInputChange}
                 className="text-sm"
+                readOnly={readOnly}
               />
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="customerLicenseNumber" className="text-sm">Permis N°</Label>
-              <Input id="customerLicenseNumber" name="customerLicenseNumber" value={formData.customerLicenseNumber || ""} onChange={handleInputChange} className="text-sm" />
+              <Input id="customerLicenseNumber" name="customerLicenseNumber" value={formData.customerLicenseNumber || ""} onChange={handleInputChange} className="text-sm" readOnly={readOnly} />
             </div>
             <div className="space-y-2">
-              <Label className="text-sm">Délivré le</Label>
-              <DatePicker
-                value={formData.customerLicenseDelivered ? new Date(formData.customerLicenseDelivered) : undefined}
-                onChange={handleDateSelect("customerLicenseDelivered")}
-                placeholder="Choisir une date"
+              <Label htmlFor="customerLicenseDelivered" className="text-sm">Délivré le</Label>
+              <Input
+                id="customerLicenseDelivered"
+                name="customerLicenseDelivered"
+                type="date"
+                value={formatDateForInput(formData.customerLicenseDelivered)}
+                onChange={handleDateInputChange}
                 className="text-sm"
+                readOnly={readOnly}
               />
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="customerPassportNumber" className="text-sm">Passeport N°</Label>
-              <Input id="customerPassportNumber" name="customerPassportNumber" value={formData.customerPassportNumber || ""} onChange={handleInputChange} className="text-sm" />
+              <Input id="customerPassportNumber" name="customerPassportNumber" value={formData.customerPassportNumber || ""} onChange={handleInputChange} className="text-sm" readOnly={readOnly} />
             </div>
             <div className="space-y-2">
-              <Label className="text-sm">Délivré le</Label>
-              <DatePicker
-                value={formData.customerPassportDelivered ? new Date(formData.customerPassportDelivered) : undefined}
-                onChange={handleDateSelect("customerPassportDelivered")}
-                placeholder="Choisir une date"
+              <Label htmlFor="customerPassportDelivered" className="text-sm">Délivré le</Label>
+              <Input
+                id="customerPassportDelivered"
+                name="customerPassportDelivered"
+                type="date"
+                value={formatDateForInput(formData.customerPassportDelivered)}
+                onChange={handleDateInputChange}
                 className="text-sm"
+                readOnly={readOnly}
               />
             </div>
           </div>
           <div className="space-y-2">
-            <Label className="text-sm">Date de Naissance</Label>
-            <DatePicker
-              value={formData.customerBirthDate ? new Date(formData.customerBirthDate) : undefined}
-              onChange={handleDateSelect("customerBirthDate")}
-              placeholder="Choisir date de naissance"
+            <Label htmlFor="customerBirthDate" className="text-sm">Date de Naissance</Label>
+            <Input
+              id="customerBirthDate"
+              name="customerBirthDate"
+              type="date"
+              value={formatDateForInput(formData.customerBirthDate)}
+              onChange={handleDateInputChange}
               className="text-sm"
+              readOnly={readOnly}
             />
           </div>
         </div>
@@ -111,69 +142,78 @@ export default function ContractLocataireFields({ formData, handleInputChange, h
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="secondDriverLastName" className="text-sm">Nom</Label>
-              <Input id="secondDriverLastName" name="secondDriverLastName" value={formData.secondDriverLastName || ""} onChange={handleInputChange} className="text-sm" />
+              <Input id="secondDriverLastName" name="secondDriverLastName" value={formData.secondDriverLastName || ""} onChange={handleInputChange} className="text-sm" readOnly={readOnly} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="secondDriverFirstName" className="text-sm">Prénom</Label>
-              <Input id="secondDriverFirstName" name="secondDriverFirstName" value={formData.secondDriverFirstName || ""} onChange={handleInputChange} className="text-sm" />
+              <Input id="secondDriverFirstName" name="secondDriverFirstName" value={formData.secondDriverFirstName || ""} onChange={handleInputChange} className="text-sm" readOnly={readOnly} />
             </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="secondDriverAddressMorocco" className="text-sm">Adresse au Maroc</Label>
-            <Input id="secondDriverAddressMorocco" name="secondDriverAddressMorocco" value={formData.secondDriverAddressMorocco || ""} onChange={handleInputChange} className="text-sm" />
+            <Input id="secondDriverAddressMorocco" name="secondDriverAddressMorocco" value={formData.secondDriverAddressMorocco || ""} onChange={handleInputChange} className="text-sm" readOnly={readOnly} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="secondDriverPhone" className="text-sm">Tél.</Label>
-              <Input id="secondDriverPhone" name="secondDriverPhone" value={formData.secondDriverPhone || ""} onChange={handleInputChange} className="text-sm" type="tel" />
+              <Input id="secondDriverPhone" name="secondDriverPhone" value={formData.secondDriverPhone || ""} onChange={handleInputChange} className="text-sm" type="tel" readOnly={readOnly} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="secondDriverAddressForeign" className="text-sm">Adresse à l'Étranger</Label>
-              <Input id="secondDriverAddressForeign" name="secondDriverAddressForeign" value={formData.secondDriverAddressForeign || ""} onChange={handleInputChange} className="text-sm" />
+              <Input id="secondDriverAddressForeign" name="secondDriverAddressForeign" value={formData.secondDriverAddressForeign || ""} onChange={handleInputChange} className="text-sm" readOnly={readOnly} />
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="secondDriverCin" className="text-sm">C.I.N. N°</Label>
-              <Input id="secondDriverCin" name="secondDriverCin" value={formData.secondDriverCin || ""} onChange={handleInputChange} className="text-sm" />
+              <Input id="secondDriverCin" name="secondDriverCin" value={formData.secondDriverCin || ""} onChange={handleInputChange} className="text-sm" readOnly={readOnly} />
             </div>
             <div className="space-y-2">
-              <Label className="text-sm">Délivré le</Label>
-              <DatePicker
-                value={formData.secondDriverCinDelivered ? new Date(formData.secondDriverCinDelivered) : undefined}
-                onChange={handleDateSelect("secondDriverCinDelivered")}
-                placeholder="Choisir une date"
+              <Label htmlFor="secondDriverCinDelivered" className="text-sm">Délivré le</Label>
+              <Input
+                id="secondDriverCinDelivered"
+                name="secondDriverCinDelivered"
+                type="date"
+                value={formatDateForInput(formData.secondDriverCinDelivered)}
+                onChange={handleDateInputChange}
                 className="text-sm"
+                readOnly={readOnly}
               />
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="secondDriverPassportNumber" className="text-sm">Passeport N°</Label>
-              <Input id="secondDriverPassportNumber" name="secondDriverPassportNumber" value={formData.secondDriverPassportNumber || ""} onChange={handleInputChange} className="text-sm" />
+              <Input id="secondDriverPassportNumber" name="secondDriverPassportNumber" value={formData.secondDriverPassportNumber || ""} onChange={handleInputChange} className="text-sm" readOnly={readOnly} />
             </div>
             <div className="space-y-2">
-              <Label className="text-sm">Délivré le</Label>
-              <DatePicker
-                value={formData.secondDriverPassportDelivered ? new Date(formData.secondDriverPassportDelivered) : undefined}
-                onChange={handleDateSelect("secondDriverPassportDelivered")}
-                placeholder="Choisir une date"
+              <Label htmlFor="secondDriverPassportDelivered" className="text-sm">Délivré le</Label>
+              <Input
+                id="secondDriverPassportDelivered"
+                name="secondDriverPassportDelivered"
+                type="date"
+                value={formatDateForInput(formData.secondDriverPassportDelivered)}
+                onChange={handleDateInputChange}
                 className="text-sm"
+                readOnly={readOnly}
               />
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="secondDriverLicenseNumber" className="text-sm">Permis N°</Label>
-              <Input id="secondDriverLicenseNumber" name="secondDriverLicenseNumber" value={formData.secondDriverLicenseNumber || ""} onChange={handleInputChange} className="text-sm" />
+              <Input id="secondDriverLicenseNumber" name="secondDriverLicenseNumber" value={formData.secondDriverLicenseNumber || ""} onChange={handleInputChange} className="text-sm" readOnly={readOnly} />
             </div>
             <div className="space-y-2">
-              <Label className="text-sm">Délivré le</Label>
-              <DatePicker
-                value={formData.secondDriverLicenseDelivered ? new Date(formData.secondDriverLicenseDelivered) : undefined}
-                onChange={handleDateSelect("secondDriverLicenseDelivered")}
-                placeholder="Choisir une date"
+              <Label htmlFor="secondDriverLicenseDelivered" className="text-sm">Délivré le</Label>
+              <Input
+                id="secondDriverLicenseDelivered"
+                name="secondDriverLicenseDelivered"
+                type="date"
+                value={formatDateForInput(formData.secondDriverLicenseDelivered)}
+                onChange={handleDateInputChange}
                 className="text-sm"
+                readOnly={readOnly}
               />
             </div>
           </div>

@@ -9,6 +9,7 @@ import '../../core/widgets/spatial_glass_widgets.dart';
 import '../../core/widgets/vehicle_image_preview.dart';
 import '../../models/app_models.dart';
 import '../../providers/app_state_provider.dart';
+import '../../services/supabase_sync_service.dart';
 
 /// 1. OVERVIEW SCREEN (Cockpit Spatial & Tableau de Bord 2026)
 /// 100% Web Parity with Index.tsx, DashboardStats.tsx, TodayOperationsHub.tsx & FleetRadarCard.tsx
@@ -567,7 +568,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
             ...displayList.take(4).map((c) {
               final isOverdueItem = _opsFilter == 'overdue';
               final whatsappMsg = isOverdueItem
-                  ? "Bonjour ${c.customerName}, la restitution du véhicule ${c.vehicle} est en retard. Merci de nous contacter d'urgence pour régulariser votre contrat SFT Location."
+                  ? "Bonjour ${c.customerName}, la restitution du véhicule ${c.vehicle} est en retard. Merci de nous contacter d'urgence pour régulariser votre contrat ${SupabaseSyncService.currentCompanyName.isNotEmpty ? SupabaseSyncService.currentCompanyName : 'BonaTours'}."
                   : "Bonjour ${c.customerName}, nous vous rappelons que la restitution de votre véhicule ${c.vehicle} est prévue aujourd'hui. Merci de préparer le véhicule pour le check-in.";
 
               return Container(

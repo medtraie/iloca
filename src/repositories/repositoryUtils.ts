@@ -23,6 +23,23 @@ export function getActiveTenantUserId(): string | null {
   return null;
 }
 
+export function getDatabaseTenantUserId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem("iloca:active_user");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed.role === "superviseur" && parsed.parent_user_id) {
+      return parsed.parent_user_id.trim();
+    }
+    const id = parsed?.id;
+    if (typeof id === "string" && id.trim()) {
+      return id.trim();
+    }
+  } catch {}
+  return null;
+}
+
 export function getAccessibleVehicleUserIds(): string[] {
   if (typeof window === "undefined") return [];
   try {

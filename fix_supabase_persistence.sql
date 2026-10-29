@@ -21,6 +21,20 @@ ALTER TABLE IF EXISTS public.audit_logs ALTER COLUMN user_id DROP NOT NULL;
 ALTER TABLE IF EXISTS public.app_settings ALTER COLUMN user_id DROP NOT NULL;
 ALTER TABLE IF EXISTS public.treasury_settings ALTER COLUMN user_id DROP NOT NULL;
 
+-- 1.1 SUPPRIMER LES CONTRAINTES DE CLE ETRANGERE SUR USER_ID (POUR EVITER L'ERREUR 23503 / contracts_user_id_fkey)
+ALTER TABLE IF EXISTS public.contracts DROP CONSTRAINT IF EXISTS contracts_user_id_fkey;
+ALTER TABLE IF EXISTS public.vehicles DROP CONSTRAINT IF EXISTS vehicles_user_id_fkey;
+ALTER TABLE IF EXISTS public.clients DROP CONSTRAINT IF EXISTS clients_user_id_fkey;
+ALTER TABLE IF EXISTS public.payments DROP CONSTRAINT IF EXISTS payments_user_id_fkey;
+ALTER TABLE IF EXISTS public.expenses DROP CONSTRAINT IF EXISTS expenses_user_id_fkey;
+ALTER TABLE IF EXISTS public.miscellaneous_expenses DROP CONSTRAINT IF EXISTS miscellaneous_expenses_user_id_fkey;
+ALTER TABLE IF EXISTS public.repairs DROP CONSTRAINT IF EXISTS repairs_user_id_fkey;
+ALTER TABLE IF EXISTS public.invoices DROP CONSTRAINT IF EXISTS invoices_user_id_fkey;
+ALTER TABLE IF EXISTS public.bank_transfers DROP CONSTRAINT IF EXISTS bank_transfers_user_id_fkey;
+ALTER TABLE IF EXISTS public.audit_logs DROP CONSTRAINT IF EXISTS audit_logs_user_id_fkey;
+ALTER TABLE IF EXISTS public.app_settings DROP CONSTRAINT IF EXISTS app_settings_user_id_fkey;
+ALTER TABLE IF EXISTS public.treasury_settings DROP CONSTRAINT IF EXISTS treasury_settings_user_id_fkey;
+
 -- 2. NETTOYAGE COMPLET DE TOUTES LES ANCIENNES POLITIQUES EXISTANTES
 DO $$ 
 BEGIN

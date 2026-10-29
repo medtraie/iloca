@@ -190,7 +190,10 @@ class AppStateProvider extends ChangeNotifier {
       }
       try {
         final session = Supabase.instance.client.auth.currentSession;
-        if (session?.user != null) {
+        if (session?.user != null &&
+            (_userEmail.isEmpty ||
+                session!.user.email?.toLowerCase().trim() ==
+                    _userEmail.toLowerCase().trim())) {
           _userEmail = session!.user.email ?? _userEmail;
           SupabaseSyncService.currentUserId = session!.user.id;
         }
@@ -563,6 +566,20 @@ class AppStateProvider extends ChangeNotifier {
     try {
       final profile = await SupabaseSyncService.lookupUserProfileByEmail(email);
       if (profile != null) {
+        if (profile['id'] != null && (SupabaseSyncService.currentUserId == null || SupabaseSyncService.currentUserId!.isEmpty)) {
+          SupabaseSyncService.currentUserId = profile['id'].toString();
+        }
+        SupabaseSyncService.currentUserRole = (profile['role'] ?? 'admin').toString().toLowerCase();
+        SupabaseSyncService.parentAdminId = profile['parent_user_id']?.toString();
+        final childs = profile['child_supervisor_ids'];
+        if (childs is List) {
+          SupabaseSyncService.childSupervisorIds = childs.map((e) => e.toString()).toList();
+        }
+        if (profile['permissions'] is Map) {
+          SupabaseSyncService.supervisorPermissions = SupervisorPermissionsModel.fromJson(
+              Map<String, dynamic>.from(profile['permissions']));
+        }
+
         _userRole = SupabaseSyncService.currentUserRole;
         _parentAdminId = SupabaseSyncService.parentAdminId;
         _supervisorPermissions = SupabaseSyncService.supervisorPermissions;
