@@ -101,6 +101,22 @@ class SupabaseSyncService {
               final targetMap = Map<String, dynamic>.from(target);
               final myId = (targetMap['id'] ?? '').toString();
 
+              // If this user is a supervisor, inherit company name from parent admin if missing
+              final parentId = (targetMap['parent_user_id'] ?? '').toString();
+              if (parentId.isNotEmpty &&
+                  (targetMap['company_name'] == null ||
+                      targetMap['company_name'].toString().trim().isEmpty)) {
+                final parentUser = payload.firstWhere(
+                  (u) => (u is Map) && (u['id'] ?? '').toString() == parentId,
+                  orElse: () => null,
+                );
+                if (parentUser != null &&
+                    parentUser is Map &&
+                    parentUser['company_name'] != null) {
+                  targetMap['company_name'] = parentUser['company_name'];
+                }
+              }
+
               // If this user is an admin, collect IDs of all supervisors linked to them
               final childIds = <String>[];
               if (myId.isNotEmpty) {
@@ -203,10 +219,12 @@ class SupabaseSyncService {
 
     if (table == 'contracts') {
       if (currentUserRole == 'superviseur') {
-        // In Postgres, agency contracts share the admin's database user_id
+        // Supervisor sees all contracts belonging to their agency (parent admin or supervisor)
         final queryId = (parentAdminId != null && parentAdminId!.isNotEmpty) ? parentAdminId! : tenantId;
-        allowedUserIds = [queryId];
-        userIdFilter = 'user_id=eq.$queryId';
+        allowedUserIds = queryId != tenantId ? [queryId, tenantId] : [queryId];
+        userIdFilter = allowedUserIds.length > 1
+            ? 'user_id=in.(${allowedUserIds.join(",")})'
+            : 'user_id=eq.$queryId';
       } else if (currentUserRole != 'superviseur' && childSupervisorIds.isNotEmpty) {
         // Admin sees their own contracts + all contracts of their supervisors
         allowedUserIds = [tenantId, ...childSupervisorIds];
@@ -217,8 +235,10 @@ class SupabaseSyncService {
     } else if (table == 'vehicles') {
       if (currentUserRole == 'superviseur' && parentAdminId != null && parentAdminId!.isNotEmpty) {
         // Supervisor accesses agency fleet
-        allowedUserIds = [parentAdminId!];
-        userIdFilter = 'user_id=eq.$parentAdminId';
+        allowedUserIds = parentAdminId != tenantId ? [parentAdminId!, tenantId] : [parentAdminId!];
+        userIdFilter = allowedUserIds.length > 1
+            ? 'user_id=in.(${allowedUserIds.join(",")})'
+            : 'user_id=eq.$parentAdminId';
       } else {
         userIdFilter = 'user_id=eq.$tenantId';
       }
@@ -234,15 +254,19 @@ class SupabaseSyncService {
       }
     } else if (table == 'expenses' || table == 'repairs') {
       if (currentUserRole == 'superviseur' && parentAdminId != null && parentAdminId!.isNotEmpty) {
-        allowedUserIds = [parentAdminId!];
-        userIdFilter = 'user_id=eq.$parentAdminId';
+        allowedUserIds = parentAdminId != tenantId ? [parentAdminId!, tenantId] : [parentAdminId!];
+        userIdFilter = allowedUserIds.length > 1
+            ? 'user_id=in.(${allowedUserIds.join(",")})'
+            : 'user_id=eq.$parentAdminId';
       } else {
         userIdFilter = 'user_id=eq.$tenantId';
       }
     } else if (table == 'invoices') {
       if (currentUserRole == 'superviseur' && parentAdminId != null && parentAdminId!.isNotEmpty) {
-        allowedUserIds = [parentAdminId!];
-        userIdFilter = 'user_id=eq.$parentAdminId';
+        allowedUserIds = parentAdminId != tenantId ? [parentAdminId!, tenantId] : [parentAdminId!];
+        userIdFilter = allowedUserIds.length > 1
+            ? 'user_id=in.(${allowedUserIds.join(",")})'
+            : 'user_id=eq.$parentAdminId';
       } else {
         userIdFilter = 'user_id=eq.$tenantId';
       }
@@ -270,6 +294,7 @@ class SupabaseSyncService {
           .timeout(const Duration(seconds: 12));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
+        lastFetchError = null;
         final decoded = jsonDecode(response.body);
         if (decoded is List) {
           return decoded
@@ -296,6 +321,7 @@ class SupabaseSyncService {
               .order(orderBy, ascending: ascending)
               .timeout(const Duration(seconds: 12))
           : await query.timeout(const Duration(seconds: 12));
+      lastFetchError = null;
       return (rows as List)
           .whereType<Map>()
           .map((e) => Map<String, dynamic>.from(e))
@@ -476,6 +502,18 @@ class SupabaseSyncService {
     } catch (e) {
       debugPrint('[SupabaseSync] deleteClient error: $e');
     }
+    try {
+      final uri = Uri.parse('${AppConfig.supabaseUrl}/rest/v1/clients?id=eq.$id');
+      await http.delete(
+        uri,
+        headers: {
+          'apikey': AppConfig.supabasePublishableKey,
+          'Authorization': 'Bearer ${AppConfig.supabasePublishableKey}',
+        },
+      ).timeout(const Duration(seconds: 8));
+    } catch (e) {
+      debugPrint('[SupabaseSync] Direct REST deleteClient error: $e');
+    }
   }
 
   // ===========================================================================
@@ -603,6 +641,18 @@ class SupabaseSyncService {
     } catch (e) {
       debugPrint('[SupabaseSync] deleteVehicle error: $e');
     }
+    try {
+      final uri = Uri.parse('${AppConfig.supabaseUrl}/rest/v1/vehicles?id=eq.$id');
+      await http.delete(
+        uri,
+        headers: {
+          'apikey': AppConfig.supabasePublishableKey,
+          'Authorization': 'Bearer ${AppConfig.supabasePublishableKey}',
+        },
+      ).timeout(const Duration(seconds: 8));
+    } catch (e) {
+      debugPrint('[SupabaseSync] Direct REST deleteVehicle error: $e');
+    }
   }
 
   // ===========================================================================
@@ -614,21 +664,6 @@ class SupabaseSyncService {
       var remote = rows
           .map((r) => ContractModel.fromJson(r))
           .toList();
-
-      // STRICT ISOLATION FOR SUPERVISOR:
-      // A supervisor sees ONLY the contracts they created.
-      // Admin's contracts and other supervisors' contracts are hidden from this account.
-      if (currentUserRole == 'superviseur') {
-        final myId = currentUserId ?? activeUserId;
-        remote = remote.where((c) {
-          final data = c.contractData;
-          final creatorId = (data['created_by_user_id'] ??
-                  data['created_by_id'] ??
-                  data['creator_id'])
-              ?.toString();
-          return creatorId != null && creatorId == myId;
-        }).toList();
-      }
 
       try {
         final encoded = jsonEncode(remote.map((e) => e.toJson()).toList());
@@ -644,17 +679,6 @@ class SupabaseSyncService {
           var local = decoded
               .map((item) => ContractModel.fromJson(Map<String, dynamic>.from(item)))
               .toList();
-          if (currentUserRole == 'superviseur') {
-            final myId = currentUserId ?? activeUserId;
-            local = local.where((c) {
-              final data = c.contractData;
-              final creatorId = (data['created_by_user_id'] ??
-                      data['created_by_id'] ??
-                      data['creator_id'])
-                  ?.toString();
-              return creatorId != null && creatorId == myId;
-            }).toList();
-          }
           return local;
         } catch (_) {}
       }
@@ -765,6 +789,18 @@ class SupabaseSyncService {
     } catch (e) {
       debugPrint('[SupabaseSync] deleteContract error: $e');
     }
+    try {
+      final uri = Uri.parse('${AppConfig.supabaseUrl}/rest/v1/contracts?id=eq.${contract.id}');
+      await http.delete(
+        uri,
+        headers: {
+          'apikey': AppConfig.supabasePublishableKey,
+          'Authorization': 'Bearer ${AppConfig.supabasePublishableKey}',
+        },
+      ).timeout(const Duration(seconds: 8));
+    } catch (e) {
+      debugPrint('[SupabaseSync] Direct REST deleteContract error: $e');
+    }
   }
 
   // ===========================================================================
@@ -863,6 +899,18 @@ class SupabaseSyncService {
       await _sb.from('invoices').delete().eq('id', id);
     } catch (e) {
       debugPrint('[SupabaseSync] deleteInvoice error: $e');
+    }
+    try {
+      final uri = Uri.parse('${AppConfig.supabaseUrl}/rest/v1/invoices?id=eq.$id');
+      await http.delete(
+        uri,
+        headers: {
+          'apikey': AppConfig.supabasePublishableKey,
+          'Authorization': 'Bearer ${AppConfig.supabasePublishableKey}',
+        },
+      ).timeout(const Duration(seconds: 8));
+    } catch (e) {
+      debugPrint('[SupabaseSync] Direct REST deleteInvoice error: $e');
     }
   }
 
@@ -1016,6 +1064,18 @@ class SupabaseSyncService {
       await _sb.from('expenses').delete().eq('id', id);
     } catch (e) {
       debugPrint('[SupabaseSync] deleteExpense error: $e');
+    }
+    try {
+      final uri = Uri.parse('${AppConfig.supabaseUrl}/rest/v1/expenses?id=eq.$id');
+      await http.delete(
+        uri,
+        headers: {
+          'apikey': AppConfig.supabasePublishableKey,
+          'Authorization': 'Bearer ${AppConfig.supabasePublishableKey}',
+        },
+      ).timeout(const Duration(seconds: 8));
+    } catch (e) {
+      debugPrint('[SupabaseSync] Direct REST deleteExpense error: $e');
     }
   }
 }

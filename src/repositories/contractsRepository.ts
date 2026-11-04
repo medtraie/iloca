@@ -30,7 +30,7 @@ async function getAccessibleTenantUserIds(activeUserId: string): Promise<{ query
     const currentUser = allUsers.find((u) => u.id === activeUserId);
     if (currentUser && currentUser.role === "superviseur") {
       const parentId = currentUser.parent_user_id || activeUserId;
-      return { queryUserIds: [parentId], isSupervisor: true };
+      return { queryUserIds: [parentId, activeUserId], isSupervisor: false };
     }
     const childSupervisors = allUsers.filter((u) => u.parent_user_id === activeUserId).map((u) => u.id);
     if (childSupervisors.length > 0) {
@@ -45,7 +45,7 @@ export const contractsRepository = {
     const activeUserId = getActiveTenantUserId();
     if (!activeUserId) return [];
     const localList = getLocalContracts(activeUserId);
-    const { queryUserIds, isSupervisor } = await getAccessibleTenantUserIds(activeUserId);
+    const { queryUserIds } = await getAccessibleTenantUserIds(activeUserId);
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
@@ -58,13 +58,6 @@ export const contractsRepository = {
         const { data, error } = await query.order("created_at", { ascending: false });
         if (!error && data) {
           let remoteList = data as Contract[];
-          if (isSupervisor) {
-            remoteList = remoteList.filter((c) => {
-              const dataObj = ((c as any).contract_data || {}) as Record<string, any>;
-              const creatorId = dataObj.created_by_user_id || dataObj.created_by_id || (c as any).user_id;
-              return creatorId === activeUserId;
-            });
-          }
           saveLocalContracts(remoteList, activeUserId);
           return remoteList;
         }
@@ -78,7 +71,7 @@ export const contractsRepository = {
   async getById(id: string): Promise<Contract | null> {
     const activeUserId = getActiveTenantUserId();
     if (!activeUserId) return null;
-    const { queryUserIds, isSupervisor } = await getAccessibleTenantUserIds(activeUserId);
+    const { queryUserIds } = await getAccessibleTenantUserIds(activeUserId);
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
@@ -90,13 +83,7 @@ export const contractsRepository = {
         }
         const { data, error } = await query.single();
         if (!error && data) {
-          const item = data as Contract;
-          if (isSupervisor) {
-            const dataObj = ((item as any).contract_data || {}) as Record<string, any>;
-            const creatorId = dataObj.created_by_user_id || dataObj.created_by_id || (item as any).user_id;
-            if (creatorId !== activeUserId) return null;
-          }
-          return item;
+          return data as Contract;
         }
       }
     } catch (err) {
@@ -196,17 +183,14 @@ export const contractsRepository = {
 
   async delete(id: string): Promise<boolean> {
     const activeUserId = getActiveTenantUserId();
-    const { queryUserIds } = activeUserId ? await getAccessibleTenantUserIds(activeUserId) : { queryUserIds: [] };
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        let query = supabase.from("contracts").delete().eq("id", id);
-        if (queryUserIds.length === 1) {
-          query = query.eq("user_id", queryUserIds[0]);
-        } else if (queryUserIds.length > 1) {
-          query = query.in("user_id", queryUserIds);
+        // Direct unconditional delete by ID in Supabase
+        const { error } = await supabase.from("contracts").delete().eq("id", id);
+        if (error) {
+          console.warn("Supabase contract delete error:", error);
         }
-        await query;
       }
     } catch (err) {
       console.warn("Supabase contract delete exception:", err);

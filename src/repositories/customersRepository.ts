@@ -261,9 +261,10 @@ async function deleteCustomer(id: string): Promise<void> {
   const activeUserId = getActiveTenantUserId();
   try {
     const supabase = requireSupabase();
-    let query = supabase.from("clients").delete().eq("id", id);
-    if (activeUserId) query = query.eq("user_id", activeUserId);
-    await query;
+    const { error } = await supabase.from("clients").delete().eq("id", id);
+    if (error) {
+      console.warn("Supabase customer delete error:", error);
+    }
   } catch (err) {
     console.warn("Supabase customer delete exception:", err);
   }
@@ -369,9 +370,10 @@ async function deleteTenant(id: string): Promise<void> {
   const activeUserId = getActiveTenantUserId();
   try {
     const supabase = requireSupabase();
-    let query = supabase.from("clients").delete().eq("id", id);
-    if (activeUserId) query = query.eq("user_id", activeUserId);
-    await query;
+    const { error } = await supabase.from("clients").delete().eq("id", id);
+    if (error) {
+      console.warn("Supabase tenant delete error:", error);
+    }
   } catch (err) {
     console.warn("Supabase tenant delete exception:", err);
   }

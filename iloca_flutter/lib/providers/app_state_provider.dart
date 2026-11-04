@@ -384,23 +384,20 @@ class AppStateProvider extends ChangeNotifier {
       final fetchedExpenses = results[4] as List<ExpenseModel>;
       final fetchedMonthly = results[5] as double;
 
-      if (fetchedClients.isNotEmpty || _clients.isEmpty) {
+      if (SupabaseSyncService.lastFetchError == null) {
         _clients = fetchedClients;
-      }
-      if (fetchedVehicles.isNotEmpty || _vehicles.isEmpty) {
         _vehicles = fetchedVehicles;
-      }
-      if (fetchedContracts.isNotEmpty || _contracts.isEmpty) {
         _contracts = fetchedContracts;
-      }
-      if (fetchedInvoices.isNotEmpty || _invoices.isEmpty) {
         _invoices = fetchedInvoices;
-      }
-      if (fetchedExpenses.isNotEmpty || _expenses.isEmpty) {
         _expenses = fetchedExpenses;
-      }
-      if (fetchedMonthly > 0 || _monthlyExpensesAndRepairs == 0) {
         _monthlyExpensesAndRepairs = fetchedMonthly;
+      } else {
+        if (fetchedClients.isNotEmpty) _clients = fetchedClients;
+        if (fetchedVehicles.isNotEmpty) _vehicles = fetchedVehicles;
+        if (fetchedContracts.isNotEmpty) _contracts = fetchedContracts;
+        if (fetchedInvoices.isNotEmpty) _invoices = fetchedInvoices;
+        if (fetchedExpenses.isNotEmpty) _expenses = fetchedExpenses;
+        if (fetchedMonthly > 0) _monthlyExpensesAndRepairs = fetchedMonthly;
       }
 
       _syncVehiclesWithActiveContracts();
@@ -748,6 +745,20 @@ class AppStateProvider extends ChangeNotifier {
     notifyListeners();
     if (toDelete != null) {
       await SupabaseSyncService.deleteContract(toDelete);
+    } else if (id.isNotEmpty) {
+      final now = DateTime.now().toIso8601String();
+      await SupabaseSyncService.deleteContract(ContractModel(
+        id: id,
+        contractNumber: '',
+        customerName: '',
+        vehicle: '',
+        startDate: '',
+        endDate: '',
+        totalAmount: 0,
+        status: '',
+        createdAt: now,
+        updatedAt: now,
+      ));
     }
   }
 
