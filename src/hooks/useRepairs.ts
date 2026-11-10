@@ -50,8 +50,14 @@ const createUpdate = (label: string): RepairUpdate => ({
 
 export const useRepairs = (vehicleId?: string) => {
   const { toast } = useToast();
-  const [repairs, setRepairs] = useState<Repair[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [repairs, setRepairs] = useState<Repair[]>(() => {
+    const local = repairsRepository.getLocal();
+    return vehicleId ? local.filter(r => r.vehicleId === vehicleId) : local;
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    const local = repairsRepository.getLocal();
+    return (vehicleId ? local.filter(r => r.vehicleId === vehicleId) : local).length === 0;
+  });
 
   const syncVehicleStatus = async (vehicleIdToSync: string, operationalStatus?: Repair["operationalStatus"]) => {
     try {
@@ -113,31 +119,9 @@ export const useRepairs = (vehicleId?: string) => {
   }, []);
 
   const fetchRepairs = useCallback(async () => {
-    setLoading(true);
     try {
       const allRepairs = vehicleId ? await repairsRepository.getByVehicleId(vehicleId) : await repairsRepository.getAll();
-      const normalized = await Promise.all(allRepairs.map(async (repair) => {
-        const nextRepair = normalizeRepair(repair);
-        const changed =
-          nextRepair.paye !== repair.paye ||
-          nextRepair.dette !== repair.dette ||
-          nextRepair.dueDate !== repair.dueDate ||
-          nextRepair.slaTargetDays !== repair.slaTargetDays ||
-          nextRepair.operationalStatus !== repair.operationalStatus ||
-          (repair.payments || []).length !== (nextRepair.payments || []).length;
-        if (changed) {
-          await repairsRepository.update(repair.id, {
-            paye: nextRepair.paye,
-            dette: nextRepair.dette,
-            dueDate: nextRepair.dueDate,
-            slaTargetDays: nextRepair.slaTargetDays,
-            operationalStatus: nextRepair.operationalStatus,
-            payments: nextRepair.payments,
-            updates: nextRepair.updates
-          });
-        }
-        return nextRepair;
-      }));
+      const normalized = allRepairs.map((repair) => normalizeRepair(repair));
       setRepairs(normalized);
     } catch (error) {
       console.error("Error fetching repairs:", error);
@@ -184,11 +168,16 @@ export const useRepairs = (vehicleId?: string) => {
         pieceJointe: file ? { fileName: file.name, fileUrl: URL.createObjectURL(file), fileType: file.type } : undefined
       };
       const newRepair = await repairsRepository.create(repairToSave);
-      await syncVehicleStatus(newRepair.vehicleId, operationalStatus);
-      normalizedPayments.forEach((payment) => pushTreasuryPayment(newRepair, payment));
-      await fetchRepairs();
+      const normalizedNew = normalizeRepair(newRepair);
+      setRepairs(prev => [normalizedNew, ...prev.filter(r => r.id !== normalizedNew.id)]);
       const debtMessage = dette > 0 ? ` Une dette de ${dette.toFixed(2)} MAD a été enregistrée.` : "";
       toast({ title: "Succès", description: `Réparation ajoutée avec succès. Le véhicule est maintenant en maintenance.${debtMessage}` });
+
+      // Sync vehicle status and treasury concurrently in background
+      Promise.all([
+        syncVehicleStatus(newRepair.vehicleId, operationalStatus),
+        ...normalizedPayments.map((payment) => pushTreasuryPayment(newRepair, payment))
+      ]).catch(console.error);
     } catch (error: any) {
       toast({ title: "Erreur", description: `Une erreur s'est produite lors de l'ajout de la réparation: ${error?.message || error?.toString()}` });
     } finally {
@@ -234,9 +223,10 @@ export const useRepairs = (vehicleId?: string) => {
       };
 
       const updatedRepair = await repairsRepository.update(id, updateData);
-      await syncVehicleStatus(updatedRepair.vehicleId, operationalStatus);
-      await fetchRepairs();
+      const normalizedUpdated = normalizeRepair(updatedRepair);
+      setRepairs(prev => prev.map(r => r.id === id ? normalizedUpdated : r));
       toast({ title: "Mis à jour", description: "Réparation mise à jour avec succès." });
+      syncVehicleStatus(updatedRepair.vehicleId, operationalStatus).catch(console.error);
     } catch (error) {
       toast({ title: "Erreur", description: "Échec de la mise à jour de la réparation.", variant: "destructive" });
     } finally {
@@ -250,22 +240,26 @@ export const useRepairs = (vehicleId?: string) => {
       if (!repair) throw new Error("Réparation introuvable");
       
       await repairsRepository.delete(id);
-
-      const otherRepairs = await repairsRepository.getByVehicleId(repair.vehicleId);
-      if (otherRepairs.length === 0) {
-        const contracts = await contractsRepository.getAll();
-        const hasActiveContract = contracts.some((c: any) => c.vehicleId === repair.vehicleId && ["ouvert", "draft", "sent", "signed"].includes(c.status));
-        if (!hasActiveContract) {
-          const vehicles = await vehiclesRepository.listVehicles();
-          const vehicle = vehicles.find(v => v.id === repair.vehicleId);
-          if (vehicle) {
-            await vehiclesRepository.updateVehicle(repair.vehicleId, { etat_vehicule: "disponible" });
-          }
-        }
-      }
-
-      await fetchRepairs();
+      setRepairs(prev => prev.filter(r => r.id !== id));
       toast({ title: "Supprimé", description: "Réparation supprimée avec succès." });
+
+      // Check if vehicle can be restored to disponible in background
+      (async () => {
+        try {
+          const otherRepairs = await repairsRepository.getByVehicleId(repair.vehicleId);
+          if (otherRepairs.length === 0) {
+            const contracts = await contractsRepository.getAll();
+            const hasActiveContract = contracts.some((c: any) => c.vehicleId === repair.vehicleId && ["ouvert", "draft", "sent", "signed"].includes(c.status));
+            if (!hasActiveContract) {
+              const vehicles = await vehiclesRepository.listVehicles();
+              const vehicle = vehicles.find(v => v.id === repair.vehicleId);
+              if (vehicle) {
+                await vehiclesRepository.updateVehicle(repair.vehicleId, { etat_vehicule: "disponible" });
+              }
+            }
+          }
+        } catch (_) {}
+      })();
     } catch (error) {
       toast({ title: "Erreur", description: "Échec de la suppression de la réparation.", variant: "destructive" });
     }

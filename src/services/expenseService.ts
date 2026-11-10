@@ -39,13 +39,18 @@ export const expenseService = {
       parent_expense_id: expenseData.parent_expense_id ?? null,
       next_due_date: expenseData.next_due_date ?? expenseData.end_date
     });
-    await this.createMonthlyExpenseRecords(newExpense);
-    await this.appendAuditLog({
-      expense_id: newExpense.id,
-      action: "expense_added",
-      details: `Ajout dépense ${newExpense.type}`,
-      payload: { vehicle_id: newExpense.vehicle_id, total_cost: newExpense.total_cost }
-    });
+
+    // Run monthly allocation and audit log in parallel to save time
+    await Promise.all([
+      this.createMonthlyExpenseRecords(newExpense),
+      this.appendAuditLog({
+        expense_id: newExpense.id,
+        action: "expense_added",
+        details: `Ajout dépense ${newExpense.type}`,
+        payload: { vehicle_id: newExpense.vehicle_id, total_cost: newExpense.total_cost }
+      })
+    ]).catch(console.error);
+
     return newExpense;
   },
 
@@ -254,11 +259,12 @@ export const expenseService = {
     await expensesRepository.deleteMonthlyExpensesByExpenseId(expense.id).catch(() => {});
 
     const currentDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+    const records: Array<Omit<MonthlyExpense, "id" | "created_at" | "updated_at">> = [];
 
     while (currentDate <= endDate) {
       const monthYear = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}-01`;
 
-      await expensesRepository.createMonthlyExpense({
+      records.push({
         expense_id: expense.id,
         vehicle_id: expense.vehicle_id,
         month_year: monthYear,
@@ -267,6 +273,10 @@ export const expenseService = {
       });
 
       currentDate.setMonth(currentDate.getMonth() + 1);
+    }
+
+    if (records.length > 0) {
+      await expensesRepository.createMonthlyExpensesBulk(records);
     }
   },
 

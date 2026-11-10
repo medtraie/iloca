@@ -44,6 +44,26 @@ const buildExpenseUpdatePayload = (expense: Partial<Expense>) =>
   );
 
 export const expensesRepository = {
+  // Synchronous cache access for instant (0ms) UI load
+  getLocalExpenses(): Expense[] {
+    const activeUserId = getActiveTenantUserId();
+    return getLocalData<Expense>(STORAGE_KEY_EXPENSES, activeUserId);
+  },
+
+  getLocalMonthlyExpenses(): MonthlyExpense[] {
+    const activeUserId = getActiveTenantUserId();
+    return getLocalData<MonthlyExpense>(STORAGE_KEY_MONTHLY_EXPENSES, activeUserId);
+  },
+
+  getLocalBudgets(): ExpenseBudget[] {
+    const activeUserId = getActiveTenantUserId();
+    return getLocalData<ExpenseBudget>(STORAGE_KEY_BUDGETS, activeUserId);
+  },
+
+  getLocalAuditLogs(): ExpenseAuditLog[] {
+    return [];
+  },
+
   async getAllExpenses(): Promise<Expense[]> {
     const activeUserId = getActiveTenantUserId();
     if (!activeUserId) return [];
@@ -225,14 +245,50 @@ export const expensesRepository = {
     return fallback;
   },
 
+  async createMonthlyExpensesBulk(records: Array<Omit<MonthlyExpense, "id" | "created_at" | "updated_at">>): Promise<MonthlyExpense[]> {
+    const activeUserId = getActiveTenantUserId();
+    if (!activeUserId) {
+      throw new Error("Action impossible: utilisateur non authentifié.");
+    }
+    const now = new Date().toISOString();
+    const payloads = records.map((record) => ({
+      id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `mexp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      ...record,
+      user_id: activeUserId,
+      created_at: now,
+      updated_at: now,
+    }));
+
+    try {
+      const supabase = getSupabaseClient();
+      if (supabase && payloads.length > 0) {
+        const { data, error } = await supabase.from("monthly_expenses").insert(payloads).select("*");
+        if (!error && data) {
+          const savedList = data as MonthlyExpense[];
+          const savedIds = new Set(savedList.map((m) => m.id));
+          const local = getLocalData<MonthlyExpense>(STORAGE_KEY_MONTHLY_EXPENSES, activeUserId).filter((m) => !savedIds.has(m.id));
+          saveLocalData(STORAGE_KEY_MONTHLY_EXPENSES, [...savedList, ...local], activeUserId);
+          return savedList;
+        }
+        if (error) console.warn("Supabase bulk monthly expenses insert warning:", error);
+      }
+    } catch (err) {
+      console.warn("Supabase monthly expenses bulk insert exception:", err);
+    }
+
+    const local = getLocalData<MonthlyExpense>(STORAGE_KEY_MONTHLY_EXPENSES, activeUserId);
+    const fallbackList = payloads as MonthlyExpense[];
+    saveLocalData(STORAGE_KEY_MONTHLY_EXPENSES, [...fallbackList, ...local], activeUserId);
+    return fallbackList;
+  },
+
   async deleteMonthlyExpensesByExpenseId(expenseId: string): Promise<boolean> {
     const activeUserId = getActiveTenantUserId();
     try {
       const supabase = getSupabaseClient();
       if (supabase) {
-        let query = supabase.from("monthly_expenses").delete().eq("expense_id", expenseId);
-        if (activeUserId) query = query.eq("user_id", activeUserId);
-        await query;
+        // Direct unconditional delete by expense_id
+        await supabase.from("monthly_expenses").delete().eq("expense_id", expenseId);
       }
     } catch (err) {
       console.warn("Supabase deleteMonthlyExpenses exception:", err);

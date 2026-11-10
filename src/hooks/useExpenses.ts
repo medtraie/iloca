@@ -1,22 +1,22 @@
 
 import { useState, useEffect } from 'react';
 import { expenseService } from '@/services/expenseService';
+import { expensesRepository } from '@/repositories/expensesRepository';
 import { useExpenseToasts } from '@/utils/expenseUtils';
 import { Expense, ExpenseAlert, ExpenseAuditLog, ExpenseBudget, MonthlyExpense } from '@/types/expense';
 import { isAfter, isBefore, addDays, parseISO, subMonths, format } from "date-fns";
 
 export const useExpenses = () => {
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [monthlyExpenses, setMonthlyExpenses] = useState<MonthlyExpense[]>([]);
-  const [budgets, setBudgets] = useState<ExpenseBudget[]>([]);
-  const [auditLogs, setAuditLogs] = useState<ExpenseAuditLog[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [expenses, setExpenses] = useState<Expense[]>(() => expensesRepository.getLocalExpenses());
+  const [monthlyExpenses, setMonthlyExpenses] = useState<MonthlyExpense[]>(() => expensesRepository.getLocalMonthlyExpenses());
+  const [budgets, setBudgets] = useState<ExpenseBudget[]>(() => expensesRepository.getLocalBudgets());
+  const [auditLogs, setAuditLogs] = useState<ExpenseAuditLog[]>(() => expensesRepository.getLocalAuditLogs());
+  const [loading, setLoading] = useState<boolean>(() => expensesRepository.getLocalExpenses().length === 0);
   const [error, setError] = useState<string | null>(null);
   const { showError, showSuccess } = useExpenseToasts();
 
   const fetchExpenses = async () => {
     try {
-      setLoading(true);
       setError(null);
       const data = await expenseService.fetchExpenses();
       setExpenses(data);
@@ -24,8 +24,6 @@ export const useExpenses = () => {
       const errorMessage = error instanceof Error ? error.message : "Une erreur s’est produite lors du chargement des dépenses";
       setError(errorMessage);
       showError(errorMessage);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -67,10 +65,11 @@ export const useExpenses = () => {
     try {
       setError(null);
       const newExpense = await expenseService.addExpense(expenseData);
-      setExpenses(prev => [newExpense, ...prev]);
+      setExpenses(prev => [newExpense, ...prev.filter(e => e.id !== newExpense.id)]);
       showSuccess("Dépense ajoutée avec succès");
       
-      await Promise.all([fetchMonthlyExpenses(), fetchAuditLogs()]);
+      // Refresh monthly breakdown and audit log in background non-blocking
+      Promise.all([fetchMonthlyExpenses(), fetchAuditLogs()]).catch(console.error);
       return newExpense;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Erreur lors de l’ajout de la dépense";
@@ -87,7 +86,7 @@ export const useExpenses = () => {
       setExpenses(prev => prev.map(exp => exp.id === id ? updatedExpense : exp));
       showSuccess("Dépense mise à jour avec succès");
       
-      await Promise.all([fetchMonthlyExpenses(), fetchAuditLogs()]);
+      Promise.all([fetchMonthlyExpenses(), fetchAuditLogs()]).catch(console.error);
       return updatedExpense;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Erreur lors de la mise à jour de la dépense";
@@ -104,7 +103,7 @@ export const useExpenses = () => {
       setExpenses(prev => prev.filter(exp => exp.id !== id));
       showSuccess("Dépense supprimée avec succès");
       
-      await Promise.all([fetchMonthlyExpenses(), fetchAuditLogs()]);
+      Promise.all([fetchMonthlyExpenses(), fetchAuditLogs()]).catch(console.error);
       return true;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Erreur lors de la suppression de la dépense";
@@ -179,8 +178,15 @@ export const useExpenses = () => {
   };
 
   const refetch = async () => {
-    await expenseService.generateRecurringExpenses();
-    await Promise.all([fetchExpenses(), fetchMonthlyExpenses(), fetchBudgets(), fetchAuditLogs()]);
+    try {
+      await Promise.all([fetchExpenses(), fetchMonthlyExpenses(), fetchBudgets(), fetchAuditLogs()]);
+    } finally {
+      setLoading(false);
+    }
+    // Run recurring expense check asynchronously in background
+    setTimeout(() => {
+      expenseService.generateRecurringExpenses().catch(console.error);
+    }, 1200);
   };
 
   const alerts: ExpenseAlert[] = (() => {

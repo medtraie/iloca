@@ -917,17 +917,24 @@ class SupabaseSyncService {
   // ===========================================================================
   // EXPENSES & REPAIRS FETCH FOR OVERVIEW & REPORTS
   // ===========================================================================
-  static Future<double> fetchMonthlyExpensesAndRepairs() async {
+  static Future<double> fetchMonthlyExpensesAndRepairs({List<ExpenseModel>? existingExpenses}) async {
     double total = 0;
 
-    try {
-      final expRows = await _fetchTableRows('expenses', orderBy: 'created_at', ascending: false);
-      for (final r in expRows) {
-        if (r['archived'] == true) continue;
-        final val = double.tryParse((r['monthly_cost'] ?? r['total_cost'] ?? '0').toString()) ?? 0;
-        total += val;
+    if (existingExpenses != null) {
+      for (final e in existingExpenses) {
+        if (e.archived) continue;
+        total += (e.monthlyCost > 0 ? e.monthlyCost : e.totalCost);
       }
-    } catch (_) {}
+    } else {
+      try {
+        final expRows = await _fetchTableRows('expenses', orderBy: 'created_at', ascending: false);
+        for (final r in expRows) {
+          if (r['archived'] == true) continue;
+          final val = double.tryParse((r['monthly_cost'] ?? r['total_cost'] ?? '0').toString()) ?? 0;
+          total += val;
+        }
+      } catch (_) {}
+    }
 
     try {
       final repRows = await _fetchTableRows('repairs', orderBy: 'created_at', ascending: false);

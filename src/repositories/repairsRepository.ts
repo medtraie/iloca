@@ -79,6 +79,11 @@ function saveLocalRepairs(repairs: Repair[], userId?: string | null): void {
 }
 
 export const repairsRepository = {
+  getLocal(): Repair[] {
+    const activeUserId = getActiveTenantUserId();
+    return getLocalRepairs(activeUserId);
+  },
+
   async getAll(): Promise<Repair[]> {
     const activeUserId = getActiveTenantUserId();
     if (!activeUserId) return [];
