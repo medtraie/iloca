@@ -161,51 +161,168 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 90),
-        child: FloatingActionButton.extended(
-          heroTag: 'new_vehicle_fab_btn',
-          onPressed: () => _openVehicleForm(),
-          backgroundColor: AppColors2026.emeraldNeon,
-          foregroundColor: AppColors2026.abyss,
-          elevation: 6,
-          icon: const Icon(LucideIcons.plus, size: 18),
-          label: const Text(
-            'Ajouter un Véhicule',
-            style: TextStyle(fontWeight: FontWeight.w900),
-          ),
-        ),
-      ),
       body: Column(
         children: [
-          // Filter & Search Header
+          // Executive Header + Search + Gold Filter Chips (Canvas renderVehiculesView)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: Column(
               children: [
-                // Search Bar
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'PARC AUTOMOBILE',
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.8,
+                              color: AppColors2026.gold.withOpacity(0.85),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Text(
+                                'Véhicules',
+                                style: AppTheme2026.luxurySerif(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors2026.emeraldNeon
+                                      .withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(
+                                    color: AppColors2026.emeraldNeon
+                                        .withOpacity(0.35),
+                                  ),
+                                ),
+                                child: Text(
+                                  '${all.length} UNITÉS',
+                                  style: const TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.7,
+                                    color: AppColors2026.emeraldBright,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Circular Refresh
+                    InkWell(
+                      onTap: () => widget.appState.refreshAllData(),
+                      borderRadius: BorderRadius.circular(999),
+                      child: Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: AppColors2026.obsidianElevated,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.08),
+                          ),
+                        ),
+                        child: Icon(
+                          LucideIcons.refreshCw,
+                          size: 16,
+                          color: widget.appState.isSyncing
+                              ? AppColors2026.goldLight
+                              : Colors.white70,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GoldGradientButton(
+                      onPressed: () => _openVehicleForm(),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      borderRadius: 999,
+                      fontSize: 12,
+                      icon: LucideIcons.plus,
+                      label: 'Ajouter',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Search Bar (#161922)
                 SizedBox(
-                  height: 42,
+                  height: 44,
                   child: TextField(
                     onChanged: (v) => setState(() => _search = v),
-                    style: const TextStyle(fontSize: 13),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Colors.white,
+                    ),
                     decoration: InputDecoration(
+                      filled: true,
+                      fillColor: AppColors2026.surfaceInput,
                       contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 0),
-                      hintText: 'Rechercher marque, modèle, matricule, couleur...',
-                      prefixIcon: const Icon(LucideIcons.search, size: 16),
+                        horizontal: 14,
+                        vertical: 0,
+                      ),
+                      hintText:
+                          'Rechercher marque, modèle, matricule, couleur...',
+                      hintStyle: const TextStyle(
+                        fontSize: 12.5,
+                        color: AppColors2026.textMuted,
+                      ),
+                      prefixIcon: const Icon(
+                        LucideIcons.search,
+                        size: 16,
+                        color: AppColors2026.gold,
+                      ),
                       suffixIcon: _search.isNotEmpty
                           ? IconButton(
-                              icon: const Icon(LucideIcons.x, size: 14),
+                              icon: const Icon(
+                                LucideIcons.x,
+                                size: 14,
+                                color: AppColors2026.textSecondary,
+                              ),
                               onPressed: () => setState(() => _search = ''),
                             )
                           : null,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(
+                          color: Colors.white.withOpacity(0.08),
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(
+                          color: Colors.white.withOpacity(0.08),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(
+                          color: AppColors2026.gold,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
 
-                // Status Filter Chips
+                // Status Filter Chips (Gold active pills)
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
@@ -213,7 +330,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                       _StatusChip(
                         label: 'Tous (${all.length})',
                         selected: _statusFilter == 'all',
-                        color: AppColors2026.cyanBright,
+                        color: AppColors2026.gold,
                         onTap: () => setState(() => _statusFilter = 'all'),
                       ),
                       const SizedBox(width: 8),
@@ -228,7 +345,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                       _StatusChip(
                         label: 'En Location ($rentedCount)',
                         selected: _statusFilter == 'loue',
-                        color: AppColors2026.violetElectric,
+                        color: AppColors2026.goldLight,
                         onTap: () => setState(() => _statusFilter = 'loue'),
                       ),
                       const SizedBox(width: 8),
@@ -391,7 +508,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                                           style: const TextStyle(
                                             fontSize: 16,
                                             fontWeight: FontWeight.w900,
-                                            color: AppColors2026.cyanNeon,
+                                            color: AppColors2026.goldLight,
                                             shadows: [
                                               Shadow(
                                                 color: Colors.black,
@@ -510,7 +627,7 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                                           style: const TextStyle(
                                             fontSize: 15,
                                             fontWeight: FontWeight.w900,
-                                            color: AppColors2026.emeraldBright,
+                                            color: AppColors2026.goldLight,
                                           ),
                                         )
                                       else
@@ -524,24 +641,132 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                                         ),
                                       Row(
                                         children: [
-                                          TextButton.icon(
-                                            onPressed: () => _openVehicleForm(v),
-                                            style: TextButton.styleFrom(
-                                              foregroundColor:
-                                                  AppColors2026.cyanBright,
+                                          if (v.hasGps ||
+                                              widget.appState.gpsDevices
+                                                  .isNotEmpty) ...[
+                                            InkWell(
+                                              onTap: () {
+                                                final devices = widget
+                                                    .appState.gpsDevices;
+                                                final plate = v.registration
+                                                    .toLowerCase()
+                                                    .replaceAll(' ', '');
+                                                GpsDeviceModel? matched;
+                                                for (final d in devices) {
+                                                  final dName = d.name
+                                                      .toLowerCase()
+                                                      .replaceAll(' ', '');
+                                                  if (plate.isNotEmpty &&
+                                                      dName.contains(plate)) {
+                                                    matched = d;
+                                                    break;
+                                                  }
+                                                }
+                                                if (matched != null) {
+                                                  widget.appState
+                                                      .selectGpsDevice(
+                                                          matched.id);
+                                                }
+                                                widget.appState.setActiveTab(1);
+                                              },
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                  horizontal: 10,
+                                                  vertical: 6,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: AppColors2026
+                                                      .emeraldNeon
+                                                      .withOpacity(0.12),
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          999),
+                                                  border: Border.all(
+                                                    color: AppColors2026
+                                                        .emeraldNeon
+                                                        .withOpacity(0.35),
+                                                  ),
+                                                ),
+                                                child: const Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    Icon(
+                                                      LucideIcons.navigation,
+                                                      size: 12,
+                                                      color: AppColors2026
+                                                          .emeraldBright,
+                                                    ),
+                                                    SizedBox(width: 4),
+                                                    Text(
+                                                      'GPS',
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.w800,
+                                                        color: AppColors2026
+                                                            .emeraldBright,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
                                             ),
-                                            icon: const Icon(LucideIcons.edit3,
-                                                size: 14),
-                                            label: const Text('Modifier',
-                                                style: TextStyle(
-                                                    fontWeight:
-                                                        FontWeight.bold)),
+                                            const SizedBox(width: 6),
+                                          ],
+                                          InkWell(
+                                            onTap: () => _openVehicleForm(v),
+                                            borderRadius:
+                                                BorderRadius.circular(999),
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 11,
+                                                vertical: 6,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: AppColors2026.gold
+                                                    .withOpacity(0.14),
+                                                borderRadius:
+                                                    BorderRadius.circular(999),
+                                                border: Border.all(
+                                                  color: AppColors2026.gold
+                                                      .withOpacity(0.35),
+                                                ),
+                                              ),
+                                              child: const Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    LucideIcons.edit3,
+                                                    size: 12,
+                                                    color:
+                                                        AppColors2026.goldLight,
+                                                  ),
+                                                  SizedBox(width: 5),
+                                                  Text(
+                                                    'Modifier',
+                                                    style: TextStyle(
+                                                      fontSize: 11.5,
+                                                      fontWeight:
+                                                          FontWeight.w800,
+                                                      color: AppColors2026
+                                                          .goldLight,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
                                           ),
                                           if (widget.appState.canDelete) ...[
                                             const SizedBox(width: 4),
                                             IconButton(
                                               tooltip: 'Supprimer',
-                                              onPressed: () => _confirmDelete(v),
+                                              onPressed: () =>
+                                                  _confirmDelete(v),
                                               icon: const Icon(
                                                 LucideIcons.trash2,
                                                 size: 16,
@@ -588,16 +813,21 @@ class _StatusChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color: selected ? color : Colors.white.withOpacity(0.05),
+          gradient: selected ? AppColors2026.goldGradient : null,
+          color: selected ? null : AppColors2026.obsidianElevated,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: selected ? color : Colors.white12),
+          border: Border.all(
+            color: selected
+                ? AppColors2026.goldLight
+                : Colors.white.withOpacity(0.08),
+          ),
         ),
         child: Text(
           label,
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w800,
-            color: selected ? AppColors2026.abyss : Colors.white,
+            color: selected ? Colors.black : AppColors2026.textSecondary,
           ),
         ),
       ),

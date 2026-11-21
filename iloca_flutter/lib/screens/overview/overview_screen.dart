@@ -1,18 +1,19 @@
+import 'dart:async';
 import 'dart:math' as math;
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_theme_2026.dart';
 import '../../core/widgets/spatial_glass_widgets.dart';
 import '../../core/widgets/vehicle_image_preview.dart';
 import '../../models/app_models.dart';
 import '../../providers/app_state_provider.dart';
-import '../../services/supabase_sync_service.dart';
+import '../clients/client_form_dialog.dart';
+import '../contracts/contract_form_dialog.dart';
+import '../vehicles/vehicle_form_dialog.dart';
 
-/// 1. OVERVIEW SCREEN (Cockpit Spatial & Tableau de Bord 2026)
-/// 100% Web Parity with Index.tsx, DashboardStats.tsx, TodayOperationsHub.tsx & FleetRadarCard.tsx
+/// 1. OVERVIEW / COCKPIT SCREEN — Luxury Obsidian & Gold 2026 Design
+/// 100% Real-time Synchronized with Web & Supabase (`clients`, `vehicles`, `contracts`, `expenses`, `repairs`, `gpsDevices`)
 class OverviewScreen extends StatefulWidget {
   final AppStateProvider appState;
 
@@ -22,10 +23,12 @@ class OverviewScreen extends StatefulWidget {
   State<OverviewScreen> createState() => _OverviewScreenState();
 }
 
-class _OverviewScreenState extends State<OverviewScreen> {
-  // Navigation tabs matching Web: 'overview' | 'operations' | 'fleet' | 'financial'
-  String _activeTab = 'overview';
-  String _opsFilter = 'returns'; // 'returns' | 'overdue' | 'departures'
+class _OverviewScreenState extends State<OverviewScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _radarCtrl;
+  final ScrollController _marqueeCtrl = ScrollController();
+  Timer? _marqueeTimer;
+  bool _marqueePaused = false;
 
   void _onStateChanged() {
     if (mounted) setState(() {});
@@ -35,879 +38,924 @@ class _OverviewScreenState extends State<OverviewScreen> {
   void initState() {
     super.initState();
     widget.appState.addListener(_onStateChanged);
+    _radarCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
+    )..repeat();
+
+    _marqueeTimer = Timer.periodic(const Duration(milliseconds: 35), (_) {
+      if (_marqueePaused || !_marqueeCtrl.hasClients) return;
+      final max = _marqueeCtrl.position.maxScrollExtent;
+      if (max <= 0) return;
+      final next = _marqueeCtrl.offset + 0.9;
+      if (next >= max / 2) {
+        _marqueeCtrl.jumpTo(0);
+      } else {
+        _marqueeCtrl.jumpTo(next);
+      }
+    });
   }
 
   @override
   void dispose() {
     widget.appState.removeListener(_onStateChanged);
+    _radarCtrl.dispose();
+    _marqueeTimer?.cancel();
+    _marqueeCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _openWhatsApp(String phone, String message) async {
-    final clean = phone.replaceAll(RegExp(r'[^0-9+]'), '');
-    if (clean.isEmpty) return;
-    final uri = Uri.parse(
-        'https://wa.me/${clean.startsWith("+") ? clean.substring(1) : clean}?text=${Uri.encodeComponent(message)}');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+  GpsDeviceModel? _matchGpsForVehicle(VehicleModel v, List<GpsDeviceModel> devices) {
+    if (devices.isEmpty) return null;
+    final vPlate = v.registration.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    final vName = v.fullName.toLowerCase();
+    for (final d in devices) {
+      final dPlate = d.plate.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+      final dName = d.name.toLowerCase();
+      if (vPlate.isNotEmpty && dPlate.isNotEmpty && (dPlate.contains(vPlate) || vPlate.contains(dPlate))) {
+        return d;
+      }
+      if (v.brand.isNotEmpty && dName.contains(v.brand.toLowerCase()) &&
+          (v.model.isEmpty || dName.contains(v.model.toLowerCase()))) {
+        return d;
+      }
+      if (dName == vName) return d;
     }
-  }
-
-  Future<void> _callPhone(String phone) async {
-    final clean = phone.replaceAll(RegExp(r'[^0-9+]'), '');
-    if (clean.isEmpty) return;
-    final uri = Uri.parse('tel:$clean');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    }
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
     final app = widget.appState;
-    final currencyFmt = NumberFormat('#,##0', 'fr_FR');
+    final fmt = NumberFormat('#,##0', 'fr_FR');
     final now = DateTime.now();
-    final todayStr = DateFormat('yyyy-MM-dd').format(now);
 
-    // Fleet Metrics
-    final totalVehicles = app.vehicles.length;
-    final availableVeh = app.availableVehiclesCount;
-    final rentedVeh = app.rentedVehiclesCount;
-    final maintVeh = app.maintenanceVehiclesCount;
-    final occupancyRate = totalVehicles > 0
-        ? ((rentedVeh / totalVehicles) * 100).round().clamp(0, 100)
-        : 0;
+    final vehicles = app.vehicles;
+    final contracts = app.contracts;
+    final clients = app.clients;
+    final gpsDevices = app.gpsDevices;
 
-    // Financial Telemetry
-    final monthlyRev = app.monthlyRevenue;
-    final monthlyCost = app.monthlyExpensesAndRepairs;
-    final netProfit = monthlyRev - monthlyCost;
-    final profitMargin = monthlyRev > 0
-        ? ((netProfit / monthlyRev) * 100).round()
-        : 0;
+    final availCount = app.availableVehiclesCount;
+    final rentedCount = app.rentedVehiclesCount;
 
-    // Operations Hub Telemetry
-    final activeContracts = app.contracts.where((c) => c.isActive).toList();
-    final todayReturns = activeContracts
-        .where((c) => c.effectiveEndDate.startsWith(todayStr))
-        .toList();
-    final overdueContracts =
-        app.contracts.where((c) => c.isOverdue).toList();
-    final todayDepartures = app.contracts
-        .where((c) => c.startDate.startsWith(todayStr))
-        .toList();
+    // Compute Top Client VIP by revenue from contracts
+    final clientCaMap = <String, double>{};
+    final clientCountMap = <String, int>{};
+    for (final c in contracts) {
+      final name = c.customerName.trim().isEmpty ? 'Client VIP' : c.customerName.trim();
+      clientCaMap[name] = (clientCaMap[name] ?? 0) + c.effectiveTotalAmount;
+      clientCountMap[name] = (clientCountMap[name] ?? 0) + 1;
+    }
+    String topClientName = clients.isNotEmpty ? clients.first.fullName : 'Aucun client';
+    double topClientCa = 0;
+    int topClientLoc = 0;
+    clientCaMap.forEach((name, ca) {
+      if (ca > topClientCa) {
+        topClientCa = ca;
+        topClientName = name;
+        topClientLoc = clientCountMap[name] ?? 1;
+      }
+    });
 
-    // GPS Telemetry
-    final gpsOnlineCount = app.gpsDevices.where((d) => d.online).length;
-    final gpsMovingCount =
-        app.gpsDevices.where((d) => d.status == 'moving').length;
+    // Compute Top Vehicle by generated revenue
+    final vehCaMap = <String, double>{};
+    for (final c in contracts) {
+      final key = c.vehicleId.isNotEmpty ? c.vehicleId : c.vehicle;
+      vehCaMap[key] = (vehCaMap[key] ?? 0) + c.effectiveTotalAmount;
+    }
+    VehicleModel? topVehicle = vehicles.isNotEmpty ? vehicles.first : null;
+    double topVehicleNet = 0;
+    for (final v in vehicles) {
+      final rev = (vehCaMap[v.id] ?? 0) + (vehCaMap[v.fullName] ?? 0);
+      if (rev >= topVehicleNet) {
+        topVehicleNet = rev;
+        topVehicle = v;
+      }
+    }
+
+    // Tracked GPS device or fallback rented vehicle for Radar Card
+    final activeGps = gpsDevices.where((d) => d.speed > 0).firstOrNull ??
+        gpsDevices.where((d) => d.online).firstOrNull ??
+        gpsDevices.firstOrNull;
+    final fallbackRentedVeh = vehicles.where((v) => v.status.toLowerCase() == 'loue').firstOrNull ??
+        (vehicles.isNotEmpty ? vehicles.first : null);
+
+    // Build 6-month Financial Series from real Supabase data
+    final monthSeries = _build6MonthFinancialSeries(now, app);
+    final currentMonthRev = monthSeries.last.rev;
+    final currentMonthExp = monthSeries.last.exp;
+
+    // Build real-time operational feed
+    final feedItems = _buildOperationalFeed(app);
 
     return RefreshIndicator(
-      color: AppColors2026.cyanNeon,
+      color: AppColors2026.gold,
+      backgroundColor: AppColors2026.obsidianSurface,
       onRefresh: () async {
         await app.refreshAllData();
         await app.refreshGpsTelemetry();
       },
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 120),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 110),
         children: [
-          // 1. Hero Spatial Header with Cockpit Status & Quick Actions
-          _buildHeroHeader(app),
+          // 1. HERO COCKPIT CARD + LIVE FLEET MARQUEE
+          _buildHeroCockpitCard(context, app, vehicles, gpsDevices, fmt),
 
           const SizedBox(height: 14),
 
-          // 2. Tab Navigation Switcher (Overview, Opérations du jour, Flotte, Finance)
-          _buildViewTabSwitcher(),
-
-          const SizedBox(height: 16),
-
-          // 3. Tab Contents
-          if (_activeTab == 'overview') ...[
-            _buildBentoKpiGrid(
-              totalVehicles: totalVehicles,
-              availableVeh: availableVeh,
-              rentedVeh: rentedVeh,
-              occupancyRate: occupancyRate,
-              monthlyRev: monthlyRev,
-              netProfit: netProfit,
-              profitMargin: profitMargin,
-              activeContractsCount: activeContracts.length,
-              overdueCount: overdueContracts.length,
-              customersCount: app.clients.length,
-              currencyFmt: currencyFmt,
-            ),
-            const SizedBox(height: 16),
-            _buildTodayOperationsHub(
-              todayReturns: todayReturns,
-              overdueContracts: overdueContracts,
-              todayDepartures: todayDepartures,
-              currencyFmt: currencyFmt,
-            ),
-            const SizedBox(height: 16),
-            _buildFleetRadarCard(
-              totalVehicles: totalVehicles,
-              availableVeh: availableVeh,
-              rentedVeh: rentedVeh,
-              maintVeh: maintVeh,
-              occupancyRate: occupancyRate,
-            ),
-            const SizedBox(height: 16),
-            _buildRevenueEvolutionCard(currencyFmt),
-            const SizedBox(height: 16),
-            _buildRecentInvoicesCard(app, currencyFmt),
-          ] else if (_activeTab == 'operations') ...[
-            _buildTodayOperationsHub(
-              todayReturns: todayReturns,
-              overdueContracts: overdueContracts,
-              todayDepartures: todayDepartures,
-              currencyFmt: currencyFmt,
-            ),
-            const SizedBox(height: 16),
-            _buildRecentContractsList(app, currencyFmt),
-          ] else if (_activeTab == 'fleet') ...[
-            _buildFleetRadarCard(
-              totalVehicles: totalVehicles,
-              availableVeh: availableVeh,
-              rentedVeh: rentedVeh,
-              maintVeh: maintVeh,
-              occupancyRate: occupancyRate,
-            ),
-          ] else if (_activeTab == 'financial') ...[
-            _buildRevenueEvolutionCard(currencyFmt),
-            const SizedBox(height: 16),
-            _buildFinancialBreakdownCard(
-              monthlyRev: monthlyRev,
-              monthlyCost: monthlyCost,
-              netProfit: netProfit,
-              currencyFmt: currencyFmt,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // 1. HERO HEADER
-  // ---------------------------------------------------------------------------
-  Widget _buildHeroHeader(AppStateProvider app) {
-    return SpatialGlassCard(
-      glowColor: AppColors2026.cyanNeon,
-      borderColor: AppColors2026.cyanNeon.withOpacity(0.35),
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+          // 2. DUAL KPI HIGHLIGHT CARDS (CLIENT VIP & TOP FLOTTE)
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Flexible(
-                child: Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    const NeonBadge(
-                      label: 'COCKPIT 2026',
-                      color: AppColors2026.emeraldNeon,
-                      pulsing: true,
-                    ),
-                    Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.06),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        app.isSyncing ? 'SYNC...' : 'CLOUD SYNC',
-                        style: const TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors2026.cyanBright,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                DateFormat('dd MMM • HH:mm').format(app.lastSyncTime),
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors2026.textSecondary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Tableau de Bord & Cockpit BonaTours',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -0.4,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Supervision en direct de la flotte, contrats, facturation et finances.',
-            style: TextStyle(
-              fontSize: 11.5,
-              color: AppColors2026.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // 4 Quick Action Buttons
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _QuickActionBtn(
-                  icon: LucideIcons.filePlus2,
-                  label: 'Nouveau Contrat',
-                  color: AppColors2026.violetElectric,
-                  onTap: () => app.setActiveTab(3),
-                ),
-                const SizedBox(width: 8),
-                _QuickActionBtn(
-                  icon: LucideIcons.userPlus,
-                  label: 'Nouveau Client',
-                  color: AppColors2026.cyanNeon,
-                  onTap: () => app.setActiveTab(1),
-                ),
-                const SizedBox(width: 8),
-                _QuickActionBtn(
-                  icon: LucideIcons.car,
-                  label: 'Ajouter Véhicule',
-                  color: AppColors2026.emeraldNeon,
-                  onTap: () => app.setActiveTab(2),
-                ),
-                const SizedBox(width: 8),
-                _QuickActionBtn(
-                  icon: LucideIcons.fileSpreadsheet,
-                  label: 'Factures',
-                  color: AppColors2026.amberSolar,
-                  onTap: () => app.setActiveTab(4),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // 2. TAB SWITCHER
-  // ---------------------------------------------------------------------------
-  Widget _buildViewTabSwitcher() {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.04),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Row(
-        children: [
-          _buildTabPill(id: 'overview', label: 'Général', icon: LucideIcons.layoutGrid),
-          _buildTabPill(id: 'operations', label: 'Opérations', icon: LucideIcons.calendarClock),
-          _buildTabPill(id: 'fleet', label: 'Flotte', icon: LucideIcons.car),
-          _buildTabPill(id: 'financial', label: 'Finances', icon: LucideIcons.trendingUp),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTabPill({
-    required String id,
-    required String label,
-    required IconData icon,
-  }) {
-    final active = _activeTab == id;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _activeTab = id),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: active ? AppColors2026.cyanNeon : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 13,
-                color: active ? AppColors2026.abyss : AppColors2026.textMuted,
-              ),
-              const SizedBox(width: 5),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: active ? FontWeight.w900 : FontWeight.w600,
-                    color: active ? AppColors2026.abyss : AppColors2026.textMuted,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // 3. BENTO KPI GRID (Matching DashboardStats.tsx)
-  // ---------------------------------------------------------------------------
-  Widget _buildBentoKpiGrid({
-    required int totalVehicles,
-    required int availableVeh,
-    required int rentedVeh,
-    required int occupancyRate,
-    required double monthlyRev,
-    required double netProfit,
-    required int profitMargin,
-    required int activeContractsCount,
-    required int overdueCount,
-    required int customersCount,
-    required NumberFormat currencyFmt,
-  }) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final cols = constraints.maxWidth > 640 ? 4 : 2;
-        return GridView.count(
-          crossAxisCount: cols,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: constraints.maxWidth > 640 ? 1.4 : 1.10,
-          children: [
-            // Revenue Card
-            _BentoTile2026(
-              title: "Recette Mensuelle",
-              value: "${currencyFmt.format(monthlyRev.round())} DH",
-              subtitle: "Marge : ${netProfit >= 0 ? '+' : ''}${currencyFmt.format(netProfit.round())} DH ($profitMargin%)",
-              icon: LucideIcons.banknote,
-              color: AppColors2026.emeraldNeon,
-              badge: netProfit >= 0 ? "Rentable" : "Déficit",
-              badgeColor: netProfit >= 0 ? AppColors2026.emeraldNeon : AppColors2026.roseLaser,
-              onTap: () => widget.appState.setActiveTab(4),
-            ),
-            // Flotte & Taux d'occupation
-            _BentoTile2026(
-              title: "Occupation Flotte",
-              value: "$occupancyRate%",
-              subtitle: "$rentedVeh loués sur $totalVehicles",
-              icon: LucideIcons.car,
-              color: AppColors2026.cyanBright,
-              badge: "$availableVeh libres",
-              badgeColor: AppColors2026.cyanBright,
-              onTap: () => widget.appState.setActiveTab(2),
-            ),
-            // Contrats en cours
-            _BentoTile2026(
-              title: "Contrats en Cours",
-              value: "$activeContractsCount",
-              subtitle: overdueCount > 0 ? "$overdueCount en retard !" : "Flotte opérationnelle",
-              icon: LucideIcons.fileText,
-              color: overdueCount > 0 ? AppColors2026.roseLaser : AppColors2026.violetElectric,
-              badge: overdueCount > 0 ? "Retards" : "Actifs",
-              badgeColor: overdueCount > 0 ? AppColors2026.roseLaser : AppColors2026.violetElectric,
-              onTap: () => widget.appState.setActiveTab(3),
-            ),
-            // CRM Clients
-            _BentoTile2026(
-              title: "Portefeuille Clients",
-              value: "$customersCount",
-              subtitle: "Locataires & conducteurs",
-              icon: LucideIcons.users,
-              color: AppColors2026.amberSolar,
-              badge: "CRM 2026",
-              badgeColor: AppColors2026.amberSolar,
-              onTap: () => widget.appState.setActiveTab(1),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // 4. TODAY OPERATIONS HUB (Matching TodayOperationsHub.tsx)
-  // ---------------------------------------------------------------------------
-  Widget _buildTodayOperationsHub({
-    required List<ContractModel> todayReturns,
-    required List<ContractModel> overdueContracts,
-    required List<ContractModel> todayDepartures,
-    required NumberFormat currencyFmt,
-  }) {
-    List<ContractModel> displayList;
-    String emptyMsg;
-    Color accentColor;
-
-    if (_opsFilter == 'overdue') {
-      displayList = overdueContracts;
-      emptyMsg = 'Aucun retard critique détecté.';
-      accentColor = AppColors2026.roseLaser;
-    } else if (_opsFilter == 'departures') {
-      displayList = todayDepartures;
-      emptyMsg = 'Aucun départ prévu aujourd\'hui.';
-      accentColor = AppColors2026.cyanNeon;
-    } else {
-      displayList = todayReturns;
-      emptyMsg = 'Aucune restitution prévue aujourd\'hui.';
-      accentColor = AppColors2026.amberSolar;
-    }
-
-    return SpatialGlassCard(
-      padding: const EdgeInsets.all(16),
-      borderColor: accentColor.withOpacity(0.35),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(7),
-                      decoration: BoxDecoration(
-                        color: accentColor.withOpacity(0.16),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(LucideIcons.calendarClock,
-                          size: 15, color: accentColor),
-                    ),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'OPÉRATIONS DU JOUR',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              TextButton(
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                onPressed: () => widget.appState.setActiveTab(3),
-                child: const Text('Voir Contrats',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // Mini Filters: Retours (x), Retards (x), Départs (x)
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _OpsFilterChip(
-                  label: "Restitutions (${todayReturns.length})",
-                  selected: _opsFilter == 'returns',
-                  color: AppColors2026.amberSolar,
-                  onTap: () => setState(() => _opsFilter = 'returns'),
-                ),
-                const SizedBox(width: 6),
-                _OpsFilterChip(
-                  label: "Retards (${overdueContracts.length})",
-                  selected: _opsFilter == 'overdue',
-                  color: AppColors2026.roseLaser,
-                  onTap: () => setState(() => _opsFilter = 'overdue'),
-                ),
-                const SizedBox(width: 6),
-                _OpsFilterChip(
-                  label: "Départs (${todayDepartures.length})",
-                  selected: _opsFilter == 'departures',
-                  color: AppColors2026.cyanBright,
-                  onTap: () => setState(() => _opsFilter = 'departures'),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          if (displayList.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 18),
-              child: Center(
-                child: Text(
-                  emptyMsg,
-                  style: const TextStyle(
-                      fontSize: 12, color: AppColors2026.textMuted),
-                ),
-              ),
-            )
-          else
-            ...displayList.take(4).map((c) {
-              final isOverdueItem = _opsFilter == 'overdue';
-              final whatsappMsg = isOverdueItem
-                  ? "Bonjour ${c.customerName}, la restitution du véhicule ${c.vehicle} est en retard. Merci de nous contacter d'urgence pour régulariser votre contrat ${SupabaseSyncService.currentCompanyName.isNotEmpty ? SupabaseSyncService.currentCompanyName : 'BonaTours'}."
-                  : "Bonjour ${c.customerName}, nous vous rappelons que la restitution de votre véhicule ${c.vehicle} est prévue aujourd'hui. Merci de préparer le véhicule pour le check-in.";
-
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.03),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.white10),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: accentColor.withOpacity(0.15),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        isOverdueItem
-                            ? LucideIcons.alertTriangle
-                            : LucideIcons.clock,
-                        size: 15,
-                        color: accentColor,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                child: SpatialGlassCard(
+                  subtle: true,
+                  padding: const EdgeInsets.all(14),
+                  borderColor: AppColors2026.gold.withOpacity(0.24),
+                  onTap: () => app.setActiveTab(4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            '${c.customerName} • ${c.vehicle}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: AppColors2026.gold.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(7),
+                              border: Border.all(color: AppColors2026.gold.withOpacity(0.3)),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(LucideIcons.crown, size: 11, color: AppColors2026.goldLight),
+                                SizedBox(width: 4),
+                                Text(
+                                  'CLIENT VIP',
+                                  style: TextStyle(
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors2026.goldLight,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           Text(
-                            'Contrat ${c.contractNumber} • Fin : ${c.effectiveEndDate}',
+                            '$topClientLoc loc.',
                             style: const TextStyle(
-                              fontSize: 11,
-                              color: AppColors2026.textSecondary,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors2026.goldLight,
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    if (c.customerPhone.isNotEmpty) ...[
-                      IconButton(
-                        tooltip: 'Message WhatsApp',
-                        padding: const EdgeInsets.all(6),
-                        constraints: const BoxConstraints(),
-                        onPressed: () =>
-                            _openWhatsApp(c.customerPhone, whatsappMsg),
-                        icon: const Icon(LucideIcons.messageCircle,
-                            size: 16, color: AppColors2026.emeraldNeon),
+                      const SizedBox(height: 10),
+                      Text(
+                        topClientName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
                       ),
-                      const SizedBox(width: 4),
-                      IconButton(
-                        tooltip: 'Appeler',
-                        padding: const EdgeInsets.all(6),
-                        constraints: const BoxConstraints(),
-                        onPressed: () => _callPhone(c.customerPhone),
-                        icon: const Icon(LucideIcons.phone,
-                            size: 16, color: AppColors2026.cyanBright),
+                      const SizedBox(height: 5),
+                      Text(
+                        'CA : ${fmt.format(topClientCa.round())} MAD',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors2026.emeraldNeon,
+                        ),
                       ),
                     ],
-                  ],
-                ),
-              );
-            }),
-        ],
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // 5. FLEET RADAR DONUT & OCCUPANCY (Matching FleetRadarCard.tsx)
-  // ---------------------------------------------------------------------------
-  Widget _buildFleetRadarCard({
-    required int totalVehicles,
-    required int availableVeh,
-    required int rentedVeh,
-    required int maintVeh,
-    required int occupancyRate,
-  }) {
-    return SpatialGlassCard(
-      padding: const EdgeInsets.all(16),
-      borderColor: AppColors2026.cyanBright.withOpacity(0.3),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(7),
-                      decoration: BoxDecoration(
-                        color: AppColors2026.cyanBright.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(LucideIcons.gauge,
-                          size: 15, color: AppColors2026.cyanBright),
-                    ),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'DISPONIBILITÉ & PARC AUTO',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              TextButton(
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                onPressed: () => widget.appState.setActiveTab(2),
-                child: const Text('Parc Auto',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          Row(
-            children: [
-              // Circular Donut Gauge
-              SizedBox(
-                width: 100,
-                height: 100,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    PieChart(
-                      PieChartData(
-                        sectionsSpace: 4,
-                        centerSpaceRadius: 36,
-                        startDegreeOffset: -90,
-                        sections: [
-                          PieChartSectionData(
-                            color: AppColors2026.cyanBright,
-                            value: math.max(rentedVeh.toDouble(), 0.01),
-                            title: '',
-                            radius: 12,
-                          ),
-                          PieChartSectionData(
-                            color: AppColors2026.emeraldNeon,
-                            value: math.max(availableVeh.toDouble(), 0.01),
-                            title: '',
-                            radius: 12,
-                          ),
-                          PieChartSectionData(
-                            color: AppColors2026.amberSolar,
-                            value: math.max(maintVeh.toDouble(), 0.01),
-                            title: '',
-                            radius: 12,
-                          ),
-                        ],
-                      ),
-                    ),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '$occupancyRate%',
-                          style: const TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const Text(
-                          'Loué',
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors2026.textMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 18),
-
-              // Breakdown specs
-              Expanded(
-                child: Column(
-                  children: [
-                    _FleetBreakdownRow(
-                      label: "Véhicules Loués",
-                      count: rentedVeh,
-                      color: AppColors2026.cyanBright,
-                    ),
-                    const SizedBox(height: 8),
-                    _FleetBreakdownRow(
-                      label: "Véhicules Disponibles",
-                      count: availableVeh,
-                      color: AppColors2026.emeraldNeon,
-                    ),
-                    const SizedBox(height: 8),
-                    _FleetBreakdownRow(
-                      label: "En Maintenance / Révision",
-                      count: maintVeh,
-                      color: AppColors2026.amberSolar,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // 6. REVENUE EVOLUTION AREA CHART (Last 6 months)
-  // ---------------------------------------------------------------------------
-  Widget _buildRevenueEvolutionCard(NumberFormat currencyFmt) {
-    final now = DateTime.now();
-    final spots = <FlSpot>[];
-    final labels = <String>[];
-
-    for (int i = 5; i >= 0; i--) {
-      final mDate = DateTime(now.year, now.month - i, 1);
-      labels.add(DateFormat('MMM').format(mDate));
-      double mSum = 0;
-      for (final c in widget.appState.contracts) {
-        final dt =
-            DateTime.tryParse(c.createdAt) ?? DateTime.tryParse(c.startDate);
-        if (dt != null && dt.year == mDate.year && dt.month == mDate.month) {
-          mSum += c.totalAmount;
-        }
-      }
-      spots.add(FlSpot((5 - i).toDouble(), mSum));
-    }
-
-    final maxY = spots
-        .map((s) => s.y)
-        .fold<double>(1000, (prev, el) => el > prev ? el : prev);
-
-    return SpatialGlassCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'ÉVOLUTION DU C.A.',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors2026.textSecondary,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Trajectoire Mensuelle',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              NeonBadge(
-                label: '${currencyFmt.format(widget.appState.monthlyRevenue.round())} DH',
-                color: AppColors2026.emeraldNeon,
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          SizedBox(
-            height: 180,
-            child: LineChart(
-              LineChartData(
-                minY: 0,
-                maxY: maxY * 1.25,
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  getDrawingHorizontalLine: (_) => FlLine(
-                    color: Colors.white.withOpacity(0.06),
-                    strokeWidth: 1,
                   ),
                 ),
-                titlesData: FlTitlesData(
-                  rightTitles:
-                      const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles:
-                      const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  leftTitles:
-                      const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      getTitlesWidget: (val, _) {
-                        final idx = val.toInt();
-                        if (idx < 0 || idx >= labels.length) {
-                          return const SizedBox();
-                        }
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            labels[idx],
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SpatialGlassCard(
+                  subtle: true,
+                  padding: const EdgeInsets.all(14),
+                  borderColor: AppColors2026.amberSolar.withOpacity(0.24),
+                  onTap: () => app.setActiveTab(8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: AppColors2026.amberSolar.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(7),
+                              border: Border.all(color: AppColors2026.amberSolar.withOpacity(0.3)),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(LucideIcons.trophy, size: 11, color: Color(0xFFFCD34D)),
+                                SizedBox(width: 4),
+                                Text(
+                                  'TOP FLOTTE',
+                                  style: TextStyle(
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFFFCD34D),
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            topVehicle != null
+                                ? '${fmt.format(topVehicle.dailyRate.round())}/j'
+                                : '—',
                             style: const TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
                               color: AppColors2026.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        topVehicle?.fullName ?? 'Parc Automobile',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        'Net : +${fmt.format(topVehicleNet.round())} MAD',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors2026.emeraldNeon,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+
+          // 3. MINI FINANCIAL PERFORMANCE CHART
+          SpatialGlassCard(
+            subtle: true,
+            padding: const EdgeInsets.all(16),
+            onTap: () => app.setActiveTab(8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(LucideIcons.barChart3, size: 17, color: AppColors2026.goldLight),
+                        SizedBox(width: 8),
+                        Text(
+                          'PERFORMANCE FINANCIÈRE',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Text(
+                      'Bilan complet →',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors2026.goldLight,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _buildMiniFinancialChart(monthSeries, currentMonthRev, currentMonthExp, fmt),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 14),
+
+          // 4. RADAR GPS SATELLITE WIDGET
+          _buildRadarGpsWidget(
+            app: app,
+            gpsDevices: gpsDevices,
+            activeGps: activeGps,
+            fallbackVeh: fallbackRentedVeh,
+            rentedCount: rentedCount,
+          ),
+
+          const SizedBox(height: 14),
+
+          // 5. JOURNAL OPÉRATIONNEL
+          SpatialGlassCard(
+            subtle: true,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        AnimatedPulseDot(color: AppColors2026.goldLight, size: 7),
+                        SizedBox(width: 8),
+                        Text(
+                          'JOURNAL OPÉRATIONNEL',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      'Temps Réel',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors2026.goldLight,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (feedItems.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 10),
+                    child: Text(
+                      'Aucune opération récente enregistrée.',
+                      style: TextStyle(fontSize: 11.5, color: AppColors2026.textSecondary),
+                    ),
+                  )
+                else
+                  ...feedItems.map((item) => Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: AppColors2026.surfaceSub,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.white.withOpacity(0.05)),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: item.color.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: item.color.withOpacity(0.32)),
+                              ),
+                              child: Text(
+                                item.tag,
+                                style: TextStyle(
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w900,
+                                  color: item.color,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                item.text,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  color: Color(0xFFE2E8F0),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              item.time,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: AppColors2026.textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 14),
+
+          // 6. COLLECTION PRESTIGE PREVIEW
+          SpatialGlassCard(
+            subtle: true,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(LucideIcons.car, size: 17, color: AppColors2026.goldLight),
+                        const SizedBox(width: 8),
+                        Text(
+                          'COLLECTION PRESTIGE ($availCount / ${vehicles.length})',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: 0.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                    GestureDetector(
+                      onTap: () => app.setActiveTab(2),
+                      child: const Text(
+                        'Voir tout →',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors2026.goldLight,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (vehicles.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Text(
+                      'Aucun véhicule dans le parc.',
+                      style: TextStyle(fontSize: 12, color: AppColors2026.textSecondary),
+                    ),
+                  )
+                else
+                  ...vehicles.take(3).map((car) {
+                    final st = car.status.toLowerCase();
+                    final isAvail = st == 'disponible';
+                    final isMaint = st == 'maintenance';
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppColors2026.surfaceSub,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white.withOpacity(0.06)),
+                      ),
+                      child: Row(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              width: 62,
+                              height: 46,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF0E1016),
+                                border: Border.all(color: AppColors2026.gold.withOpacity(0.2)),
+                              ),
+                              child: VehicleImagePreview(
+                                imageData: car.mainPhoto,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 11),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  car.fullName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                RichText(
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  text: TextSpan(
+                                    children: [
+                                      TextSpan(
+                                        text: '${car.registration} • ',
+                                        style: const TextStyle(
+                                          fontSize: 10.5,
+                                          color: AppColors2026.textSecondary,
+                                        ),
+                                      ),
+                                      TextSpan(
+                                        text: '${fmt.format(car.dailyRate.round())} DH/j',
+                                        style: const TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppColors2026.goldLight,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          if (isAvail)
+                            GoldGradientButton(
+                              label: 'Réserver',
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              borderRadius: 12,
+                              fontSize: 11,
+                              onPressed: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    fullscreenDialog: true,
+                                    builder: (_) => ContractFormDialog(
+                                      appState: app,
+                                      mode: ContractFormMode.create,
+                                    ),
+                                  ),
+                                );
+                              },
+                            )
+                          else if (isMaint)
+                            const NeonBadge(
+                              label: 'Maintenance',
+                              color: AppColors2026.roseLaser,
+                              icon: LucideIcons.wrench,
+                            )
+                          else
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.06),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.white.withOpacity(0.1)),
+                              ),
+                              child: const Text(
+                                'En mission',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors2026.textSecondary,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  }),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeroCockpitCard(
+    BuildContext context,
+    AppStateProvider app,
+    List<VehicleModel> vehicles,
+    List<GpsDeviceModel> gpsDevices,
+    NumberFormat fmt,
+  ) {
+    final marqueeList = vehicles.isNotEmpty ? [...vehicles, ...vehicles] : <VehicleModel>[];
+
+    return SpatialGlassCard(
+      padding: const EdgeInsets.all(18),
+      borderColor: AppColors2026.gold.withOpacity(0.24),
+      glowColor: AppColors2026.gold,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            right: -40,
+            top: -40,
+            child: Container(
+              width: 140,
+              height: 140,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors2026.gold.withOpacity(0.09),
+              ),
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors2026.gold.withOpacity(0.14),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: AppColors2026.gold.withOpacity(0.38)),
+                    ),
+                    child: const Text(
+                      '✦ CONCIERGERIE VIP 2026',
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors2026.goldLight,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors2026.emeraldNeon.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: AppColors2026.emeraldNeon.withOpacity(0.32)),
+                    ),
+                    child: Text(
+                      app.isSyncing ? '• SYNC...' : '• CLOUD SYNC',
+                      style: const TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors2026.emeraldNeon,
+                        letterSpacing: 0.6,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Tableau de Bord &',
+                style: AppTheme2026.luxurySerif(
+                  fontSize: 23,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+              Text(
+                'Cockpit Exécutif',
+                style: AppTheme2026.luxurySerif(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors2026.goldLight,
+                ),
+              ),
+              const SizedBox(height: 5),
+              const Text(
+                'Gestion de flotte prestige, télémétrie satellite & contrats numériques',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: AppColors2026.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: GoldGradientButton(
+                      label: 'Nouveau Contrat',
+                      icon: LucideIcons.fileText,
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            fullscreenDialog: true,
+                            builder: (_) => ContractFormDialog(
+                              appState: app,
+                              mode: ContractFormMode.create,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: DarkLuxuryButton(
+                      label: 'Nouveau Client',
+                      icon: LucideIcons.userPlus,
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            fullscreenDialog: true,
+                            builder: (_) => ClientFormDialog(appState: app),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Divider(color: AppColors2026.gold.withOpacity(0.16), height: 1),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Row(
+                    children: [
+                      AnimatedPulseDot(color: AppColors2026.emeraldNeon, size: 6.5),
+                      SizedBox(width: 7),
+                      Text(
+                        'FLOTTE PRESTIGE EN DIRECT',
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors2026.goldLight,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          fullscreenDialog: true,
+                          builder: (_) => VehicleFormDialog(appState: app),
+                        ),
+                      );
+                    },
+                    child: const Text(
+                      '+ Véhicule',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors2026.goldLight,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (marqueeList.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors2026.surfaceSub,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white.withOpacity(0.06)),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'Synchronisation des véhicules du parc...',
+                      style: TextStyle(fontSize: 11, color: AppColors2026.textSecondary),
+                    ),
+                  ),
+                )
+              else
+                SizedBox(
+                  height: 68,
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: (n) {
+                      if (n is ScrollStartNotification) {
+                        _marqueePaused = true;
+                      } else if (n is ScrollEndNotification) {
+                        Future.delayed(const Duration(seconds: 2), () {
+                          if (mounted) _marqueePaused = false;
+                        });
+                      }
+                      return false;
+                    },
+                    child: ListView.separated(
+                      controller: _marqueeCtrl,
+                      scrollDirection: Axis.horizontal,
+                      itemCount: marqueeList.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 10),
+                      itemBuilder: (ctx, i) {
+                        final car = marqueeList[i];
+                        final st = car.status.toLowerCase();
+                        final isAvail = st == 'disponible';
+                        final isMaint = st == 'maintenance';
+                        final dotColor = isAvail
+                            ? AppColors2026.emeraldNeon
+                            : isMaint
+                                ? AppColors2026.roseLaser
+                                : AppColors2026.amberSolar;
+                        final matchedGps = _matchGpsForVehicle(car, gpsDevices);
+                        final gpsLabel = matchedGps != null
+                            ? '${matchedGps.speed.round()} km/h'
+                            : (isAvail ? 'Showroom' : isMaint ? 'Atelier' : 'En route');
+
+                        return GestureDetector(
+                          onTap: () {
+                            if (matchedGps != null) {
+                              app.selectGpsDevice(matchedGps.id);
+                            }
+                            app.setActiveTab(1); // Open GPS Live Map!
+                          },
+                          child: Container(
+                            width: 178,
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppColors2026.surfaceSub.withOpacity(0.95),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.white.withOpacity(0.08)),
+                            ),
+                            child: Row(
+                              children: [
+                                Stack(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(11),
+                                      child: Container(
+                                        width: 48,
+                                        height: 44,
+                                        color: const Color(0xFF0B0D12),
+                                        child: VehicleImagePreview(
+                                          imageData: car.mainPhoto,
+                                          fit: BoxFit.cover,
+                                        ),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      top: 3,
+                                      right: 3,
+                                      child: Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          color: dotColor,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: AppColors2026.obsidian,
+                                            width: 1.3,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(width: 9),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        car.fullName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w900,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${fmt.format(car.dailyRate.round())} DH/j',
+                                        style: const TextStyle(
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppColors2026.goldLight,
+                                        ),
+                                      ),
+                                      Text(
+                                        '📍 GPS • $gpsLabel',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 8.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors2026.emeraldNeon,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         );
@@ -915,643 +963,456 @@ class _OverviewScreenState extends State<OverviewScreen> {
                     ),
                   ),
                 ),
-                borderData: FlBorderData(show: false),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: spots,
-                    isCurved: true,
-                    curveSmoothness: 0.35,
-                    color: AppColors2026.emeraldNeon,
-                    barWidth: 3.5,
-                    dotData: FlDotData(
-                      show: true,
-                      getDotPainter: (_, __, ___, ____) => FlDotCirclePainter(
-                        radius: 4,
-                        color: AppColors2026.emeraldBright,
-                        strokeWidth: 2,
-                        strokeColor: Colors.white,
-                      ),
-                    ),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          AppColors2026.emeraldNeon.withOpacity(0.35),
-                          AppColors2026.cyanNeon.withOpacity(0.02),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // 7. RECENT INVOICES CARD (FACTURES BONATOURS)
-  // ---------------------------------------------------------------------------
-  Widget _buildRecentInvoicesCard(AppStateProvider app, NumberFormat currencyFmt) {
-    return SpatialGlassCard(
-      padding: const EdgeInsets.all(16),
-      borderColor: AppColors2026.amberSolar.withOpacity(0.3),
+  Widget _buildMiniFinancialChart(
+    List<_MonthPoint> series,
+    double currentRev,
+    double currentExp,
+    NumberFormat fmt,
+  ) {
+    final maxVal = series.fold<double>(
+      1000,
+      (m, p) => math.max(m, math.max(p.rev, p.exp)),
+    );
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 14, 12, 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF12151E),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.06)),
+      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Expanded(
-                child: Row(
+          SizedBox(
+            height: 82,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: series.map((pt) {
+                final revH = math.max(6.0, (pt.rev / maxVal) * 58);
+                final expH = math.max(5.0, (pt.exp / maxVal) * 58);
+                return Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    Icon(LucideIcons.fileSpreadsheet,
-                        color: AppColors2026.amberSolar, size: 16),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'DERNIÈRES FACTURES',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              TextButton(
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                onPressed: () => app.setActiveTab(4),
-                child: const Text('Voir Factures',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (app.invoices.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Center(
-                child: Text(
-                  'Aucune facture enregistrée pour le moment.',
-                  style: TextStyle(
-                      fontSize: 12, color: AppColors2026.textMuted),
-                ),
-              ),
-            )
-          else
-            ...app.invoices.take(3).map((inv) {
-              Color statusColor = AppColors2026.amberSolar;
-              String statusLabel = 'En attente';
-              if (inv.status == 'paid') {
-                statusColor = AppColors2026.emeraldNeon;
-                statusLabel = 'Payée';
-              } else if (inv.status == 'overdue') {
-                statusColor = AppColors2026.roseLaser;
-                statusLabel = 'En retard';
-              }
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.03),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white10),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(LucideIcons.receipt, size: 16, color: statusColor),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            inv.invoiceNumber,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 13,
-                            ),
-                          ),
-                          Text(
-                            inv.customerName,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: AppColors2026.textSecondary,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    Column(
+                    Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(
-                          '${currencyFmt.format(inv.totalTtc)} DH',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 13,
+                        Container(
+                          width: 9,
+                          height: revH,
+                          decoration: BoxDecoration(
+                            color: AppColors2026.emeraldNeon,
+                            borderRadius: BorderRadius.circular(4),
                           ),
                         ),
-                        NeonBadge(
-                          label: statusLabel,
-                          color: statusColor,
+                        const SizedBox(width: 3),
+                        Container(
+                          width: 9,
+                          height: expH,
+                          decoration: BoxDecoration(
+                            color: AppColors2026.roseLaser,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
                         ),
                       ],
                     ),
+                    const SizedBox(height: 6),
+                    Text(
+                      pt.label,
+                      style: const TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors2026.textSecondary,
+                      ),
+                    ),
                   ],
-                ),
-              );
-            }),
-        ],
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // 8. FINANCIAL BREAKDOWN CARD
-  // ---------------------------------------------------------------------------
-  Widget _buildFinancialBreakdownCard({
-    required double monthlyRev,
-    required double monthlyCost,
-    required double netProfit,
-    required NumberFormat currencyFmt,
-  }) {
-    return SpatialGlassCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'STRUCTURE FINANCIÈRE MENSUELLE',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.5,
+                );
+              }).toList(),
             ),
           ),
-          const SizedBox(height: 14),
-          _FinSummaryRow(
-            label: "Total Chiffre d'Affaires",
-            amount: "${currencyFmt.format(monthlyRev.round())} DH",
-            color: AppColors2026.cyanBright,
-          ),
-          const Divider(height: 18, color: Colors.white10),
-          _FinSummaryRow(
-            label: "Charges, Entretien & Réparations",
-            amount: "- ${currencyFmt.format(monthlyCost.round())} DH",
-            color: AppColors2026.roseLaser,
-          ),
-          const Divider(height: 18, color: Colors.white10),
-          _FinSummaryRow(
-            label: "Bénéfice Net d'Exploitation",
-            amount: "${currencyFmt.format(netProfit.round())} DH",
-            color: netProfit >= 0
-                ? AppColors2026.emeraldNeon
-                : AppColors2026.roseLaser,
-            isBold: true,
+          const SizedBox(height: 10),
+          Divider(color: Colors.white.withOpacity(0.06), height: 1),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '• Revenus : ${fmt.format(currentRev.round())} MAD',
+                style: const TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors2026.emeraldNeon,
+                ),
+              ),
+              Text(
+                '• Dépenses : ${fmt.format(currentExp.round())} MAD',
+                style: const TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors2026.roseLaser,
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // 9. RECENT CONTRACTS LIST
-  // ---------------------------------------------------------------------------
-  Widget _buildRecentContractsList(AppStateProvider app, NumberFormat currencyFmt) {
+  Widget _buildRadarGpsWidget({
+    required AppStateProvider app,
+    required List<GpsDeviceModel> gpsDevices,
+    required GpsDeviceModel? activeGps,
+    required VehicleModel? fallbackVeh,
+    required int rentedCount,
+  }) {
+    final trackedTitle = activeGps?.name ?? fallbackVeh?.fullName ?? 'Flotte SFTM / BonaTours';
+    final trackedSub = activeGps != null
+        ? '${activeGps.lat.toStringAsFixed(4)}° N, ${activeGps.lng.toStringAsFixed(4)}° W'
+        : (fallbackVeh != null ? 'Matricule ${fallbackVeh.registration}' : 'En attente de signal GPS');
+    final speedBadge = activeGps != null
+        ? '${activeGps.speed.round()} km/h'
+        : (rentedCount > 0 ? 'LIVE' : 'Standby');
+    final centerBadge = gpsDevices.isNotEmpty
+        ? gpsDevices.where((d) => d.online).length
+        : rentedCount;
+
     return SpatialGlassCard(
+      subtle: true,
       padding: const EdgeInsets.all(16),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Expanded(
-                child: Text(
-                  'DERNIERS DOSSIERS CONTRATS',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+              const Row(
+                children: [
+                  AnimatedPulseDot(color: AppColors2026.emeraldNeon, size: 7.5),
+                  SizedBox(width: 8),
+                  Text(
+                    'RADAR GPS SATELLITE',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
+              ),
+              GestureDetector(
+                onTap: () => app.setActiveTab(1),
+                child: const Text(
+                  'Plein écran →',
                   style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.5,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors2026.goldLight,
                   ),
                 ),
               ),
-              TextButton(
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                onPressed: () => app.setActiveTab(3),
-                child: const Text('Voir tout',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-              ),
             ],
           ),
-          const SizedBox(height: 10),
-          if (app.contracts.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Center(
-                child: Text('Aucun contrat disponible.',
-                    style: TextStyle(color: AppColors2026.textMuted)),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () => app.setActiveTab(1),
+            child: Container(
+              height: 146,
+              decoration: BoxDecoration(
+                color: const Color(0xFF080A0F),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppColors2026.gold.withOpacity(0.24)),
               ),
-            )
-          else
-            ...app.contracts.take(5).map((c) {
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.03),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white10),
-                ),
-                child: Row(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Stack(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: (c.isActive
-                                ? AppColors2026.emeraldNeon
-                                : AppColors2026.textMuted)
-                            .withOpacity(0.16),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        LucideIcons.fileCheck,
-                        size: 15,
-                        color: c.isActive
-                            ? AppColors2026.emeraldNeon
-                            : AppColors2026.textSecondary,
+                    CustomPaint(
+                      size: const Size(double.infinity, 146),
+                      painter: _RadarGridPainter(),
+                    ),
+                    Center(
+                      child: SizedBox(
+                        width: 122,
+                        height: 122,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            RotationTransition(
+                              turns: _radarCtrl,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: SweepGradient(
+                                    colors: [
+                                      AppColors2026.emeraldNeon.withOpacity(0.32),
+                                      AppColors2026.gold.withOpacity(0.14),
+                                      Colors.transparent,
+                                      Colors.transparent,
+                                    ],
+                                    stops: const [0.0, 0.14, 0.28, 1.0],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Container(
+                              width: 122,
+                              height: 122,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: AppColors2026.gold.withOpacity(0.25),
+                                ),
+                              ),
+                            ),
+                            Container(
+                              width: 78,
+                              height: 78,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: AppColors2026.emeraldNeon.withOpacity(0.32),
+                                ),
+                              ),
+                            ),
+                            Container(
+                              width: 30,
+                              height: 30,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: AppColors2026.emeraldNeon.withOpacity(0.24),
+                                border: Border.all(
+                                  color: AppColors2026.emeraldNeon,
+                                  width: 2,
+                                ),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '$centerBadge',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors2026.emeraldNeon,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${c.customerName} • ${c.vehicle}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontSize: 13, fontWeight: FontWeight.w800),
-                          ),
-                          Text(
-                            '${c.contractNumber} • Du ${c.startDate} au ${c.endDate}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontSize: 11, color: AppColors2026.textSecondary),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
+                    Positioned(
+                      top: 10,
+                      left: 12,
                       child: Text(
-                        '${currencyFmt.format(c.totalAmount.round())} DH',
+                        activeGps != null
+                            ? '${activeGps.lat.toStringAsFixed(4)}° N, ${activeGps.lng.toStringAsFixed(4)}° W'
+                            : '33.5992° N, 7.6694° W',
                         style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors2026.cyanBright,
+                          fontSize: 9.5,
+                          fontFamily: 'monospace',
+                          color: AppColors2026.textSecondary,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 10,
+                      right: 12,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors2026.obsidian.withOpacity(0.92),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: AppColors2026.gold.withOpacity(0.35)),
+                        ),
+                        child: const Text(
+                          'SAT-LINK CHIFFRÉ',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors2026.goldLight,
+                          ),
                         ),
                       ),
                     ),
                   ],
                 ),
-              );
-            }),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: () {
+              if (activeGps != null) app.selectGpsDevice(activeGps.id);
+              app.setActiveTab(1);
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+              decoration: BoxDecoration(
+                color: AppColors2026.surfaceSub,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withOpacity(0.06)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          trackedTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          trackedSub,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: AppColors2026.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: AppColors2026.emeraldNeon.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors2026.emeraldNeon.withOpacity(0.38)),
+                    ),
+                    child: Text(
+                      speedBadge,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors2026.emeraldNeon,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
+
+  List<_MonthPoint> _build6MonthFinancialSeries(DateTime now, AppStateProvider app) {
+    final list = <_MonthPoint>[];
+    for (int offset = 5; offset >= 0; offset--) {
+      final m = DateTime(now.year, now.month - offset, 1);
+      final prefix = '${m.year}-${m.month.toString().padLeft(2, '0')}';
+      double rev = 0;
+      double exp = 0;
+      for (final c in app.contracts) {
+        if (c.startDate.startsWith(prefix) || c.createdAt.startsWith(prefix)) {
+          rev += c.effectiveTotalAmount;
+        }
+      }
+      for (final e in app.expenses) {
+        if (!e.archived) {
+          exp += (e.monthlyCost > 0 ? e.monthlyCost : 0);
+        }
+      }
+      for (final r in app.repairs) {
+        if (r.dateReparation.startsWith(prefix) || r.createdAt.startsWith(prefix)) {
+          exp += r.cout;
+        }
+      }
+      const names = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sept', 'Oct', 'Nov', 'Déc'];
+      list.add(_MonthPoint(label: names[m.month - 1], rev: rev, exp: exp));
+    }
+    return list;
+  }
+
+  List<_FeedItem> _buildOperationalFeed(AppStateProvider app) {
+    final items = <_FeedItem>[];
+    for (final c in app.contracts.take(2)) {
+      items.add(_FeedItem(
+        tag: c.isClosed ? 'RETOUR' : 'CONTRAT',
+        color: c.isClosed ? AppColors2026.emeraldNeon : AppColors2026.goldLight,
+        text: '${c.customerName} • ${c.vehicle}',
+        time: c.startDate.length >= 10 ? c.startDate.substring(5, 10) : 'Récent',
+      ));
+    }
+    for (final r in app.repairs.take(1)) {
+      items.add(_FeedItem(
+        tag: 'RÉVISION',
+        color: AppColors2026.blueRoyal,
+        text: '${r.typeReparation} • ${r.vehicleDisplay}',
+        time: r.dateReparation.length >= 10 ? r.dateReparation.substring(5, 10) : 'Atelier',
+      ));
+    }
+    for (final e in app.expenses.take(1)) {
+      items.add(_FeedItem(
+        tag: 'DÉPENSE',
+        color: AppColors2026.roseLaser,
+        text: '${e.typeLabel} (${e.totalCost.round()} DH)',
+        time: e.startDate.length >= 10 ? e.startDate.substring(5, 10) : 'Charge',
+      ));
+    }
+    return items.take(4).toList();
+  }
 }
 
-// -----------------------------------------------------------------------------
-// HELPER SUBWIDGETS
-// -----------------------------------------------------------------------------
-
-class _QuickActionBtn extends StatelessWidget {
-  final IconData icon;
+class _MonthPoint {
   final String label;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _QuickActionBtn({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.14),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withOpacity(0.4)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: color),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  final double rev;
+  final double exp;
+  const _MonthPoint({required this.label, required this.rev, required this.exp});
 }
 
-class _BentoTile2026 extends StatelessWidget {
-  final String title;
-  final String value;
-  final String subtitle;
-  final IconData icon;
+class _FeedItem {
+  final String tag;
   final Color color;
-  final String badge;
-  final Color badgeColor;
-  final VoidCallback onTap;
-
-  const _BentoTile2026({
-    required this.title,
-    required this.value,
-    required this.subtitle,
-    required this.icon,
-    required this.color,
-    required this.badge,
-    required this.badgeColor,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.04),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withOpacity(0.3)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(7),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.16),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(icon, size: 16, color: color),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: badgeColor.withOpacity(0.18),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    badge,
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w900,
-                      color: badgeColor,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    value,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors2026.textSecondary,
-                  ),
-                ),
-                if (subtitle.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w600,
-                      color: color.withOpacity(0.9),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  final String text;
+  final String time;
+  const _FeedItem({required this.tag, required this.color, required this.text, required this.time});
 }
 
-class _OpsFilterChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final Color color;
-  final VoidCallback onTap;
+class _RadarGridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final gridPaint = Paint()
+      ..color = AppColors2026.gold.withOpacity(0.06)
+      ..strokeWidth = 1;
 
-  const _OpsFilterChip({
-    required this.label,
-    required this.selected,
-    required this.color,
-    required this.onTap,
-  });
+    const step = 32.0;
+    for (double x = 0; x < size.width; x += step) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
+    }
+    for (double y = 0; y < size.height; y += step) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+
+    final roadPaint = Paint()
+      ..color = AppColors2026.gold.withOpacity(0.22)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4;
+    final p1 = Path()
+      ..moveTo(0, size.height * 0.78)
+      ..quadraticBezierTo(size.width * 0.45, size.height * 0.52, size.width, size.height * 0.18);
+    canvas.drawPath(p1, roadPaint);
+  }
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? color.withOpacity(0.2) : Colors.white.withOpacity(0.04),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: selected ? color : Colors.white12,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
-            color: selected ? color : AppColors2026.textMuted,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FleetBreakdownRow extends StatelessWidget {
-  final String label;
-  final int count;
-  final Color color;
-
-  const _FleetBreakdownRow({
-    required this.label,
-    required this.count,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Expanded(
-          child: Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors2026.textSecondary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          '$count',
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _FinSummaryRow extends StatelessWidget {
-  final String label;
-  final String amount;
-  final Color color;
-  final bool isBold;
-
-  const _FinSummaryRow({
-    required this.label,
-    required this.amount,
-    required this.color,
-    this.isBold = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Expanded(
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: isBold ? 13 : 12,
-              fontWeight: isBold ? FontWeight.w900 : FontWeight.w600,
-              color: isBold ? Colors.white : AppColors2026.textSecondary,
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          amount,
-          style: TextStyle(
-            fontSize: isBold ? 15 : 13,
-            fontWeight: FontWeight.w900,
-            color: color,
-          ),
-        ),
-      ],
-    );
-  }
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

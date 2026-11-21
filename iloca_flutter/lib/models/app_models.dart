@@ -1307,8 +1307,167 @@ class SupervisorPermissionsModel {
       if (clean == 'rapports' && norm == 'reports') return true;
       if (clean == 'alerts' && norm == 'alertes') return true;
       if (clean == 'alertes' && norm == 'alerts') return true;
+      if ((clean == 'map' || clean == 'gps' || clean == 'gps live' || clean == 'carte') &&
+          (norm == 'map' || norm == 'gps' || norm == 'carte' || norm == 'tracking')) return true;
+      if ((clean == 'repairs' || clean == 'reparations' || clean == 'réparations' || clean == 'revisions' || clean == 'révisions') &&
+          (norm == 'repairs' || norm == 'reparations' || norm == 'réparations' || norm == 'revisions' || norm == 'révisions')) return true;
       return false;
     });
+  }
+}
+
+/// 8. Repair & Revision Model (100% Web Parity with Supabase `public.repairs`)
+class RepairModel {
+  final String id;
+  final String vehicleId;
+  final Map<String, dynamic> vehicleInfo;
+  final String typeReparation;
+  final double cout;
+  final double paye;
+  final double dette;
+  final String dateReparation;
+  final String paymentMethod;
+  final String? dueDate;
+  final int? slaTargetDays;
+  final String operationalStatus; // 'en_maintenance' | 'immobilise_long' | 'pret_pour_retour'
+  final String note;
+  final String createdAt;
+  final String updatedAt;
+
+  const RepairModel({
+    required this.id,
+    required this.vehicleId,
+    this.vehicleInfo = const {},
+    this.typeReparation = 'Mécanique',
+    this.cout = 0,
+    this.paye = 0,
+    this.dette = 0,
+    required this.dateReparation,
+    this.paymentMethod = 'Espèces',
+    this.dueDate,
+    this.slaTargetDays,
+    this.operationalStatus = 'en_maintenance',
+    this.note = '',
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  String get vehicleDisplay {
+    final marque = (vehicleInfo['marque'] ?? vehicleInfo['brand'] ?? '').toString();
+    final modele = (vehicleInfo['modele'] ?? vehicleInfo['model'] ?? '').toString();
+    final mat = (vehicleInfo['immatriculation'] ?? vehicleInfo['registration'] ?? '').toString();
+    final name = '$marque $modele'.trim();
+    if (name.isNotEmpty && mat.isNotEmpty) return '$name ($mat)';
+    if (name.isNotEmpty) return name;
+    if (mat.isNotEmpty) return mat;
+    return 'Véhicule Flotte';
+  }
+
+  bool get isReadyForReturn => operationalStatus == 'pret_pour_retour';
+  bool get isUrgent => dette > 0 || operationalStatus == 'immobilise_long';
+
+  static double _parseNum(dynamic v, [double fallback = 0]) {
+    if (v == null) return fallback;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? fallback;
+  }
+
+  factory RepairModel.fromJson(Map<String, dynamic> row) {
+    final now = DateTime.now().toIso8601String();
+    final infoRaw = row['vehicleInfo'] ?? row['vehicleinfo'] ?? row['vehicle_info'];
+    final infoMap = infoRaw is Map
+        ? Map<String, dynamic>.from(infoRaw)
+        : <String, dynamic>{};
+    final coutVal = _parseNum(row['cout'] ?? row['cost'], 0);
+    final payeVal = _parseNum(row['paye'] ?? row['paid'], 0);
+    final detteVal = _parseNum(row['dette'] ?? row['debt'], (coutVal - payeVal).clamp(0, double.infinity));
+
+    return RepairModel(
+      id: (row['id'] ?? '').toString(),
+      vehicleId: (row['vehicleId'] ?? row['vehicleid'] ?? row['vehicle_id'] ?? '').toString(),
+      vehicleInfo: infoMap,
+      typeReparation: (row['typeReparation'] ?? row['type_reparation'] ?? row['typereparation'] ?? 'Mécanique').toString(),
+      cout: coutVal,
+      paye: payeVal,
+      dette: detteVal,
+      dateReparation: (row['dateReparation'] ?? row['date_reparation'] ?? now.substring(0, 10)).toString(),
+      paymentMethod: (row['paymentMethod'] ?? row['payment_method'] ?? 'Espèces').toString(),
+      dueDate: (row['dueDate'] ?? row['due_date'])?.toString(),
+      slaTargetDays: int.tryParse((row['slaTargetDays'] ?? row['sla_target_days'] ?? '').toString()),
+      operationalStatus: (row['operationalStatus'] ?? row['operational_status'] ?? 'en_maintenance').toString(),
+      note: (row['note'] ?? '').toString(),
+      createdAt: (row['created_at'] ?? now).toString(),
+      updatedAt: (row['updated_at'] ?? now).toString(),
+    );
+  }
+
+  Map<String, dynamic> toSupabasePayload() => {
+        'vehicle_id': vehicleId,
+        'vehicleInfo': vehicleInfo,
+        'typeReparation': typeReparation,
+        'cout': cout,
+        'paye': paye,
+        'dette': dette,
+        'dateReparation': dateReparation,
+        'paymentMethod': paymentMethod,
+        if (dueDate != null) 'dueDate': dueDate,
+        if (slaTargetDays != null) 'slaTargetDays': slaTargetDays,
+        'operationalStatus': operationalStatus,
+        'note': note,
+      };
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'vehicleId': vehicleId,
+        'vehicleInfo': vehicleInfo,
+        'typeReparation': typeReparation,
+        'cout': cout,
+        'paye': paye,
+        'dette': dette,
+        'dateReparation': dateReparation,
+        'paymentMethod': paymentMethod,
+        'dueDate': dueDate,
+        'slaTargetDays': slaTargetDays,
+        'operationalStatus': operationalStatus,
+        'note': note,
+        'created_at': createdAt,
+        'updated_at': updatedAt,
+      };
+
+  RepairModel copyWith({
+    String? id,
+    String? vehicleId,
+    Map<String, dynamic>? vehicleInfo,
+    String? typeReparation,
+    double? cout,
+    double? paye,
+    double? dette,
+    String? dateReparation,
+    String? paymentMethod,
+    String? dueDate,
+    int? slaTargetDays,
+    String? operationalStatus,
+    String? note,
+    String? createdAt,
+    String? updatedAt,
+  }) {
+    return RepairModel(
+      id: id ?? this.id,
+      vehicleId: vehicleId ?? this.vehicleId,
+      vehicleInfo: vehicleInfo ?? this.vehicleInfo,
+      typeReparation: typeReparation ?? this.typeReparation,
+      cout: cout ?? this.cout,
+      paye: paye ?? this.paye,
+      dette: dette ?? this.dette,
+      dateReparation: dateReparation ?? this.dateReparation,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      dueDate: dueDate ?? this.dueDate,
+      slaTargetDays: slaTargetDays ?? this.slaTargetDays,
+      operationalStatus: operationalStatus ?? this.operationalStatus,
+      note: note ?? this.note,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
   }
 }
 

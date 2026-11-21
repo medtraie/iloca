@@ -375,20 +375,24 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AppColors2026.amberSolar,
-        elevation: 6,
-        icon: const Icon(LucideIcons.plus, color: Colors.black, size: 19),
-        label: const Text(
-          'NOUVELLE CHARGE',
-          style: TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.w900,
-            fontSize: 12,
-            letterSpacing: 0.5,
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 96),
+        child: FloatingActionButton.extended(
+          heroTag: 'new_expense_fab_btn',
+          backgroundColor: AppColors2026.gold,
+          foregroundColor: Colors.black,
+          elevation: 6,
+          icon: const Icon(LucideIcons.plus, color: Colors.black, size: 19),
+          label: const Text(
+            'Nouvelle Dépense',
+            style: TextStyle(
+              color: Colors.black,
+              fontWeight: FontWeight.w900,
+              fontSize: 12.5,
+            ),
           ),
+          onPressed: () => _openExpenseDialog(),
         ),
-        onPressed: () => _openExpenseDialog(),
       ),
     );
   }

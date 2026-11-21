@@ -6,12 +6,21 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/config/app_config.dart';
 import '../core/theme/app_theme_2026.dart';
 import '../models/app_models.dart';
+import '../services/gpswox_service.dart';
 import '../services/supabase_sync_service.dart';
 
 class AppStateProvider extends ChangeNotifier {
-  // Navigation Tab (0: Overview, 1: Clients, 2: Véhicules, 3: Contrats, 4: Factures, 5: Rapports, 6: Alertes)
+  // Primary Bottom Dock Tab (0: Cockpit, 1: GPS Live/Map, 2: Véhicules, 3..9: Executive Modules via Gestion)
   int _activeTabIndex = 0;
   int get activeTabIndex => _activeTabIndex;
+
+  // Selected GPS Vehicle ID for Map focus
+  String? _selectedGpsDeviceId;
+  String? get selectedGpsDeviceId => _selectedGpsDeviceId;
+  void selectGpsDevice(String? deviceId) {
+    _selectedGpsDeviceId = deviceId;
+    notifyListeners();
+  }
 
   // Auth State (Default: starts at LoginScreen on fresh install)
   bool _isAuthenticated = false;
@@ -79,14 +88,26 @@ class AppStateProvider extends ChangeNotifier {
   List<ExpenseModel> _expenses = [];
   List<ExpenseModel> get expenses => _expenses;
 
+  List<RepairModel> _repairs = [];
+  List<RepairModel> get repairs => _repairs;
+
   double _monthlyExpensesAndRepairs = 0;
   double get monthlyExpensesAndRepairs {
     if (_monthlyExpensesAndRepairs > 0) return _monthlyExpensesAndRepairs;
     return totalMonthlyExpensesAverage;
   }
 
+  // Live GPS Telemetry & Events (Synchronized with GPSWOX & Supabase tracking_positions)
+  List<GpsDeviceModel> _gpsDevices = [];
+  List<GpsDeviceModel> get gpsDevices => _gpsDevices;
+  List<AlertItemModel> _gpsEvents = [];
+  bool _isGpsSyncing = false;
+  bool get isGpsSyncing => _isGpsSyncing;
+  Timer? _gpsPollingTimer;
+  bool _fastGpsPolling = false;
+
   // Traceur Customizer State (Persisted)
-  Color _tracerColor = AppColors2026.cyanNeon;
+  Color _tracerColor = AppColors2026.gold;
   Color get tracerColor => _tracerColor;
 
   double _tracerWeight = 5.0;
@@ -134,7 +155,22 @@ class AppStateProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
-  void setFastGpsPolling(bool fast) {}
+  void setFastGpsPolling(bool fast) {
+    if (_fastGpsPolling == fast) return;
+    _fastGpsPolling = fast;
+    _restartGpsPollingTimer();
+  }
+
+  void _restartGpsPollingTimer() {
+    _gpsPollingTimer?.cancel();
+    if (!_isAuthenticated) return;
+    final interval = Duration(seconds: _fastGpsPolling ? 6 : 30);
+    _gpsPollingTimer = Timer.periodic(interval, (_) {
+      if (_isAuthenticated) {
+        refreshGpsTelemetry();
+      }
+    });
+  }
 
   RealtimeChannel? _realtimeChannel;
 
@@ -210,13 +246,18 @@ class AppStateProvider extends ChangeNotifier {
         _contracts = [];
         _invoices = [];
         _expenses = [];
+        _repairs = [];
+        _gpsDevices = [];
+        _gpsEvents = [];
         _monthlyExpensesAndRepairs = 0;
       }
       notifyListeners();
 
-      // 4. Background non-blocking network refresh & realtime setup
+      // 4. Background non-blocking network refresh, GPS telemetry & realtime setup
       if (_isAuthenticated) {
         refreshAllData();
+        refreshGpsTelemetry();
+        _restartGpsPollingTimer();
         _setupRealtimeSubscriptions();
       }
     } catch (e) {
@@ -254,6 +295,11 @@ class AppStateProvider extends ChangeNotifier {
         final list = jsonDecode(eJson) as List<dynamic>;
         _expenses = list.map((e) => ExpenseModel.fromJson(Map<String, dynamic>.from(e))).toList();
       }
+      final rJson = prefs.getString('iloca:$uid:repairs:local');
+      if (rJson != null) {
+        final list = jsonDecode(rJson) as List<dynamic>;
+        _repairs = list.map((e) => RepairModel.fromJson(Map<String, dynamic>.from(e))).toList();
+      }
       _monthlyExpensesAndRepairs = prefs.getDouble('iloca:$uid:monthly_expenses') ?? 0;
       _syncVehiclesWithActiveContracts();
     } catch (e) {
@@ -270,6 +316,7 @@ class AppStateProvider extends ChangeNotifier {
       await prefs.setString('iloca:$uid:contracts:local', jsonEncode(_contracts.map((c) => c.toJson()).toList()));
       await prefs.setString('iloca:$uid:invoices:local', jsonEncode(_invoices.map((i) => i.toJson()).toList()));
       await prefs.setString('iloca:$uid:expenses:local', jsonEncode(_expenses.map((e) => e.toJson()).toList()));
+      await prefs.setString('iloca:$uid:repairs:local', jsonEncode(_repairs.map((r) => r.toJson()).toList()));
       await prefs.setDouble('iloca:$uid:monthly_expenses', _monthlyExpensesAndRepairs);
     } catch (_) {}
   }
@@ -317,8 +364,9 @@ class AppStateProvider extends ChangeNotifier {
         },
         onFinanceChanged: () async {
           _expenses = await SupabaseSyncService.fetchExpenses();
+          _repairs = await SupabaseSyncService.fetchRepairs();
           _monthlyExpensesAndRepairs =
-              await SupabaseSyncService.fetchMonthlyExpensesAndRepairs();
+              await SupabaseSyncService.fetchMonthlyExpensesAndRepairs(existingExpenses: _expenses);
           _lastSyncTime = DateTime.now();
           _saveToLocalCache();
           notifyListeners();
@@ -371,10 +419,11 @@ class AppStateProvider extends ChangeNotifier {
           debugPrint('[AppState] fetchExpenses error: $e');
           return <ExpenseModel>[];
         }),
-        SupabaseSyncService.fetchMonthlyExpensesAndRepairs().catchError((e) {
-          debugPrint('[AppState] fetchMonthlyExpenses error: $e');
-          return 0.0;
+        SupabaseSyncService.fetchRepairs().catchError((e) {
+          debugPrint('[AppState] fetchRepairs error: $e');
+          return <RepairModel>[];
         }),
+        SupabaseSyncService.fetchTenantSettings().catchError((_) => <String, dynamic>{}),
       ]).timeout(const Duration(seconds: 40));
 
       final fetchedClients = results[0] as List<ClientModel>;
@@ -382,7 +431,7 @@ class AppStateProvider extends ChangeNotifier {
       final fetchedContracts = results[2] as List<ContractModel>;
       final fetchedInvoices = results[3] as List<InvoiceModel>;
       final fetchedExpenses = results[4] as List<ExpenseModel>;
-      final fetchedMonthly = results[5] as double;
+      final fetchedRepairs = results[5] as List<RepairModel>;
 
       if (SupabaseSyncService.lastFetchError == null) {
         _clients = fetchedClients;
@@ -390,15 +439,31 @@ class AppStateProvider extends ChangeNotifier {
         _contracts = fetchedContracts;
         _invoices = fetchedInvoices;
         _expenses = fetchedExpenses;
-        _monthlyExpensesAndRepairs = fetchedMonthly;
+        _repairs = fetchedRepairs;
       } else {
         if (fetchedClients.isNotEmpty) _clients = fetchedClients;
         if (fetchedVehicles.isNotEmpty) _vehicles = fetchedVehicles;
         if (fetchedContracts.isNotEmpty) _contracts = fetchedContracts;
         if (fetchedInvoices.isNotEmpty) _invoices = fetchedInvoices;
         if (fetchedExpenses.isNotEmpty) _expenses = fetchedExpenses;
-        if (fetchedMonthly > 0) _monthlyExpensesAndRepairs = fetchedMonthly;
+        if (fetchedRepairs.isNotEmpty) _repairs = fetchedRepairs;
       }
+
+      // Compute monthly expenses + repairs from already fetched lists (zero duplicate query!)
+      final now = DateTime.now();
+      final monthPrefix = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+      double expMonthly = 0;
+      for (final e in _expenses) {
+        if (e.archived) continue;
+        expMonthly += (e.monthlyCost > 0 ? e.monthlyCost : e.totalCost);
+      }
+      double repMonthly = 0;
+      for (final r in _repairs) {
+        if (r.createdAt.startsWith(monthPrefix) || r.dateReparation.startsWith(monthPrefix)) {
+          repMonthly += r.cout;
+        }
+      }
+      _monthlyExpensesAndRepairs = expMonthly + repMonthly;
 
       _syncVehiclesWithActiveContracts();
 
@@ -568,6 +633,9 @@ class AppStateProvider extends ChangeNotifier {
         }
         SupabaseSyncService.currentUserRole = (profile['role'] ?? 'admin').toString().toLowerCase();
         SupabaseSyncService.parentAdminId = profile['parent_user_id']?.toString();
+        if (profile['company_name'] != null && profile['company_name'].toString().trim().isNotEmpty) {
+          SupabaseSyncService.currentCompanyName = profile['company_name'].toString().trim().toUpperCase();
+        }
         final childs = profile['child_supervisor_ids'];
         if (childs is List) {
           SupabaseSyncService.childSupervisorIds = childs.map((e) => e.toString()).toList();
@@ -609,9 +677,11 @@ class AppStateProvider extends ChangeNotifier {
       notifyListeners();
     } catch (_) {}
 
-    // 4. Perform cloud refresh with strict tenant user_id filter and activate realtime
+    // 4. Perform cloud refresh with strict tenant user_id filter and activate realtime & GPS polling
     try {
       await refreshAllData();
+      refreshGpsTelemetry();
+      _restartGpsPollingTimer();
       _setupRealtimeSubscriptions();
     } catch (e) {
       debugPrint('[AppState] Background refresh error: $e');
@@ -622,6 +692,7 @@ class AppStateProvider extends ChangeNotifier {
     // 1. Immediately switch auth state & notify UI (0ms transition)
     _isAuthenticated = false;
     _autoRetryTimer?.cancel();
+    _gpsPollingTimer?.cancel();
     SupabaseSyncService.currentUserId = null;
     _userRole = 'admin';
     _parentAdminId = null;
@@ -637,6 +708,10 @@ class AppStateProvider extends ChangeNotifier {
     _contracts = [];
     _invoices = [];
     _expenses = [];
+    _repairs = [];
+    _gpsDevices = [];
+    _gpsEvents = [];
+    _selectedGpsDeviceId = null;
     _monthlyExpensesAndRepairs = 0;
 
     notifyListeners();
@@ -730,8 +805,26 @@ class AppStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<GpsDeviceModel> get gpsDevices => const [];
-  Future<void> refreshGpsTelemetry() async {}
+  Future<void> refreshGpsTelemetry() async {
+    if (_isGpsSyncing) return;
+    _isGpsSyncing = true;
+    notifyListeners();
+    try {
+      final devices = await GpswoxService.getDevices().timeout(const Duration(seconds: 12));
+      if (devices.isNotEmpty) {
+        _gpsDevices = devices;
+      }
+      final events = await GpswoxService.getEvents().timeout(const Duration(seconds: 8));
+      if (events.isNotEmpty) {
+        _gpsEvents = events;
+      }
+    } catch (e) {
+      debugPrint('[AppState] GPS refresh note: $e');
+    } finally {
+      _isGpsSyncing = false;
+      notifyListeners();
+    }
+  }
 
   Future<void> deleteContract(dynamic target) async {
     if (!canDelete) return;
@@ -800,6 +893,30 @@ class AppStateProvider extends ChangeNotifier {
     _saveToLocalCache();
     notifyListeners();
     await SupabaseSyncService.deleteExpense(id);
+  }
+
+  Future<void> saveRepair(RepairModel repair, {bool isEdit = false}) async {
+    final saved = await SupabaseSyncService.saveRepair(repair, isEdit: isEdit);
+    if (isEdit) {
+      _repairs = _repairs.map((r) => r.id == saved.id ? saved : r).toList();
+    } else {
+      _repairs = [saved, ..._repairs.where((r) => r.id != saved.id)];
+    }
+    if (saved.vehicleId.isNotEmpty) {
+      final newVehStatus = saved.isReadyForReturn ? 'disponible' : 'maintenance';
+      _vehicles = _vehicles.map((v) => v.id == saved.vehicleId ? v.copyWith(status: newVehStatus) : v).toList();
+    }
+    _lastSyncTime = DateTime.now();
+    _saveToLocalCache();
+    notifyListeners();
+  }
+
+  Future<void> deleteRepair(String id) async {
+    if (!canDelete) return;
+    _repairs = _repairs.where((r) => r.id != id).toList();
+    _saveToLocalCache();
+    notifyListeners();
+    await SupabaseSyncService.deleteRepair(id);
   }
 
   double get totalExpensesAmount {
@@ -954,12 +1071,18 @@ class AppStateProvider extends ChangeNotifier {
       }
     }
 
+    // 7. Événements GPSWOX Temps Réel (Survitesse, Zones, Arrêts)
+    for (final evt in _gpsEvents.take(15)) {
+      computed.add(evt);
+    }
+
     return computed;
   }
 
   @override
   void dispose() {
     _autoRetryTimer?.cancel();
+    _gpsPollingTimer?.cancel();
     _realtimeChannel?.unsubscribe();
     super.dispose();
   }

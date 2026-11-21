@@ -75,6 +75,7 @@ class SupabaseSyncService {
   static String get _localContractsKey => 'iloca:${activeUserId ?? "default"}:contracts:local';
   static String get _localInvoicesKey => 'iloca:${activeUserId ?? "default"}:invoices:local';
   static String get _localExpensesKey => 'iloca:${activeUserId ?? "default"}:expenses:local';
+  static String get _localRepairsKey => 'iloca:${activeUserId ?? "default"}:repairs:local';
 
   /// Resolves the full user profile by email via the Supabase admin audit registry
   static Future<Map<String, dynamic>?> lookupUserProfileByEmail(String email) async {
@@ -234,11 +235,13 @@ class SupabaseSyncService {
       }
     } else if (table == 'vehicles') {
       if (currentUserRole == 'superviseur' && parentAdminId != null && parentAdminId!.isNotEmpty) {
-        // Supervisor accesses agency fleet
         allowedUserIds = parentAdminId != tenantId ? [parentAdminId!, tenantId] : [parentAdminId!];
         userIdFilter = allowedUserIds.length > 1
             ? 'user_id=in.(${allowedUserIds.join(",")})'
             : 'user_id=eq.$parentAdminId';
+      } else if (currentUserRole != 'superviseur' && childSupervisorIds.isNotEmpty) {
+        allowedUserIds = [tenantId, ...childSupervisorIds];
+        userIdFilter = 'user_id=in.(${allowedUserIds.join(",")})';
       } else {
         userIdFilter = 'user_id=eq.$tenantId';
       }
@@ -258,6 +261,9 @@ class SupabaseSyncService {
         userIdFilter = allowedUserIds.length > 1
             ? 'user_id=in.(${allowedUserIds.join(",")})'
             : 'user_id=eq.$parentAdminId';
+      } else if (currentUserRole != 'superviseur' && childSupervisorIds.isNotEmpty) {
+        allowedUserIds = [tenantId, ...childSupervisorIds];
+        userIdFilter = 'user_id=in.(${allowedUserIds.join(",")})';
       } else {
         userIdFilter = 'user_id=eq.$tenantId';
       }
@@ -267,6 +273,9 @@ class SupabaseSyncService {
         userIdFilter = allowedUserIds.length > 1
             ? 'user_id=in.(${allowedUserIds.join(",")})'
             : 'user_id=eq.$parentAdminId';
+      } else if (currentUserRole != 'superviseur' && childSupervisorIds.isNotEmpty) {
+        allowedUserIds = [tenantId, ...childSupervisorIds];
+        userIdFilter = 'user_id=in.(${allowedUserIds.join(",")})';
       } else {
         userIdFilter = 'user_id=eq.$tenantId';
       }
@@ -1084,5 +1093,156 @@ class SupabaseSyncService {
     } catch (e) {
       debugPrint('[SupabaseSync] Direct REST deleteExpense error: $e');
     }
+  }
+
+  // ===========================================================================
+  // REPAIRS CRUD (Synchronized with `public.repairs` & Web `repairsRepository`)
+  // ===========================================================================
+  static Future<List<RepairModel>> fetchRepairs() async {
+    try {
+      final rows = await _fetchTableRows('repairs', orderBy: 'created_at', ascending: false);
+      final remote = rows.map((r) => RepairModel.fromJson(r)).toList();
+      try {
+        final encoded = jsonEncode(remote.map((e) => e.toJson()).toList());
+        unawaited(_safeSetLocalString(_localRepairsKey, encoded));
+      } catch (_) {}
+      return remote;
+    } catch (e) {
+      debugPrint('[SupabaseSync] fetchRepairs network error (trying local): $e');
+      final localRaw = await _safeGetLocalString(_localRepairsKey);
+      if (localRaw != null && localRaw.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(localRaw) as List;
+          return decoded
+              .map((item) => RepairModel.fromJson(Map<String, dynamic>.from(item)))
+              .toList();
+        } catch (_) {}
+      }
+      rethrow;
+    }
+  }
+
+  static Future<RepairModel> saveRepair(RepairModel repair, {bool isEdit = false}) async {
+    final now = DateTime.now().toIso8601String();
+    final generatedId = (isEdit && repair.id.isNotEmpty) ? repair.id : _uuid.v4();
+    final dbUserId = databaseTenantId;
+
+    final payload = <String, dynamic>{
+      ...repair.toSupabasePayload(),
+      'user_id': dbUserId,
+      'updated_at': now,
+    };
+
+    try {
+      RepairModel saved;
+      if (isEdit && repair.id.isNotEmpty) {
+        try {
+          final res = await _sb
+              .from('repairs')
+              .update(payload)
+              .eq('id', repair.id)
+              .select('*')
+              .single();
+          saved = RepairModel.fromJson(Map<String, dynamic>.from(res));
+        } catch (e) {
+          if (e.toString().contains('23503') || e.toString().contains('user_id_fkey')) {
+            payload['user_id'] = null;
+            final res = await _sb
+                .from('repairs')
+                .update(payload)
+                .eq('id', repair.id)
+                .select('*')
+                .single();
+            saved = RepairModel.fromJson(Map<String, dynamic>.from(res));
+          } else {
+            rethrow;
+          }
+        }
+      } else {
+        payload['id'] = generatedId;
+        payload['created_at'] = repair.createdAt.isNotEmpty ? repair.createdAt : now;
+        try {
+          final res = await _sb
+              .from('repairs')
+              .insert(payload)
+              .select('*')
+              .single();
+          saved = RepairModel.fromJson(Map<String, dynamic>.from(res));
+        } catch (e) {
+          if (e.toString().contains('23503') || e.toString().contains('user_id_fkey')) {
+            payload['user_id'] = null;
+            final res = await _sb
+                .from('repairs')
+                .insert(payload)
+                .select('*')
+                .single();
+            saved = RepairModel.fromJson(Map<String, dynamic>.from(res));
+          } else {
+            rethrow;
+          }
+        }
+      }
+
+      if (saved.vehicleId.isNotEmpty) {
+        final newStatus = saved.isReadyForReturn ? 'disponible' : 'maintenance';
+        unawaited(updateVehicleStatus(saved.vehicleId, newStatus));
+      }
+      return saved;
+    } catch (e) {
+      debugPrint('[SupabaseSync] saveRepair error: $e');
+      return repair.copyWith(id: generatedId, updatedAt: now);
+    }
+  }
+
+  static Future<void> deleteRepair(String id) async {
+    try {
+      await _sb.from('repairs').delete().eq('id', id);
+    } catch (e) {
+      debugPrint('[SupabaseSync] deleteRepair error: $e');
+    }
+    try {
+      final uri = Uri.parse('${AppConfig.supabaseUrl}/rest/v1/repairs?id=eq.$id');
+      await http.delete(
+        uri,
+        headers: {
+          'apikey': AppConfig.supabasePublishableKey,
+          'Authorization': 'Bearer ${AppConfig.supabasePublishableKey}',
+        },
+      ).timeout(const Duration(seconds: 8));
+    } catch (e) {
+      debugPrint('[SupabaseSync] Direct REST deleteRepair error: $e');
+    }
+  }
+
+  /// Sync company settings & GPS module visibility from Web (`public.app_settings`)
+  static Future<Map<String, dynamic>> fetchTenantSettings() async {
+    final tenantId = databaseTenantId;
+    if (tenantId.isEmpty) return {};
+    try {
+      final uri = Uri.parse(
+        '${AppConfig.supabaseUrl}/rest/v1/app_settings?user_id=eq.$tenantId&select=setting_key,setting_value',
+      );
+      final resp = await http.get(uri, headers: {
+        'apikey': AppConfig.supabasePublishableKey,
+        'Authorization': 'Bearer ${AppConfig.supabasePublishableKey}',
+      }).timeout(const Duration(seconds: 6));
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        final decoded = jsonDecode(resp.body);
+        if (decoded is List) {
+          final map = <String, dynamic>{};
+          for (final row in decoded) {
+            if (row is Map && row['setting_key'] != null) {
+              map[row['setting_key'].toString()] = row['setting_value'];
+            }
+          }
+          final cname = (map['companyName'] ?? '').toString().trim();
+          if (cname.isNotEmpty) {
+            currentCompanyName = cname.toUpperCase();
+          }
+          return map;
+        }
+      }
+    } catch (_) {}
+    return {};
   }
 }

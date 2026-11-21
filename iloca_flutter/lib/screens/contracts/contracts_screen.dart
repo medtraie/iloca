@@ -496,13 +496,13 @@ _Merci pour votre confiance en BonaTours Location & Tours._
     return Scaffold(
       backgroundColor: Colors.transparent,
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 90),
+        padding: const EdgeInsets.only(bottom: 96),
         child: FloatingActionButton.extended(
           heroTag: 'new_contract_full_btn',
           onPressed: () =>
               _openContractForm(mode: ContractFormMode.create),
-          backgroundColor: AppColors2026.violetElectric,
-          foregroundColor: Colors.white,
+          backgroundColor: AppColors2026.gold,
+          foregroundColor: Colors.black,
           elevation: 6,
           icon: const Icon(LucideIcons.filePlus2, size: 18),
           label: const Text(

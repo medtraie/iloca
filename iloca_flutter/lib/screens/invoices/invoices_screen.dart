@@ -245,12 +245,12 @@ _Document officiel généré via BonaTours Cockpit._''';
     return Scaffold(
       backgroundColor: Colors.transparent,
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 90),
+        padding: const EdgeInsets.only(bottom: 96),
         child: FloatingActionButton.extended(
           heroTag: 'new_invoice_fab_btn',
           onPressed: () => _openInvoiceForm(),
-          backgroundColor: AppColors2026.cyanNeon,
-          foregroundColor: AppColors2026.abyss,
+          backgroundColor: AppColors2026.gold,
+          foregroundColor: Colors.black,
           icon: const Icon(LucideIcons.filePlus2, size: 18),
           label: const Text(
             'Nouvelle Facture',

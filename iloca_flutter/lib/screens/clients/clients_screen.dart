@@ -149,12 +149,12 @@ class _ClientsScreenState extends State<ClientsScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 90),
+        padding: const EdgeInsets.only(bottom: 96),
         child: FloatingActionButton.extended(
           heroTag: 'new_client_fab_btn',
           onPressed: () => _openClientForm(),
-          backgroundColor: AppColors2026.cyanNeon,
-          foregroundColor: AppColors2026.abyss,
+          backgroundColor: AppColors2026.gold,
+          foregroundColor: Colors.black,
           icon: const Icon(LucideIcons.userPlus, size: 18),
           label: const Text(
             'Nouveau Client',

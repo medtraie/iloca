@@ -15,7 +15,7 @@ class GpswoxService {
   static String _memoryHash = '';
   static int _memoryHashTs = 0;
 
-  /// Fetch GPSWOX credentials from Supabase `gpswox_settings` or local cache
+  /// Fetch GPSWOX credentials from Supabase `gpswox_settings` (REST + SDK) or local cache
   static Future<Map<String, String>> getGpsConfig() async {
     final prefs = await SharedPreferences.getInstance();
     String apiUrl = prefs.getString('sft_gps_api_url') ?? 'http://sf-tracker.pro/api';
@@ -23,14 +23,30 @@ class GpswoxService {
     String password = prefs.getString('sft_gps_password') ?? '';
 
     try {
-      final sb = Supabase.instance.client;
-      final data = await sb
-          .from('gpswox_settings')
-          .select('api_url,email,password')
-          .order('updated_at', ascending: false)
-          .limit(1);
-      if (data.isNotEmpty) {
-        final row = data.first;
+      final uri = Uri.parse(
+        '${AppConfig.supabaseUrl}/rest/v1/gpswox_settings?select=api_url,email,password&order=updated_at.desc&limit=1',
+      );
+      final res = await http.get(uri, headers: {
+        'apikey': AppConfig.supabasePublishableKey,
+        'Authorization': 'Bearer ${AppConfig.supabasePublishableKey}',
+      }).timeout(const Duration(seconds: 6));
+
+      List<dynamic>? rows;
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final dec = jsonDecode(res.body);
+        if (dec is List) rows = dec;
+      }
+      if (rows == null || rows.isEmpty) {
+        final sb = Supabase.instance.client;
+        rows = await sb
+            .from('gpswox_settings')
+            .select('api_url,email,password')
+            .order('updated_at', ascending: false)
+            .limit(1);
+      }
+
+      if (rows.isNotEmpty && rows.first is Map) {
+        final row = Map<String, dynamic>.from(rows.first as Map);
         if ((row['api_url'] ?? '').toString().trim().isNotEmpty) {
           apiUrl = row['api_url'].toString().trim();
         }
@@ -47,6 +63,30 @@ class GpswoxService {
     } catch (_) {}
 
     return {'apiUrl': apiUrl, 'email': email, 'password': password};
+  }
+
+  /// Check if Web saved a valid GPSWOX `user_api_hash` in Supabase `app_settings`
+  static Future<String> _getCloudHash() async {
+    try {
+      final uri = Uri.parse(
+        '${AppConfig.supabaseUrl}/rest/v1/app_settings?setting_key=eq.gpswox:user_api_hash&select=setting_value&order=updated_at.desc&limit=1',
+      );
+      final res = await http.get(uri, headers: {
+        'apikey': AppConfig.supabasePublishableKey,
+        'Authorization': 'Bearer ${AppConfig.supabasePublishableKey}',
+      }).timeout(const Duration(seconds: 5));
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final dec = jsonDecode(res.body);
+        if (dec is List && dec.isNotEmpty && dec.first is Map) {
+          final val = (dec.first['setting_value'] ?? '').toString().trim();
+          if (val.isNotEmpty) {
+            await _saveHash(val);
+            return val;
+          }
+        }
+      }
+    } catch (_) {}
+    return '';
   }
 
   static Future<List<String>> _getApiCandidates() async {
@@ -107,11 +147,13 @@ class GpswoxService {
     await prefs.remove(_hashTsKey);
   }
 
-  /// Login to GPSWOX and retrieve `user_api_hash`
+  /// Login to GPSWOX (GET + POST fallback) and retrieve `user_api_hash`
   static Future<String> login({bool forceRefresh = false}) async {
     if (!forceRefresh) {
       final cached = await _getCachedHash();
       if (cached.isNotEmpty) return cached;
+      final cloudHash = await _getCloudHash();
+      if (cloudHash.isNotEmpty) return cloudHash;
     }
 
     final cfg = await getGpsConfig();
@@ -129,7 +171,13 @@ class GpswoxService {
           'password': password,
           'lang': 'fr',
         });
-        final res = await http.get(uri).timeout(const Duration(seconds: 8));
+        var res = await http.get(uri).timeout(const Duration(seconds: 7));
+        if (res.statusCode < 200 || res.statusCode >= 300 || !res.body.contains('user_api_hash')) {
+          res = await http.post(
+            Uri.parse('$base/login'),
+            body: {'email': email, 'password': password, 'lang': 'fr'},
+          ).timeout(const Duration(seconds: 7));
+        }
         if (res.statusCode >= 200 && res.statusCode < 300) {
           final decoded = jsonDecode(res.body);
           if (decoded is Map) {
@@ -150,7 +198,7 @@ class GpswoxService {
     return '';
   }
 
-  /// Fetch Live GPS Devices from GPSWOX API or Supabase Edge Function / Cache
+  /// Fetch Live GPS Devices from GPSWOX API or Supabase Edge Function / Cache / Tracking Positions
   static Future<List<GpsDeviceModel>> getDevices() async {
     // 1. Try direct GPSWOX API with user_api_hash
     try {
@@ -196,15 +244,30 @@ class GpswoxService {
       final response = await sb.functions.invoke(
         'gpswox',
         body: {'target': 'devices'},
-      );
+      ).timeout(const Duration(seconds: 8));
       if (response.data != null) {
         final parsed = _parseDevicesPayload(response.data);
         if (parsed.isNotEmpty) return parsed;
       }
     } catch (_) {}
 
-    // 3. Fallback: Supabase `gpswox_devices_cache` or `gpswox_snapshots`
+    // 3. Fallback: Supabase `app_settings` (`gpswox_devices_cache`) or `gpswox_snapshots`
     try {
+      final cacheUri = Uri.parse(
+        '${AppConfig.supabaseUrl}/rest/v1/app_settings?setting_key=eq.gpswox_devices_cache&select=setting_value&order=updated_at.desc&limit=1',
+      );
+      final cacheRes = await http.get(cacheUri, headers: {
+        'apikey': AppConfig.supabasePublishableKey,
+        'Authorization': 'Bearer ${AppConfig.supabasePublishableKey}',
+      }).timeout(const Duration(seconds: 6));
+      if (cacheRes.statusCode >= 200 && cacheRes.statusCode < 300) {
+        final dec = jsonDecode(cacheRes.body);
+        if (dec is List && dec.isNotEmpty && dec.first is Map) {
+          final parsed = _parseDevicesPayload(dec.first['setting_value']);
+          if (parsed.isNotEmpty) return parsed;
+        }
+      }
+
       final sb = Supabase.instance.client;
       final rows = await sb
           .from('gpswox_snapshots')
@@ -215,6 +278,49 @@ class GpswoxService {
       if (rows.isNotEmpty && rows.first['payload'] != null) {
         final parsed = _parseDevicesPayload(rows.first['payload']);
         if (parsed.isNotEmpty) return parsed;
+      }
+    } catch (_) {}
+
+    // 4. Fallback: Supabase `tracking_positions` table (synced from Web!)
+    try {
+      final tpUri = Uri.parse(
+        '${AppConfig.supabaseUrl}/rest/v1/tracking_positions?select=*&order=updated_at.desc',
+      );
+      final tpRes = await http.get(tpUri, headers: {
+        'apikey': AppConfig.supabasePublishableKey,
+        'Authorization': 'Bearer ${AppConfig.supabasePublishableKey}',
+      }).timeout(const Duration(seconds: 6));
+      if (tpRes.statusCode >= 200 && tpRes.statusCode < 300) {
+        final dec = jsonDecode(tpRes.body);
+        if (dec is List && dec.isNotEmpty) {
+          final result = <GpsDeviceModel>[];
+          final seen = <String>{};
+          for (final row in dec) {
+            if (row is! Map) continue;
+            final vid = (row['vehicle_id'] ?? row['id'] ?? '').toString();
+            if (vid.isEmpty || seen.contains(vid)) continue;
+            final lat = _toDouble(row['lat'] ?? row['latitude'], double.nan);
+            final lng = _toDouble(row['lng'] ?? row['longitude'], double.nan);
+            if (!lat.isFinite || !lng.isFinite || (lat == 0 && lng == 0)) continue;
+            seen.add(vid);
+            final speed = _toDouble(row['speed']);
+            result.add(
+              GpsDeviceModel(
+                id: vid,
+                name: (row['vehicle_name'] ?? 'Véhicule $vid').toString(),
+                plate: (row['registration'] ?? row['plate'] ?? '').toString(),
+                lat: lat,
+                lng: lng,
+                speed: speed,
+                online: true,
+                ignition: speed > 0,
+                lastUpdate: (row['updated_at'] ?? row['recorded_at'] ?? DateTime.now().toIso8601String()).toString(),
+                raw: Map<String, dynamic>.from(row),
+              ),
+            );
+          }
+          if (result.isNotEmpty) return result;
+        }
       }
     } catch (_) {}
 
