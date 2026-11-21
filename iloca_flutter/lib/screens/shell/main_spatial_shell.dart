@@ -847,7 +847,7 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
     final alertCount = state.allAlerts.length;
     final companyDisplay = SupabaseSyncService.currentCompanyName.isNotEmpty
         ? SupabaseSyncService.currentCompanyName
-        : 'BONATOURS';
+        : 'BOUNATOURS';
 
     return ClipRect(
       child: BackdropFilter(
@@ -877,42 +877,27 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            RichText(
+                            Text(
+                              companyDisplay,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              text: TextSpan(
-                                children: [
-                                  TextSpan(
-                                    text: '$companyDisplay ',
-                                    style: AppTheme2026.luxurySerif(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppColors2026.emeraldBright,
-                                      letterSpacing: 0.6,
-                                    ),
-                                  ),
-                                  TextSpan(
-                                    text: 'Location',
-                                    style: AppTheme2026.luxurySerif(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w700,
-                                      fontStyle: FontStyle.italic,
-                                      color: AppColors2026.goldLight,
-                                    ),
-                                  ),
-                                ],
+                              style: AppTheme2026.luxurySerif(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors2026.emeraldBright,
+                                letterSpacing: 0.8,
                               ),
                             ),
                             const SizedBox(height: 1),
                             const Text(
-                              'LUXURY FLEET & OPS LIVE',
+                              'LOCATION',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontSize: 8.5,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 1.5,
-                                color: AppColors2026.textSecondary,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 2.0,
+                                color: AppColors2026.goldLight,
                               ),
                             ),
                           ],

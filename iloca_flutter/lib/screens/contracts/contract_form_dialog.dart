@@ -4,7 +4,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:share_plus/share_plus.dart';
 import '../../core/services/contract_pdf_service.dart';
 import '../../core/theme/app_theme_2026.dart';
 import '../../core/utils/whatsapp_helper.dart';
@@ -800,77 +799,147 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
         : widget.mode == ContractFormMode.edit
             ? 'Modifier le Contrat #${_serieCtrl.text}'
             : 'Détails du Contrat #${_serieCtrl.text}';
+    final activeCompany = SupabaseSyncService.currentCompanyName.isNotEmpty
+        ? SupabaseSyncService.currentCompanyName
+        : 'BOUNATOURS';
 
     return Scaffold(
-      backgroundColor: AppColors2026.abyss,
-      appBar: AppBar(
-        backgroundColor: AppColors2026.obsidian,
-        leading: IconButton(
-          icon: const Icon(LucideIcons.x),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              titleText,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
-            ),
-            Text(
-              'Formulaire Officiel ${SupabaseSyncService.currentCompanyName.isNotEmpty ? SupabaseSyncService.currentCompanyName : "BOUNATOURS"} • Synchronisé Web & Mobile',
-              style: TextStyle(
-                fontSize: 10,
-                color: AppColors2026.cyanBright.withOpacity(0.9),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Aperçu Contrat Officiel / PDF',
-            onPressed: _openPrintableContractPreview,
-            icon: const Icon(
-              LucideIcons.fileText,
-              color: AppColors2026.cyanNeon,
-              size: 20,
+      backgroundColor: AppColors2026.obsidian,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(68),
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors2026.surfaceHeader,
+            border: Border(
+              bottom: BorderSide(color: AppColors2026.gold.withOpacity(0.22)),
             ),
           ),
-          IconButton(
-            tooltip: 'Partager WhatsApp',
-            onPressed: _shareViaWhatsApp,
-            icon: const Icon(
-              LucideIcons.share2,
-              color: AppColors2026.emeraldNeon,
-              size: 20,
-            ),
-          ),
-          if (!_isReadOnly)
-            Padding(
-              padding: const EdgeInsets.only(right: 10),
-              child: ElevatedButton.icon(
-                onPressed: _isSaving ? null : _handleSave,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors2026.emeraldNeon,
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Row(
+                children: [
+                  InkWell(
+                    onTap: () => Navigator.pop(context),
+                    borderRadius: BorderRadius.circular(999),
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: AppColors2026.obsidianSurface,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.12),
+                        ),
+                      ),
+                      child: const Icon(
+                        LucideIcons.x,
+                        size: 16,
+                        color: Colors.white70,
+                      ),
+                    ),
                   ),
-                ),
-                icon: const Icon(LucideIcons.check, size: 15),
-                label: Text(
-                  widget.mode == ContractFormMode.create ? 'Créer' : 'Sauver',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
-                ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          titleText,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          'Formulaire Officiel $activeCompany • Sync Web & Mobile',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors2026.goldLight,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  InkWell(
+                    onTap: _openPrintableContractPreview,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: AppColors2026.obsidianSurface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.12),
+                        ),
+                      ),
+                      child: const Icon(
+                        LucideIcons.fileText,
+                        size: 16,
+                        color: AppColors2026.goldLight,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  InkWell(
+                    onTap: _shareViaWhatsApp,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: AppColors2026.obsidianSurface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.12),
+                        ),
+                      ),
+                      child: const Icon(
+                        LucideIcons.share2,
+                        size: 16,
+                        color: AppColors2026.emeraldNeon,
+                      ),
+                    ),
+                  ),
+                  if (!_isReadOnly) ...[
+                    const SizedBox(width: 8),
+                    GoldGradientButton(
+                      onPressed: _isSaving ? null : _handleSave,
+                      loading: _isSaving,
+                      icon: LucideIcons.check,
+                      label: widget.mode == ContractFormMode.create
+                          ? 'Créer'
+                          : 'Sauver',
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 13,
+                        vertical: 9,
+                      ),
+                      borderRadius: 12,
+                      fontSize: 12,
+                    ),
+                  ],
+                ],
               ),
             ),
-        ],
+          ),
+        ),
       ),
       body: ListView(
         controller: _scrollController,
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 110),
         children: [
-          // ── 1. OFFICIAL SFTLOCATION HEADER & SÉRIE DU CONTRAT ──
+          // ── 1. OFFICIAL AGENCY HEADER & SÉRIE DU CONTRAT ──
           _buildOfficialHeaderCard(),
           const SizedBox(height: 16),
 
@@ -883,9 +952,10 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
           // ── 3. SECTION LOCATAIRE (Locataire Principal + 2ème Conducteur) ──
           _buildSectionHeaderBanner(
             title: 'LOCATAIRE',
-            subtitle: 'Informations du Conducteur Principal & 2ème Conducteur',
+            subtitle: 'Conducteur Principal & 2ème Conducteur',
             icon: LucideIcons.users,
-            color: AppColors2026.cyanNeon,
+            color: AppColors2026.gold,
+            gradStart: const Color(0xFF1E1A10),
           ),
           const SizedBox(height: 10),
           _buildLocataireSection(),
@@ -898,6 +968,7 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
                 'Livraison du Véhicule, Inspection Dommages, Carburant & Reprise',
             icon: LucideIcons.car,
             color: AppColors2026.emeraldNeon,
+            gradStart: const Color(0xFF0F241C),
           ),
           const SizedBox(height: 10),
           _buildVehiculeSection(),
@@ -908,7 +979,8 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
             title: 'FACTURATION',
             subtitle: 'Tarification, Durée, Avance, Reste à Payer & Règlement',
             icon: LucideIcons.creditCard,
-            color: AppColors2026.amberSolar,
+            color: AppColors2026.goldLight,
+            gradStart: const Color(0xFF241B0D),
           ),
           const SizedBox(height: 10),
           _buildFacturationSection(fmt),
@@ -919,13 +991,14 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
             title: 'SIGNATURES',
             subtitle: 'Signatures à la Livraison et au Retour (Agent & Locataire)',
             icon: LucideIcons.penTool,
-            color: AppColors2026.violetElectric,
+            color: AppColors2026.gold,
+            gradStart: const Color(0xFF1E1A10),
           ),
           const SizedBox(height: 10),
           _buildSignaturesSection(),
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
-          // ── 7. BOTTOM ACTION BAR (Same as Web NewContractDialog / EnhancedContractFormDialog) ──
+          // ── 7. BOTTOM ACTION BAR ──
           _buildBottomActionBar(),
         ],
       ),
@@ -933,30 +1006,50 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
   }
 
   Widget _buildOfficialHeaderCard() {
-    return SpatialGlassCard(
-      borderColor: AppColors2026.cyanNeon.withOpacity(0.4),
-      glowColor: AppColors2026.cyanNeon,
+    final activeCompany = SupabaseSyncService.currentCompanyName.isNotEmpty
+        ? SupabaseSyncService.currentCompanyName
+        : 'BOUNATOURS';
+
+    return Container(
       padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF16140E),
+            AppColors2026.obsidianSurface,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors2026.gold.withOpacity(0.35)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.5),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
       child: Column(
         children: [
           Text(
-            SupabaseSyncService.currentCompanyName.isNotEmpty
-                ? SupabaseSyncService.currentCompanyName
-                : 'BOUNATOURS',
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.2,
-              color: AppColors2026.cyanBright,
+            activeCompany,
+            textAlign: TextAlign.center,
+            style: AppTheme2026.luxurySerif(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.4,
+              color: AppColors2026.goldLight,
             ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 3),
           const Text(
-            'LOCATION DE VOITURES',
+            'LOCATION DE VOITURES DE LUXE',
             style: TextStyle(
-              fontSize: 13,
+              fontSize: 10.5,
               fontWeight: FontWeight.w800,
-              letterSpacing: 2.0,
+              letterSpacing: 2.2,
               color: Colors.white70,
             ),
           ),
@@ -967,47 +1060,54 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
             'E-mail: bonatours308@gmail.com',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 11,
+              fontSize: 10.5,
               height: 1.45,
               color: AppColors2026.textSecondary,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           const Text(
             'Courte et longue durée 7/7',
             style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: AppColors2026.emeraldBright,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+              color: AppColors2026.emeraldNeon,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             decoration: BoxDecoration(
-              border: Border.all(color: AppColors2026.cyanNeon, width: 1.6),
-              borderRadius: BorderRadius.circular(12),
-              color: AppColors2026.cyanNeon.withOpacity(0.1),
+              border: Border.all(color: AppColors2026.gold.withOpacity(0.48), width: 1.3),
+              borderRadius: BorderRadius.circular(16),
+              color: AppColors2026.obsidian.withOpacity(0.85),
             ),
             child: const Text(
               'CONTRAT DE LOCATION',
               style: TextStyle(
-                fontSize: 15,
+                fontSize: 13,
                 fontWeight: FontWeight.w900,
-                letterSpacing: 1.1,
+                letterSpacing: 1.8,
+                color: Colors.white,
               ),
             ),
           ),
           const SizedBox(height: 14),
           // Série / Numéro du contrat row
           Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Text(
                 'N° / Série :',
-                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12.5,
+                  color: Colors.white70,
+                ),
               ),
               const SizedBox(width: 10),
-              Expanded(
+              SizedBox(
+                width: 112,
                 child: TextField(
                   controller: _serieCtrl,
                   readOnly: _isReadOnly,
@@ -1015,34 +1115,87 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
                   style: const TextStyle(
                     fontWeight: FontWeight.w900,
                     fontSize: 16,
-                    color: AppColors2026.cyanBright,
+                    color: AppColors2026.goldLight,
                   ),
-                  decoration: const InputDecoration(
-                    hintText: 'Ex: 1 ou BONA2026001',
+                  decoration: InputDecoration(
+                    filled: true,
+                    fillColor: const Color(0xFF0D0F14),
+                    hintText: 'Ex: 1',
                     isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 9,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(
+                        color: AppColors2026.gold.withOpacity(0.45),
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(
+                        color: AppColors2026.gold.withOpacity(0.45),
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(color: AppColors2026.gold),
+                    ),
                   ),
                 ),
               ),
               if (!_isReadOnly) ...[
                 const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: () {
+                InkWell(
+                  onTap: () {
                     setState(() {
                       _serieCtrl.text = _computeNextSerie();
                     });
                   },
-                  icon: const Icon(LucideIcons.sparkles, size: 14),
-                  label: const Text('Suivant', style: TextStyle(fontSize: 12)),
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 13,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors2026.obsidianSurface,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: AppColors2026.gold.withOpacity(0.38),
+                      ),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          LucideIcons.sparkles,
+                          size: 13,
+                          color: AppColors2026.goldLight,
+                        ),
+                        SizedBox(width: 5),
+                        Text(
+                          'Suivant',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors2026.goldLight,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(
             'Dernière série utilisée : $_lastUsedSerie',
             style: const TextStyle(
-              fontSize: 11,
-              color: AppColors2026.textSecondary,
+              fontSize: 10.5,
+              color: AppColors2026.textMuted,
             ),
           ),
         ],
@@ -1055,8 +1208,8 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
     final vehicles = widget.appState.vehicles;
 
     return SpatialGlassCard(
-      padding: const EdgeInsets.all(14),
-      borderColor: AppColors2026.violetElectric.withOpacity(0.35),
+      padding: const EdgeInsets.all(16),
+      borderColor: AppColors2026.gold.withOpacity(0.26),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1064,17 +1217,19 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
             children: [
               Icon(
                 LucideIcons.zap,
-                size: 16,
-                color: AppColors2026.violetElectric,
+                size: 15,
+                color: AppColors2026.goldLight,
               ),
               SizedBox(width: 8),
-              Text(
-                'SÉLECTION RAPIDE (REMPLISSAGE AUTOMATIQUE)',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors2026.violetElectric,
-                  letterSpacing: 0.5,
+              Expanded(
+                child: Text(
+                  'SÉLECTION RAPIDE (REMPLISSAGE AUTOMATIQUE)',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors2026.goldLight,
+                    letterSpacing: 0.9,
+                  ),
                 ),
               ),
             ],
@@ -1085,9 +1240,10 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
                 ? _selectedTenantId
                 : null,
             isExpanded: true,
+            dropdownColor: const Color(0xFF0D0F15),
             decoration: const InputDecoration(
               labelText: 'Sélectionner un Client (Locataire Principal)',
-              prefixIcon: Icon(LucideIcons.userCheck, size: 18),
+              prefixIcon: Icon(LucideIcons.userCheck, size: 17),
               isDense: true,
             ),
             items: clients
@@ -1097,6 +1253,7 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
                     child: Text(
                       '${c.fullName} — CIN: ${c.cin.isEmpty ? "N/A" : c.cin} (${c.phone})',
                       overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
                     ),
                   ),
                 )
@@ -1112,9 +1269,10 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
                 ? _selectedVehicleId
                 : null,
             isExpanded: true,
+            dropdownColor: const Color(0xFF0D0F15),
             decoration: const InputDecoration(
               labelText: 'Sélectionner un Véhicule du Parc',
-              prefixIcon: Icon(LucideIcons.car, size: 18),
+              prefixIcon: Icon(LucideIcons.car, size: 17),
               isDense: true,
             ),
             items: vehicles
@@ -1124,6 +1282,7 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
                     child: Text(
                       '${v.fullName} (${v.registration}) — ${v.dailyRate.round()} DH/j [${v.status.toUpperCase()}]',
                       overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
                     ),
                   ),
                 )
@@ -1143,28 +1302,31 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
     required String subtitle,
     required IconData icon,
     required Color color,
+    Color gradStart = const Color(0xFF1E1A10),
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            color.withOpacity(0.24),
-            AppColors2026.obsidian.withOpacity(0.9),
+            gradStart,
+            AppColors2026.obsidianSurface,
           ],
         ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withOpacity(0.45)),
+        border: Border.all(color: color.withOpacity(0.32)),
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
+              color: color.withOpacity(0.15),
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: color.withOpacity(0.35)),
             ),
-            child: Icon(icon, color: color, size: 20),
+            child: Icon(icon, color: color, size: 19),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1174,15 +1336,17 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
                 Text(
                   title,
                   style: const TextStyle(
-                    fontSize: 16,
+                    fontSize: 13,
                     fontWeight: FontWeight.w900,
-                    letterSpacing: 0.8,
+                    letterSpacing: 1.0,
+                    color: Colors.white,
                   ),
                 ),
+                const SizedBox(height: 1),
                 Text(
                   subtitle,
                   style: const TextStyle(
-                    fontSize: 11,
+                    fontSize: 10.5,
                     color: AppColors2026.textSecondary,
                   ),
                 ),
@@ -1724,9 +1888,24 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
   }
 
   Widget _buildFacturationSection(NumberFormat fmt) {
+    final activeCompany = SupabaseSyncService.currentCompanyName.isNotEmpty
+        ? SupabaseSyncService.currentCompanyName
+        : 'BOUNATOURS';
+    const paymentOptions = [
+      'Espèces',
+      'Carte Bancaire / TPE',
+      'Virement',
+      'Virement Bancaire',
+      'Chèque',
+      'Chèque Certifié',
+    ];
+    final safePaymentMethod = paymentOptions.contains(_paymentMethod)
+        ? _paymentMethod
+        : 'Espèces';
+
     return SpatialGlassCard(
       padding: const EdgeInsets.all(16),
-      borderColor: AppColors2026.amberSolar.withOpacity(0.35),
+      borderColor: AppColors2026.gold.withOpacity(0.28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1745,31 +1924,45 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
-                    vertical: 10,
+                    vertical: 11,
                   ),
                   decoration: BoxDecoration(
-                    color: AppColors2026.emeraldNeon.withOpacity(0.14),
-                    borderRadius: BorderRadius.circular(14),
+                    color: AppColors2026.emeraldNeon.withOpacity(0.11),
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: AppColors2026.emeraldNeon.withOpacity(0.45),
+                      color: AppColors2026.emeraldNeon.withOpacity(0.35),
                     ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        '📊 Durée de Location',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors2026.emeraldBright,
-                        ),
+                      const Row(
+                        children: [
+                          Icon(
+                            LucideIcons.barChart3,
+                            size: 12,
+                            color: AppColors2026.emeraldNeon,
+                          ),
+                          SizedBox(width: 5),
+                          Flexible(
+                            child: Text(
+                              'Durée de Location',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors2026.emeraldNeon,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 3),
                       Text(
                         '$_totalDuration jours',
                         style: const TextStyle(
-                          fontSize: 16,
+                          fontSize: 15,
                           fontWeight: FontWeight.w900,
                           color: AppColors2026.emeraldBright,
                         ),
@@ -1794,26 +1987,28 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
               const SizedBox(width: 10),
               Expanded(
                 child: DropdownButtonFormField<String>(
-                  value: _paymentMethod,
+                  value: safePaymentMethod,
                   isExpanded: true,
+                  dropdownColor: const Color(0xFF0D0F15),
                   decoration: const InputDecoration(
                     labelText: 'Mode de Règlement *',
                     isDense: true,
                   ),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'Espèces',
-                      child: Text('Espèces', overflow: TextOverflow.ellipsis),
-                    ),
-                    DropdownMenuItem(
-                      value: 'Virement',
-                      child: Text('Virement', overflow: TextOverflow.ellipsis),
-                    ),
-                    DropdownMenuItem(
-                      value: 'Chèque',
-                      child: Text('Chèque', overflow: TextOverflow.ellipsis),
-                    ),
-                  ],
+                  items: paymentOptions
+                      .map(
+                        (pm) => DropdownMenuItem(
+                          value: pm,
+                          child: Text(
+                            pm,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
                   onChanged: _isReadOnly
                       ? null
                       : (v) => setState(() => _paymentMethod = v ?? 'Espèces'),
@@ -1823,17 +2018,17 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
           ),
           const SizedBox(height: 12),
 
-          // Live Financial Summary Boxes (Total TTC & Reste à Payer)
+          // Live Financial Summary Boxes (Canvas #18150D & #231015)
           Row(
             children: [
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(13),
                   decoration: BoxDecoration(
-                    color: AppColors2026.cyanNeon.withOpacity(0.12),
+                    color: const Color(0xFF18150D),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: AppColors2026.cyanNeon.withOpacity(0.35),
+                      color: AppColors2026.gold.withOpacity(0.42),
                     ),
                   ),
                   child: Column(
@@ -1842,8 +2037,9 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
                       const Text(
                         'PRIX TOTAL (TTC)',
                         style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.6,
                           color: AppColors2026.textSecondary,
                         ),
                       ),
@@ -1854,9 +2050,9 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
                         child: Text(
                           '${fmt.format(_totalPrice)} DH',
                           style: const TextStyle(
-                            fontSize: 18,
+                            fontSize: 17,
                             fontWeight: FontWeight.w900,
-                            color: AppColors2026.cyanBright,
+                            color: AppColors2026.goldLight,
                           ),
                         ),
                       ),
@@ -1867,28 +2063,28 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
               const SizedBox(width: 10),
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(13),
                   decoration: BoxDecoration(
-                    color: (_remaining > 0
-                            ? AppColors2026.roseLaser
-                            : AppColors2026.emeraldNeon)
-                        .withOpacity(0.12),
+                    color: _remaining > 0
+                        ? const Color(0xFF231015)
+                        : const Color(0xFF0F241C),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: (_remaining > 0
                               ? AppColors2026.roseLaser
                               : AppColors2026.emeraldNeon)
-                          .withOpacity(0.45),
+                          .withOpacity(0.42),
                     ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'RESTE À PAYER 🚩',
+                        'RESTE À PAYER',
                         style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.6,
                           color: AppColors2026.textSecondary,
                         ),
                       ),
@@ -1901,7 +2097,7 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
                               ? '0 DH (Soldé)'
                               : '${fmt.format(_remaining)} DH',
                           style: TextStyle(
-                            fontSize: 18,
+                            fontSize: 17,
                             fontWeight: FontWeight.w900,
                             color: _remaining > 0
                                 ? AppColors2026.roseLaser
@@ -1923,27 +2119,48 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
                 ? _status
                 : 'ouvert',
             isExpanded: true,
+            dropdownColor: const Color(0xFF0D0F15),
             decoration: const InputDecoration(
               labelText: 'Statut du Contrat',
-              prefixIcon: Icon(LucideIcons.checkCircle2, size: 16),
+              prefixIcon: Icon(
+                LucideIcons.checkCircle2,
+                size: 16,
+                color: AppColors2026.emeraldNeon,
+              ),
               isDense: true,
             ),
             items: const [
               DropdownMenuItem(
                 value: 'ouvert',
-                child: Text('Ouvert (En circulation)', overflow: TextOverflow.ellipsis),
+                child: Text(
+                  'Ouvert (En circulation)',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                ),
               ),
               DropdownMenuItem(
                 value: 'ferme',
-                child: Text('Fermé (Clôturé / Véhicule restitué)', overflow: TextOverflow.ellipsis),
+                child: Text(
+                  'Clôturé (Véhicule restitué)',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                ),
               ),
               DropdownMenuItem(
                 value: 'signed',
-                child: Text('Signé électroniquement', overflow: TextOverflow.ellipsis),
+                child: Text(
+                  'Signé électroniquement',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                ),
               ),
               DropdownMenuItem(
                 value: 'draft',
-                child: Text('Brouillon / En attente', overflow: TextOverflow.ellipsis),
+                child: Text(
+                  'Brouillon / En attente',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                ),
               ),
             ],
             onChanged: _isReadOnly
@@ -1952,22 +2169,37 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
           ),
           const SizedBox(height: 14),
 
-          // Official Legal Clause Box
+          // Official Legal Clause Box (Canvas Gold left accent)
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(13),
             decoration: BoxDecoration(
-              color: AppColors2026.blueRoyal.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(14),
+              color: const Color(0xFF0F172A).withOpacity(0.85),
+              borderRadius: BorderRadius.circular(16),
               border: const Border(
-                left: BorderSide(color: AppColors2026.blueRoyal, width: 4),
+                left: BorderSide(color: AppColors2026.gold, width: 4),
               ),
             ),
-            child: Text(
-              'Le locataire du véhicule ${SupabaseSyncService.currentCompanyName.isNotEmpty ? SupabaseSyncService.currentCompanyName : "BOUNATOURS"} reconnaît avoir lu et accepté les conditions générales stipulées au verso du présent contrat, il est le seul responsable en cas de violation du code de la route marocain.',
-              style: const TextStyle(
-                fontSize: 11,
-                height: 1.4,
-                color: Colors.white70,
+            child: RichText(
+              text: TextSpan(
+                style: const TextStyle(
+                  fontSize: 10.5,
+                  height: 1.45,
+                  color: Colors.white70,
+                ),
+                children: [
+                  const TextSpan(text: 'Le locataire du véhicule '),
+                  TextSpan(
+                    text: activeCompany,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: AppColors2026.goldLight,
+                    ),
+                  ),
+                  const TextSpan(
+                    text:
+                        ' reconnaît avoir lu et accepté les conditions générales stipulées au verso du présent contrat, il est le seul responsable en cas de violation du code de la route marocain.',
+                  ),
+                ],
               ),
             ),
           ),
@@ -1982,15 +2214,17 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
         // 1. Signatures à la livraison
         SpatialGlassCard(
           padding: const EdgeInsets.all(16),
+          borderColor: Colors.white.withOpacity(0.08),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
                 'SIGNATURES À LA LIVRAISON',
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 11.5,
                   fontWeight: FontWeight.w900,
-                  color: AppColors2026.cyanBright,
+                  letterSpacing: 0.7,
+                  color: AppColors2026.goldLight,
                 ),
               ),
               const SizedBox(height: 10),
@@ -2019,14 +2253,16 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
         // 2. Signatures au retour
         SpatialGlassCard(
           padding: const EdgeInsets.all(16),
+          borderColor: Colors.white.withOpacity(0.08),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
                 'SIGNATURES AU RETOUR',
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 11.5,
                   fontWeight: FontWeight.w900,
+                  letterSpacing: 0.7,
                   color: AppColors2026.amberSolar,
                 ),
               ),
@@ -2056,64 +2292,104 @@ ${(d['secondDriverLastName'] ?? '').toString().isNotEmpty ? '\n👥 *2ÈME CONDU
 
   Widget _buildBottomActionBar() {
     return SpatialGlassCard(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
+      borderColor: AppColors2026.gold.withOpacity(0.28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
               Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _openPrintableContractPreview,
-                  icon: const Icon(LucideIcons.fileText, size: 16),
-                  label: const Text('Aperçu PDF / Contrat'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _shareViaWhatsApp,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors2026.emeraldNeon,
-                    side: BorderSide(
-                      color: AppColors2026.emeraldNeon.withOpacity(0.5),
+                child: InkWell(
+                  onTap: _openPrintableContractPreview,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 11,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors2026.surfaceInput,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.2),
+                      ),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          LucideIcons.fileText,
+                          size: 15,
+                          color: AppColors2026.goldLight,
+                        ),
+                        SizedBox(width: 7),
+                        Text(
+                          'Aperçu PDF',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors2026.goldLight,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  icon: const Icon(LucideIcons.share2, size: 16),
-                  label: const Text('Partager WhatsApp'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: InkWell(
+                  onTap: _shareViaWhatsApp,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 11,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors2026.surfaceInput,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: AppColors2026.emeraldNeon.withOpacity(0.38),
+                      ),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          LucideIcons.share2,
+                          size: 15,
+                          color: AppColors2026.emeraldNeon,
+                        ),
+                        SizedBox(width: 7),
+                        Text(
+                          'WhatsApp',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors2026.emeraldNeon,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
           if (!_isReadOnly) ...[
-            const SizedBox(height: 10),
-            ElevatedButton.icon(
+            const SizedBox(height: 12),
+            GoldGradientButton(
               onPressed: _isSaving ? null : _handleSave,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors2026.cyanNeon,
-                foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(vertical: 15),
-              ),
-              icon: _isSaving
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.black,
-                      ),
-                    )
-                  : const Icon(LucideIcons.checkCircle2, size: 18),
-              label: Text(
-                widget.mode == ContractFormMode.create
-                    ? 'CRÉER LE CONTRAT (OUVERT)'
-                    : 'ENREGISTRER LES MODIFICATIONS',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 13,
-                  letterSpacing: 0.6,
-                ),
-              ),
+              loading: _isSaving,
+              icon: LucideIcons.checkCircle2,
+              label: widget.mode == ContractFormMode.create
+                  ? 'CRÉER LE CONTRAT (OUVERT)'
+                  : 'ENREGISTRER LES MODIFICATIONS',
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              borderRadius: 16,
+              fontSize: 12.5,
             ),
           ],
         ],
@@ -2210,16 +2486,18 @@ class VehicleDiagramInteractiveWidget extends StatelessWidget {
         LayoutBuilder(
           builder: (context, constraints) {
             final width = constraints.maxWidth;
-            // The image original size is 243x219 -> Aspect ratio ~ 1.11
-            final height = (width / 1.11).clamp(200.0, 320.0);
+            // Match Gemini Canvas SVG blueprint (viewBox="0 0 360 190", aspect ratio 1.895, h ~ 180-200)
+            final height = (width / 1.85).clamp(176.0, 215.0);
 
             return GestureDetector(
               onTapUp: readOnly
                   ? null
                   : (details) {
                       final local = details.localPosition;
-                      final xPct = ((local.dx / width) * 100).clamp(1.0, 99.0);
-                      final yPct = ((local.dy / height) * 100).clamp(1.0, 99.0);
+                      final innerW = (width - 20.0).clamp(1.0, double.infinity);
+                      final innerH = (height - 20.0).clamp(1.0, double.infinity);
+                      final xPct = (((local.dx - 10.0) / innerW) * 100).clamp(1.0, 99.0);
+                      final yPct = (((local.dy - 10.0) / innerH) * 100).clamp(1.0, 99.0);
                       final next = [
                         ...damages,
                         DamagePointModel(
@@ -2233,38 +2511,39 @@ class VehicleDiagramInteractiveWidget extends StatelessWidget {
               child: Container(
                 width: width,
                 height: height,
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(24),
                   border: Border.all(
-                    color: AppColors2026.cyanNeon.withOpacity(0.55),
-                    width: 1.5,
+                    color: AppColors2026.gold.withOpacity(0.45),
+                    width: 2.0,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors2026.cyanNeon.withOpacity(0.12),
-                      blurRadius: 14,
-                      offset: const Offset(0, 4),
+                      color: AppColors2026.gold.withOpacity(0.12),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
                     ),
                   ],
                 ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(15),
+                  borderRadius: BorderRadius.circular(16),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      // Exact high-quality vehicle diagram from Web App
-                      Image.asset(
-                        'assets/images/vehicle_diagram.png',
-                        fit: BoxFit.contain,
-                        filterQuality: FilterQuality.high,
+                      // Exact Gemini Canvas 5-View Unfolded Car Inspection Blueprint (360x190 SVG)
+                      CustomPaint(
+                        painter: _CarInspectionBlueprintPainter(),
                       ),
 
-                      // Interactive Damage Markers (Matching Web VehicleDiagram.tsx exactly)
+                      // Interactive Damage Markers (100% Web & Canvas Parity)
                       ...damages.map((pt) {
+                        final leftPx = ((pt.x / 100.0) * (width - 20)) - 10;
+                        final topPx = ((pt.y / 100.0) * (height - 20)) - 10;
                         return Positioned(
-                          left: (pt.x / 100.0) * width - 10,
-                          top: (pt.y / 100.0) * height - 10,
+                          left: leftPx.clamp(0.0, width - 40),
+                          top: topPx.clamp(0.0, height - 40),
                           child: GestureDetector(
                             onTap: readOnly
                                 ? null
@@ -2279,7 +2558,7 @@ class VehicleDiagramInteractiveWidget extends StatelessWidget {
                               width: 20,
                               height: 20,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFEF4444),
+                                color: AppColors2026.roseLaser,
                                 shape: BoxShape.circle,
                                 border: Border.all(color: Colors.white, width: 2),
                                 boxShadow: const [
@@ -2321,6 +2600,186 @@ class VehicleDiagramInteractiveWidget extends StatelessWidget {
       ],
     );
   }
+}
+
+/// CustomPainter replicating the Gemini Canvas `renderCarInspectionBlueprint` SVG (viewBox 360x190)
+class _CarInspectionBlueprintPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final scaleX = size.width / 360.0;
+    final scaleY = size.height / 190.0;
+    final scale = scaleX < scaleY ? scaleX : scaleY;
+    final dx = (size.width - 360.0 * scale) / 2.0;
+    final dy = (size.height - 190.0 * scale) / 2.0;
+
+    canvas.save();
+    canvas.translate(dx, dy);
+    canvas.scale(scale, scale);
+
+    final strokeMain = Paint()
+      ..color = const Color(0xFF64748B)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6
+      ..strokeJoin = StrokeJoin.round;
+
+    final strokeCenter = Paint()
+      ..color = const Color(0xFF64748B)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.7
+      ..strokeJoin = StrokeJoin.round;
+
+    final fillLight = Paint()
+      ..color = const Color(0xFFF8FAFC)
+      ..style = PaintingStyle.fill;
+
+    final fillWindow = Paint()
+      ..color = const Color(0xFFE2E8F0)
+      ..style = PaintingStyle.fill;
+
+    final fillWheel = Paint()
+      ..color = const Color(0xFFCBD5E1)
+      ..style = PaintingStyle.fill;
+
+    final fillWhite = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+
+    void drawPath(Path p, Paint fill, Paint stroke) {
+      canvas.drawPath(p, fill);
+      canvas.drawPath(p, stroke);
+    }
+
+    // 1. Top Side Profile (Y: 12..65)
+    final topBody = Path()
+      ..moveTo(75, 34)
+      ..quadraticBezierTo(110, 12, 180, 12)
+      ..quadraticBezierTo(245, 12, 280, 34)
+      ..lineTo(298, 38)
+      ..quadraticBezierTo(304, 42, 302, 52)
+      ..lineTo(62, 52)
+      ..quadraticBezierTo(60, 42, 66, 38)
+      ..close();
+    drawPath(topBody, fillLight, strokeMain);
+
+    final topWindow = Path()
+      ..moveTo(115, 34)
+      ..quadraticBezierTo(140, 18, 180, 18)
+      ..quadraticBezierTo(218, 18, 242, 34)
+      ..close();
+    drawPath(topWindow, fillWindow, strokeMain);
+
+    for (final cx in const [105.0, 255.0]) {
+      canvas.drawCircle(Offset(cx, 52), 13, fillWheel);
+      canvas.drawCircle(Offset(cx, 52), 13, strokeMain);
+      canvas.drawCircle(Offset(cx, 52), 6, fillWhite);
+      canvas.drawCircle(Offset(cx, 52), 6, strokeMain);
+    }
+
+    // 2. Left Front Bumper View (X: 14..48, Y: 64..126)
+    final frontBumper = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(14, 64, 34, 62),
+      const Radius.circular(10),
+    );
+    canvas.drawRRect(frontBumper, fillLight);
+    canvas.drawRRect(frontBumper, strokeMain);
+    for (final hy in const [70.0, 106.0]) {
+      final hl = RRect.fromRectAndRadius(
+        Rect.fromLTWH(18, hy, 8, 14),
+        const Radius.circular(2),
+      );
+      canvas.drawRRect(hl, fillWindow);
+      canvas.drawRRect(hl, strokeMain);
+    }
+
+    // 3. Center Top-Down View (X: 62..298, Y: 60..130)
+    final centerCar = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(62, 60, 236, 70),
+      const Radius.circular(22),
+    );
+    canvas.drawRRect(centerCar, fillWhite);
+    canvas.drawRRect(centerCar, strokeCenter);
+
+    final frontGlass = Path()
+      ..moveTo(112, 67)
+      ..lineTo(135, 72)
+      ..lineTo(135, 118)
+      ..lineTo(112, 123)
+      ..close();
+    drawPath(frontGlass, fillWindow, strokeCenter);
+
+    final rearGlass = Path()
+      ..moveTo(242, 66)
+      ..lineTo(212, 72)
+      ..lineTo(212, 118)
+      ..lineTo(242, 124)
+      ..close();
+    drawPath(rearGlass, fillWindow, strokeCenter);
+
+    final roofRect = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(138, 73, 70, 44),
+      const Radius.circular(8),
+    );
+    canvas.drawRRect(roofRect, fillLight);
+    canvas.drawRRect(roofRect, strokeCenter);
+
+    for (final my in const [56.0, 134.0]) {
+      final mirrorRect = Rect.fromCenter(
+        center: Offset(206, my),
+        width: 12,
+        height: 7,
+      );
+      canvas.drawOval(mirrorRect, fillWheel);
+      canvas.drawOval(mirrorRect, strokeCenter);
+    }
+
+    // 4. Right Rear Bumper View (X: 312..346, Y: 64..126)
+    final rearBumper = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(312, 64, 34, 62),
+      const Radius.circular(10),
+    );
+    canvas.drawRRect(rearBumper, fillLight);
+    canvas.drawRRect(rearBumper, strokeMain);
+    for (final ty in const [70.0, 106.0]) {
+      final tl = RRect.fromRectAndRadius(
+        Rect.fromLTWH(332, ty, 8, 14),
+        const Radius.circular(2),
+      );
+      canvas.drawRRect(tl, fillWindow);
+      canvas.drawRRect(tl, strokeMain);
+    }
+
+    // 5. Bottom Side Profile (Y: 138..178)
+    final bottomBody = Path()
+      ..moveTo(75, 156)
+      ..quadraticBezierTo(110, 178, 180, 178)
+      ..quadraticBezierTo(245, 178, 280, 156)
+      ..lineTo(298, 152)
+      ..quadraticBezierTo(304, 148, 302, 138)
+      ..lineTo(62, 138)
+      ..quadraticBezierTo(60, 148, 66, 152)
+      ..close();
+    drawPath(bottomBody, fillLight, strokeMain);
+
+    final bottomWindow = Path()
+      ..moveTo(115, 156)
+      ..quadraticBezierTo(140, 172, 180, 172)
+      ..quadraticBezierTo(218, 172, 242, 156)
+      ..close();
+    drawPath(bottomWindow, fillWindow, strokeMain);
+
+    for (final cx in const [105.0, 255.0]) {
+      canvas.drawCircle(Offset(cx, 138), 13, fillWheel);
+      canvas.drawCircle(Offset(cx, 138), 13, strokeMain);
+      canvas.drawCircle(Offset(cx, 138), 6, fillWhite);
+      canvas.drawCircle(Offset(cx, 138), 6, strokeMain);
+    }
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _CarInspectionBlueprintPainter oldDelegate) =>
+      false;
 }
 
 /// Interactive Fuel Gauge Widget (Matches Web `FuelGauge.tsx`)
@@ -2560,10 +3019,10 @@ class _SignaturePadInteractiveWidgetState
                 height: padSize.height,
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: AppColors2026.cyanNeon.withOpacity(0.45),
-                    width: 1.4,
+                    color: AppColors2026.gold.withOpacity(0.45),
+                    width: 1.8,
                   ),
                 ),
                 child: ClipRRect(

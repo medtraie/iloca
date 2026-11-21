@@ -90,40 +90,25 @@ class _LoginScreenState extends State<LoginScreen> {
                       pulsing: true,
                     ),
                     const SizedBox(height: 12),
-                    RichText(
+                    Text(
+                      'BOUNATOURS',
                       textAlign: TextAlign.center,
-                      text: TextSpan(
-                        children: [
-                          TextSpan(
-                            text: 'BONATOURS ',
-                            style: AppTheme2026.luxurySerif(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors2026.emeraldBright,
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                          TextSpan(
-                            text: 'Location',
-                            style: AppTheme2026.luxurySerif(
-                              fontSize: 29,
-                              fontWeight: FontWeight.w700,
-                              fontStyle: FontStyle.italic,
-                              color: AppColors2026.goldLight,
-                            ),
-                          ),
-                        ],
+                      style: AppTheme2026.luxurySerif(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors2026.emeraldBright,
+                        letterSpacing: 1.0,
                       ),
                     ),
                     const SizedBox(height: 6),
                     const Text(
-                      'LUXURY FLEET • TÉLÉMÉTRIE GPS • CLOUD SYNC',
+                      'LOCATION • TÉLÉMÉTRIE GPS • CLOUD SYNC',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.6,
-                        color: AppColors2026.textSecondary,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.8,
+                        color: AppColors2026.goldLight,
                       ),
                     ),
                     const SizedBox(height: 28),
