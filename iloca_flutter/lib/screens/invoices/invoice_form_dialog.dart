@@ -422,20 +422,27 @@ class _InvoiceFormDialogState extends State<InvoiceFormDialog> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Row(
-                        children: [
-                          Icon(LucideIcons.building2, size: 16, color: AppColors2026.cyanBright),
-                          SizedBox(width: 8),
-                          Text(
-                            'ÉMETTEUR & INFORMATIONS FACTURE',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.5,
+                      const Expanded(
+                        child: Row(
+                          children: [
+                            Icon(LucideIcons.building2, size: 16, color: AppColors2026.cyanBright),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'ÉMETTEUR & INFORMATIONS FACTURE',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
+                      const SizedBox(width: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
@@ -524,9 +531,13 @@ class _InvoiceFormDialogState extends State<InvoiceFormDialog> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        'Bénéficiaire (Client Facturé)',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors2026.textSecondary),
+                      const Expanded(
+                        child: Text(
+                          'Bénéficiaire (Client Facturé)',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors2026.textSecondary),
+                        ),
                       ),
                       TextButton.icon(
                         onPressed: _showClientPicker,
@@ -578,19 +589,25 @@ class _InvoiceFormDialogState extends State<InvoiceFormDialog> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Row(
-                        children: [
-                          Icon(LucideIcons.table2, size: 16, color: AppColors2026.violetElectric),
-                          SizedBox(width: 8),
-                          Text(
-                            'LIGNE DE PRESTATION & TARIF',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.5,
+                      const Expanded(
+                        child: Row(
+                          children: [
+                            Icon(LucideIcons.table2, size: 16, color: AppColors2026.violetElectric),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'LIGNE DE PRESTATION & TARIF',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                       TextButton.icon(
                         onPressed: _showVehiclePicker,
@@ -711,12 +728,16 @@ class _InvoiceFormDialogState extends State<InvoiceFormDialog> {
                     children: [
                       Icon(LucideIcons.fileSignature, size: 16, color: AppColors2026.amberSolar),
                       SizedBox(width: 8),
-                      Text(
-                        'ARRÊTÉE EN LETTRES & RÈGLEMENT',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.5,
+                      Expanded(
+                        child: Text(
+                          'ARRÊTÉE EN LETTRES & RÈGLEMENT',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                          ),
                         ),
                       ),
                     ],
@@ -768,17 +789,18 @@ class _InvoiceFormDialogState extends State<InvoiceFormDialog> {
                             const SizedBox(height: 6),
                             DropdownButtonFormField<String>(
                               value: _paymentMethod,
+                              isExpanded: true,
                               decoration: InputDecoration(
                                 contentPadding:
                                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                               ),
                               items: const [
-                                DropdownMenuItem(value: 'CHEQUE', child: Text('CHÈQUE')),
-                                DropdownMenuItem(value: 'VIREMENT', child: Text('VIREMENT')),
-                                DropdownMenuItem(value: 'ESPECES', child: Text('ESPÈCES')),
-                                DropdownMenuItem(value: 'CARTE', child: Text('CARTE BANCAIRE')),
-                                DropdownMenuItem(value: 'AUTRE', child: Text('AUTRE')),
+                                DropdownMenuItem(value: 'CHEQUE', child: Text('CHÈQUE', overflow: TextOverflow.ellipsis)),
+                                DropdownMenuItem(value: 'VIREMENT', child: Text('VIREMENT', overflow: TextOverflow.ellipsis)),
+                                DropdownMenuItem(value: 'ESPECES', child: Text('ESPÈCES', overflow: TextOverflow.ellipsis)),
+                                DropdownMenuItem(value: 'CARTE', child: Text('CARTE BANCAIRE', overflow: TextOverflow.ellipsis)),
+                                DropdownMenuItem(value: 'AUTRE', child: Text('AUTRE', overflow: TextOverflow.ellipsis)),
                               ],
                               onChanged: (v) {
                                 if (v != null) setState(() => _paymentMethod = v);
@@ -799,15 +821,16 @@ class _InvoiceFormDialogState extends State<InvoiceFormDialog> {
                             const SizedBox(height: 6),
                             DropdownButtonFormField<String>(
                               value: _status,
+                              isExpanded: true,
                               decoration: InputDecoration(
                                 contentPadding:
                                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                               ),
                               items: const [
-                                DropdownMenuItem(value: 'pending', child: Text('En attente')),
-                                DropdownMenuItem(value: 'paid', child: Text('Payée')),
-                                DropdownMenuItem(value: 'overdue', child: Text('En retard')),
+                                DropdownMenuItem(value: 'pending', child: Text('En attente', overflow: TextOverflow.ellipsis)),
+                                DropdownMenuItem(value: 'paid', child: Text('Payée', overflow: TextOverflow.ellipsis)),
+                                DropdownMenuItem(value: 'overdue', child: Text('En retard', overflow: TextOverflow.ellipsis)),
                               ],
                               onChanged: (v) {
                                 if (v != null) setState(() => _status = v);

@@ -353,10 +353,13 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              v.fullName,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            Expanded(
+                              child: Text(
+                                v.fullName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              ),
                             ),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -625,6 +628,7 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
                       value: _recurringFrequency,
+                      isExpanded: true,
                       dropdownColor: AppColors2026.obsidianSurface,
                       decoration: const InputDecoration(
                         labelText: 'Fréquence de renouvellement',

@@ -22,7 +22,7 @@ Future<void> main() async {
 
   // Initialize Supabase with Web-shared project credentials safely
   try {
-    
+
     await Supabase.initialize(
       url: AppConfig.supabaseUrl,
       anonKey: AppConfig.supabasePublishableKey,

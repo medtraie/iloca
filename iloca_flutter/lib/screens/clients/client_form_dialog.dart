@@ -320,26 +320,30 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
           children: [
             Row(
               children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppColors2026.cyanNeon.withOpacity(0.18),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(
-                        color: AppColors2026.cyanNeon.withOpacity(0.5)),
-                  ),
-                  child: const Text(
-                    'CRM ONBOARDING 2026',
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors2026.cyanNeon,
-                      letterSpacing: 0.5,
+                Flexible(
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors2026.cyanNeon.withOpacity(0.18),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                          color: AppColors2026.cyanNeon.withOpacity(0.5)),
+                    ),
+                    child: const Text(
+                      'CRM ONBOARDING',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 8.5,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors2026.cyanNeon,
+                        letterSpacing: 0.4,
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Text(
                   'Étape $_activeStep/3',
                   style: const TextStyle(
@@ -461,38 +465,45 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                   else
                     const SizedBox.shrink(),
                   if (_activeStep < 3)
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        if (_activeStep == 1 && !_validateStep1()) return;
-                        if (_activeStep == 2 && !_validateStep2()) return;
-                        setState(() => _activeStep++);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors2026.violetElectric,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 12),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
+                    Flexible(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          if (_activeStep == 1 && !_validateStep1()) return;
+                          if (_activeStep == 2 && !_validateStep2()) return;
+                          setState(() => _activeStep++);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors2026.violetElectric,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 18, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                        icon: const Icon(LucideIcons.chevronRight, size: 16),
+                        label: const Text('Suivant',
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
-                      icon: const Icon(LucideIcons.chevronRight, size: 16),
-                      label: const Text('Suivant',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
                     )
                   else
-                    ElevatedButton.icon(
-                      onPressed: _isSaving ? null : _handleSave,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors2026.cyanNeon,
-                        foregroundColor: AppColors2026.abyss,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 24, vertical: 12),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
+                    Flexible(
+                      child: ElevatedButton.icon(
+                        onPressed: _isSaving ? null : _handleSave,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors2026.cyanNeon,
+                          foregroundColor: AppColors2026.abyss,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 18, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                        icon: const Icon(LucideIcons.check, size: 16),
+                        label: const Text('Enregistrer le Client',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontWeight: FontWeight.w900)),
                       ),
-                      icon: const Icon(LucideIcons.check, size: 16),
-                      label: const Text('Enregistrer le Client',
-                          style: TextStyle(fontWeight: FontWeight.w900)),
                     ),
                 ],
               ),
@@ -864,7 +875,7 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
           physics: const NeverScrollableScrollPhysics(),
           mainAxisSpacing: 12,
           crossAxisSpacing: 12,
-          childAspectRatio: 0.9,
+          childAspectRatio: 0.85,
           children: [
             _buildDocCard(
               title: 'SCAN CIN',
@@ -957,12 +968,16 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white70,
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white70,
+                  ),
                 ),
               ),
               if (hasImage)
@@ -1025,12 +1040,16 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
       children: [
         Icon(icon, size: 16, color: AppColors2026.cyanBright),
         const SizedBox(width: 8),
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0.4,
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.4,
+            ),
           ),
         ),
       ],
