@@ -589,31 +589,46 @@ class _RepairsScreenState extends State<RepairsScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Coût : ${fmt.format(rep.cout.round())} DH',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors2026.goldLight,
-                            ),
-                          ),
-                          Text(
-                            'Payé : ${fmt.format(rep.paye.round())} DH',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors2026.emeraldNeon,
-                            ),
-                          ),
-                          if (rep.dette > 0)
-                            Text(
-                              'Reste : ${fmt.format(rep.dette.round())} DH',
+                          Flexible(
+                            child: Text(
+                              'Coût : ${fmt.format(rep.cout.round())} DH',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors2026.roseLaser,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w900,
+                                color: AppColors2026.goldLight,
                               ),
                             ),
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              'Payé : ${fmt.format(rep.paye.round())} DH',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors2026.emeraldNeon,
+                              ),
+                            ),
+                          ),
+                          if (rep.dette > 0) ...[
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                'Reste : ${fmt.format(rep.dette.round())} DH',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors2026.roseLaser,
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),

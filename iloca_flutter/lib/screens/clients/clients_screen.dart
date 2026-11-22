@@ -305,6 +305,8 @@ class _ClientsScreenState extends State<ClientsScreen> {
                                     children: [
                                       Text(
                                         client.fullName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
                                           fontSize: 15,
                                           fontWeight: FontWeight.w900,
@@ -313,6 +315,8 @@ class _ClientsScreenState extends State<ClientsScreen> {
                                       const SizedBox(height: 2),
                                       Text(
                                         '${client.customerType} • ${client.nationality}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
                                           fontSize: 11,
                                           color: AppColors2026.textSecondary,

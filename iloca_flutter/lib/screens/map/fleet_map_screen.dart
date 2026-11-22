@@ -25,7 +25,7 @@ class FleetMapScreen extends StatefulWidget {
 class _FleetMapScreenState extends State<FleetMapScreen> {
   final MapController _mapController = MapController();
 
-  String _mapLayerId = 'cyber_dark';
+  String _mapLayerId = 'google_roadmap';
   String? _selectedDeviceId;
   String? _followedDeviceId; // Activer Suivi & Traceur (EN DIRECT)
   bool _cardHidden = false;
@@ -622,88 +622,102 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
           right: 12,
           child: Row(
             children: [
-              GestureDetector(
-                onTap: () => setState(() => _showFleetSheet = !_showFleetSheet),
-                child: SpatialGlassCard(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 10,
-                  ),
-                  borderRadius: 16,
-                  borderColor: _showFleetSheet
-                      ? AppColors2026.cyanNeon.withOpacity(0.6)
-                      : null,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        LucideIcons.car,
-                        color: AppColors2026.cyanNeon,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Parc (${devices.length})',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 13,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors2026.emeraldNeon.withOpacity(0.18),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          '$onlineCount ON',
-                          style: const TextStyle(
-                            color: AppColors2026.emeraldNeon,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const Spacer(),
-              if (_followedDeviceId != null)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
+              Flexible(
+                child: GestureDetector(
+                  onTap: () => setState(() => _showFleetSheet = !_showFleetSheet),
                   child: SpatialGlassCard(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 9,
                     ),
-                    borderRadius: 999,
-                    borderColor: AppColors2026.roseLaser.withOpacity(0.6),
-                    glowColor: AppColors2026.roseLaser,
+                    borderRadius: 16,
+                    borderColor: _showFleetSheet
+                        ? AppColors2026.cyanNeon.withOpacity(0.6)
+                        : null,
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const AnimatedPulseDot(
-                          color: AppColors2026.roseLaser,
-                          size: 8,
+                        const Icon(
+                          LucideIcons.car,
+                          color: AppColors2026.cyanNeon,
+                          size: 16,
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'SUIVI & TRACEUR (${_liveTrailPoints.length} pts)',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 11,
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            'Parc (${devices.length})',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors2026.emeraldNeon.withOpacity(0.18),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            '$onlineCount ON',
+                            style: const TextStyle(
+                              color: AppColors2026.emeraldNeon,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
                 ),
+              ),
+              const SizedBox(width: 8),
+              if (_followedDeviceId != null)
+                Flexible(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: SpatialGlassCard(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      borderRadius: 999,
+                      borderColor: AppColors2026.roseLaser.withOpacity(0.6),
+                      glowColor: AppColors2026.roseLaser,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const AnimatedPulseDot(
+                            color: AppColors2026.roseLaser,
+                            size: 8,
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              'SUIVI (${_liveTrailPoints.length})',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 10.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              else
+                const Spacer(),
               SpatialGlassCard(
                 padding: const EdgeInsets.all(10),
                 borderRadius: 14,
@@ -731,8 +745,14 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
         Positioned(
           right: 12,
           top: 66,
-          child: Column(
-            children: [
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.44,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
               _buildDockButton(
                 icon: LucideIcons.plus,
                 tooltip: 'Zoom avant',
@@ -824,6 +844,8 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
               ],
             ],
           ),
+            ),
+          ),
         ),
 
         // ── 4. SELECTED VEHICLE TELEMETRY CARD (OR COLLAPSED PILL) ──
@@ -901,8 +923,8 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
 
     return Marker(
       point: LatLng(device.lat, device.lng),
-      width: isSelected ? 140 : 115,
-      height: isSelected ? 66 : 54,
+      width: isSelected ? 148 : 120,
+      height: isSelected ? 74 : 62,
       child: GestureDetector(
         onTap: () {
           setState(() {
@@ -1033,13 +1055,17 @@ class _FleetMapScreenState extends State<FleetMapScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'TÉLÉMÉTRIE LIVE',
-                style: TextStyle(
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors2026.goldLight,
-                  letterSpacing: 0.9,
+              const Flexible(
+                child: Text(
+                  'TÉLÉMÉTRIE LIVE',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors2026.goldLight,
+                    letterSpacing: 0.9,
+                  ),
                 ),
               ),
               Container(

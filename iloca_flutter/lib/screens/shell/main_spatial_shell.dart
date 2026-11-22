@@ -204,51 +204,59 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 30,
-                        height: 30,
-                        decoration: BoxDecoration(
-                          color: AppColors2026.gold.withOpacity(0.16),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: AppColors2026.gold.withOpacity(0.42),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: AppColors2026.gold.withOpacity(0.16),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: AppColors2026.gold.withOpacity(0.42),
+                            ),
                           ),
-                        ),
-                        child: const Center(
-                          child: Text(
-                            '✦',
-                            style: TextStyle(
-                              color: AppColors2026.goldLight,
-                              fontSize: 13,
+                          child: const Center(
+                            child: Text(
+                              '✦',
+                              style: TextStyle(
+                                color: AppColors2026.goldLight,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'CRÉATION RAPIDE VIP',
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors2026.goldLight,
-                              letterSpacing: 1.0,
-                            ),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'CRÉATION RAPIDE VIP',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w900,
+                                  color: AppColors2026.goldLight,
+                                  letterSpacing: 1.0,
+                                ),
+                              ),
+                              Text(
+                                'Actions instantanées 3D • Cloud Sync',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: AppColors2026.textSecondary,
+                                ),
+                              ),
+                            ],
                           ),
-                          Text(
-                            'Actions instantanées 3D • Cloud Sync',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: AppColors2026.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                        ),
+                      ],
+                    ),
                   ),
                   IconButton(
                     onPressed: () => Navigator.pop(ctx),
@@ -421,53 +429,61 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 30,
-                        height: 30,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF2E2410), Color(0xFF131620)],
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF2E2410), Color(0xFF131620)],
+                            ),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: AppColors2026.gold.withOpacity(0.45),
+                            ),
                           ),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: AppColors2026.gold.withOpacity(0.45),
-                          ),
-                        ),
-                        child: const Center(
-                          child: Text(
-                            '✦',
-                            style: TextStyle(
-                              color: AppColors2026.goldLight,
-                              fontSize: 13,
+                          child: const Center(
+                            child: Text(
+                              '✦',
+                              style: TextStyle(
+                                color: AppColors2026.goldLight,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'MODULES EXECUTIVE',
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors2026.goldLight,
-                              letterSpacing: 1.2,
-                            ),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'MODULES EXECUTIVE',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w900,
+                                  color: AppColors2026.goldLight,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                              Text(
+                                'Suite de Commandement 3D • Accès Direct',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: AppColors2026.textSecondary,
+                                ),
+                              ),
+                            ],
                           ),
-                          Text(
-                            'Suite de Commandement 3D • Accès Direct',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: AppColors2026.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                        ),
+                      ],
+                    ),
                   ),
                   IconButton(
                     onPressed: () => Navigator.pop(ctx),

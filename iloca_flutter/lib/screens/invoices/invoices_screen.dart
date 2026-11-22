@@ -485,15 +485,19 @@ _Document officiel généré via BonaTours Cockpit._''';
                             ),
                             if (inv.customerICE.isNotEmpty) ...[
                               const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.white10,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  'ICE: ${inv.customerICE}',
-                                  style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600),
+                              Flexible(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white10,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    'ICE: ${inv.customerICE}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600),
+                                  ),
                                 ),
                               ),
                             ],
