@@ -231,7 +231,7 @@ Généré automatiquement par l'application BonaTours.
             physics: const NeverScrollableScrollPhysics(),
             mainAxisSpacing: 10,
             crossAxisSpacing: 10,
-            childAspectRatio: 1.15,
+            childAspectRatio: 0.96,
             children: [
               BentoMetricTile(
                 title: 'Chiffre d\'Affaires',

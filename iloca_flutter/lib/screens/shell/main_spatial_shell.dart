@@ -196,7 +196,7 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (ctx) => SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(18, 14, 18, 22),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -413,7 +413,7 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (ctx) => SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1062,7 +1062,7 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 72,
+          height: 76,
           child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: Row(
@@ -1150,6 +1150,7 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
         onTap: onTap,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Stack(
               clipBehavior: Clip.none,

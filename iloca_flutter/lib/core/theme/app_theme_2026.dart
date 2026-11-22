@@ -144,7 +144,9 @@ class AppTheme2026 {
     }
   }
 
-  static ThemeData get darkSpatialTheme {
+  static final ThemeData darkSpatialTheme = _buildDarkSpatialTheme();
+
+  static ThemeData _buildDarkSpatialTheme() {
     TextTheme baseTextTheme;
     try {
       baseTextTheme = GoogleFonts.plusJakartaSansTextTheme(

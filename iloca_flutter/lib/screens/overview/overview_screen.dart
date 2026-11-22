@@ -857,6 +857,141 @@ class _OverviewScreenState extends State<OverviewScreen>
                       for (int r = 0; r < repeatSets; r++) ...vehicles,
                     ];
 
+                    // Build marquee cards ONCE (not 60 times/sec inside AnimatedBuilder)
+                    final marqueeRow = Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final car in trackCars) ...[
+                          Builder(
+                            builder: (ctx) {
+                              final st = car.status.toLowerCase();
+                              final isAvail = st == 'disponible';
+                              final isMaint = st == 'maintenance';
+                              final dotColor = isAvail
+                                  ? AppColors2026.emeraldNeon
+                                  : isMaint
+                                      ? AppColors2026.roseLaser
+                                      : AppColors2026.amberSolar;
+                              final matchedGps = _matchGpsForVehicle(car, gpsDevices);
+                              final gpsLabel = matchedGps != null
+                                  ? '${matchedGps.speed.round()} km/h'
+                                  : (isAvail
+                                      ? 'Showroom'
+                                      : isMaint
+                                          ? 'Atelier'
+                                          : 'En route');
+
+                              return GestureDetector(
+                                onTap: () {
+                                  if (matchedGps != null) {
+                                    app.selectGpsDevice(matchedGps.id);
+                                  }
+                                  app.setActiveTab(1); // Open GPS Live Map!
+                                },
+                                child: Container(
+                                  width: cardW,
+                                  height: 76,
+                                  margin: const EdgeInsets.only(right: gapW),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: AppColors2026.surfaceSub.withOpacity(0.95),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: Colors.white.withOpacity(0.08),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Stack(
+                                        children: [
+                                          ClipRRect(
+                                            borderRadius: BorderRadius.circular(11),
+                                            child: Container(
+                                              width: 48,
+                                              height: 44,
+                                              color: const Color(0xFF0B0D12),
+                                              child: VehicleImagePreview(
+                                                imageData: car.mainPhoto,
+                                                width: 48,
+                                                height: 44,
+                                                fit: BoxFit.cover,
+                                              ),
+                                            ),
+                                          ),
+                                          Positioned(
+                                            top: 3,
+                                            right: 3,
+                                            child: Container(
+                                              width: 8,
+                                              height: 8,
+                                              decoration: BoxDecoration(
+                                                color: dotColor,
+                                                shape: BoxShape.circle,
+                                                border: Border.all(
+                                                  color: AppColors2026.obsidian,
+                                                  width: 1.3,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(width: 9),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Flexible(
+                                              child: Text(
+                                                car.fullName,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontSize: 10.5,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                            Flexible(
+                                              child: Text(
+                                                '${fmt.format(car.dailyRate.round())} DH/j',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontSize: 9.5,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: AppColors2026.goldLight,
+                                                ),
+                                              ),
+                                            ),
+                                            Flexible(
+                                              child: Text(
+                                                '📍 GPS • $gpsLabel',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontSize: 8.5,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: AppColors2026.emeraldNeon,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ],
+                    );
+
                     return GestureDetector(
                       onTapDown: (_) => _marqueeAnim.stop(canceled: false),
                       onTapUp: (_) {
@@ -875,148 +1010,26 @@ class _OverviewScreenState extends State<OverviewScreen>
                           child: SizedBox(
                             height: 76,
                             width: constraints.maxWidth,
-                          child: AnimatedBuilder(
-                            animation: _marqueeAnim,
-                            builder: (context, child) {
-                              final dx = -(_marqueeAnim.value * singleLoopWidth);
-                              return Stack(
-                                clipBehavior: Clip.hardEdge,
-                                children: [
-                                  Positioned(
-                                    left: dx,
-                                    top: 0,
-                                    bottom: 0,
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        for (final car in trackCars) ...[
-                                          Builder(
-                                            builder: (ctx) {
-                                              final st = car.status.toLowerCase();
-                                              final isAvail = st == 'disponible';
-                                              final isMaint = st == 'maintenance';
-                                              final dotColor = isAvail
-                                                  ? AppColors2026.emeraldNeon
-                                                  : isMaint
-                                                      ? AppColors2026.roseLaser
-                                                      : AppColors2026.amberSolar;
-                                              final matchedGps = _matchGpsForVehicle(car, gpsDevices);
-                                              final gpsLabel = matchedGps != null
-                                                  ? '${matchedGps.speed.round()} km/h'
-                                                  : (isAvail
-                                                      ? 'Showroom'
-                                                      : isMaint
-                                                          ? 'Atelier'
-                                                          : 'En route');
-
-                                              return GestureDetector(
-                                                onTap: () {
-                                                  if (matchedGps != null) {
-                                                    app.selectGpsDevice(matchedGps.id);
-                                                  }
-                                                  app.setActiveTab(1); // Open GPS Live Map!
-                                                },
-                                                child: Container(
-                                                  width: cardW,
-                                                  height: 76,
-                                                  margin: const EdgeInsets.only(right: gapW),
-                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                                  decoration: BoxDecoration(
-                                                    color: AppColors2026.surfaceSub.withOpacity(0.95),
-                                                    borderRadius: BorderRadius.circular(16),
-                                                    border: Border.all(
-                                                      color: Colors.white.withOpacity(0.08),
-                                                    ),
-                                                  ),
-                                                  child: Row(
-                                                    children: [
-                                                      Stack(
-                                                        children: [
-                                                          ClipRRect(
-                                                            borderRadius: BorderRadius.circular(11),
-                                                            child: Container(
-                                                              width: 48,
-                                                              height: 44,
-                                                              color: const Color(0xFF0B0D12),
-                                                              child: VehicleImagePreview(
-                                                                imageData: car.mainPhoto,
-                                                                fit: BoxFit.cover,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                          Positioned(
-                                                            top: 3,
-                                                            right: 3,
-                                                            child: Container(
-                                                              width: 8,
-                                                              height: 8,
-                                                              decoration: BoxDecoration(
-                                                                color: dotColor,
-                                                                shape: BoxShape.circle,
-                                                                border: Border.all(
-                                                                  color: AppColors2026.obsidian,
-                                                                  width: 1.3,
-                                                                ),
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                      const SizedBox(width: 9),
-                                                      Expanded(
-                                                        child: Column(
-                                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                                          mainAxisAlignment: MainAxisAlignment.center,
-                                                          children: [
-                                                            Text(
-                                                              car.fullName,
-                                                              maxLines: 1,
-                                                              overflow: TextOverflow.ellipsis,
-                                                              style: const TextStyle(
-                                                                fontSize: 10.5,
-                                                                fontWeight: FontWeight.w900,
-                                                                color: Colors.white,
-                                                              ),
-                                                            ),
-                                                            Text(
-                                                              '${fmt.format(car.dailyRate.round())} DH/j',
-                                                              style: const TextStyle(
-                                                                fontSize: 9.5,
-                                                                fontWeight: FontWeight.w800,
-                                                                color: AppColors2026.goldLight,
-                                                              ),
-                                                            ),
-                                                            Text(
-                                                              '📍 GPS • $gpsLabel',
-                                                              maxLines: 1,
-                                                              overflow: TextOverflow.ellipsis,
-                                                              style: const TextStyle(
-                                                                fontSize: 8.5,
-                                                                fontWeight: FontWeight.w600,
-                                                                color: AppColors2026.emeraldNeon,
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              );
-                                            },
-                                          ),
-                                        ],
-                                      ],
-                                    ),
+                            child: AnimatedBuilder(
+                              animation: _marqueeAnim,
+                              child: marqueeRow,
+                              builder: (context, child) {
+                                final dx = -(_marqueeAnim.value * singleLoopWidth);
+                                return OverflowBox(
+                                  alignment: Alignment.centerLeft,
+                                  minWidth: 0,
+                                  maxWidth: double.infinity,
+                                  child: Transform.translate(
+                                    offset: Offset(dx, 0),
+                                    child: child,
                                   ),
-                                ],
-                              );
-                            },
+                                );
+                              },
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  );
+                    );
                 },
               ),
             ],
@@ -1047,7 +1060,7 @@ class _OverviewScreenState extends State<OverviewScreen>
       child: Column(
         children: [
           SizedBox(
-            height: 82,
+            height: 94,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisAlignment: MainAxisAlignment.spaceAround,
