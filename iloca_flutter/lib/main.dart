@@ -60,16 +60,24 @@ class _IlocaSpatialApp2026State extends State<IlocaSpatialApp2026> {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: _appState,
-      builder: (context, _) {
-        return MaterialApp(
-          title: 'bonatours',
-          debugShowCheckedModeBanner: false,
-          themeMode: ThemeMode.dark,
-          darkTheme: AppTheme2026.darkSpatialTheme,
-          theme: AppTheme2026.darkSpatialTheme,
-          home: _appState.isAuthenticated
+    return MaterialApp(
+      title: 'bonatours',
+      debugShowCheckedModeBanner: false,
+      themeMode: ThemeMode.dark,
+      darkTheme: AppTheme2026.darkSpatialTheme,
+      theme: AppTheme2026.darkSpatialTheme,
+      builder: (context, child) {
+        final mq = MediaQuery.of(context);
+        final clampedScale = mq.textScaler.scale(1.0).clamp(0.85, 1.02);
+        return MediaQuery(
+          data: mq.copyWith(textScaler: TextScaler.linear(clampedScale)),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+      home: ListenableBuilder(
+        listenable: _appState,
+        builder: (context, _) {
+          return _appState.isAuthenticated
               ? MainSpatialShell(
                   key: const ValueKey('app_main_shell'),
                   appState: _appState,
@@ -77,9 +85,9 @@ class _IlocaSpatialApp2026State extends State<IlocaSpatialApp2026> {
               : LoginScreen(
                   key: const ValueKey('app_login_screen'),
                   appState: _appState,
-                ),
-        );
-      },
+                );
+        },
+      ),
     );
   }
 }

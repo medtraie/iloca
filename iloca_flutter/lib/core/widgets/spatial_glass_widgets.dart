@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../theme/app_theme_2026.dart';
@@ -62,15 +61,13 @@ class SpatialGlassCard extends StatelessWidget {
       ],
     );
 
+    // High-performance Obsidian card without per-frame GPU BackdropFilter blur
     final content = ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
-        child: Container(
-          padding: padding,
-          decoration: decoration,
-          child: child,
-        ),
+      child: Container(
+        padding: padding,
+        decoration: decoration,
+        child: child,
       ),
     );
 
@@ -618,29 +615,33 @@ class _Executive3DTileState extends State<Executive3DTile> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      widget.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                    if (widget.subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        widget.subtitle!,
+                    const SizedBox(height: 8),
+                    Flexible(
+                      child: Text(
+                        widget.label,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.center,
                         style: const TextStyle(
-                          fontSize: 9.5,
-                          color: AppColors2026.textSecondary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ),
+                    if (widget.subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Flexible(
+                        child: Text(
+                          widget.subtitle!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 9,
+                            color: AppColors2026.textSecondary,
+                          ),
                         ),
                       ),
                     ],

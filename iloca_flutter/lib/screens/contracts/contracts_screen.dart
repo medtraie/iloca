@@ -618,7 +618,7 @@ _Merci pour votre confiance en BonaTours Location & Tours._
                 if (_showAnalytics) ...[
                   const SizedBox(height: 8),
                   SizedBox(
-                    height: 68,
+                    height: 82,
                     child: ListView(
                       scrollDirection: Axis.horizontal,
                       children: [

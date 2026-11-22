@@ -5,6 +5,24 @@ import 'package:image_picker/image_picker.dart';
 
 /// Helper widget to render images whether they are base64 strings, network URLs, or fallbacks
 class VehicleImagePreview extends StatelessWidget {
+  static final Map<String, Uint8List> _base64MemoryCache = {};
+
+  static Uint8List? _decodeCachedBase64(String cleanBase64) {
+    final key = '${cleanBase64.length}_${cleanBase64.hashCode}';
+    final cached = _base64MemoryCache[key];
+    if (cached != null) return cached;
+    try {
+      final bytes = base64Decode(cleanBase64);
+      if (_base64MemoryCache.length >= 60) {
+        _base64MemoryCache.remove(_base64MemoryCache.keys.first);
+      }
+      _base64MemoryCache[key] = bytes;
+      return bytes;
+    } catch (_) {
+      return null;
+    }
+  }
+
   final String? imageData;
   final double? width;
   final double? height;
@@ -29,22 +47,24 @@ class VehicleImagePreview extends StatelessWidget {
     if (imageData != null && imageData!.isNotEmpty) {
       final data = imageData!.trim();
       if (data.startsWith('data:image') || data.length > 200) {
-        // Base64 encoded image
-        try {
-          String cleanBase64 = data;
-          if (data.contains(',')) {
-            cleanBase64 = data.split(',').last;
-          }
-          final bytes = base64Decode(cleanBase64);
+        // Base64 encoded image (cached in memory to avoid decoding on every rebuild)
+        String cleanBase64 = data;
+        if (data.contains(',')) {
+          cleanBase64 = data.split(',').last;
+        }
+        final bytes = _decodeCachedBase64(cleanBase64);
+        if (bytes != null) {
+          final targetCacheW = (width != null && width! <= 180) ? 320 : 800;
           imageWidget = Image.memory(
             bytes,
             width: width,
             height: height,
             fit: fit,
+            cacheWidth: targetCacheW,
             gaplessPlayback: true,
             errorBuilder: (_, __, ___) => fallback ?? _defaultPlaceholder(),
           );
-        } catch (_) {
+        } else {
           imageWidget = fallback ?? _defaultPlaceholder();
         }
       } else if (data.startsWith('http://') || data.startsWith('https://')) {

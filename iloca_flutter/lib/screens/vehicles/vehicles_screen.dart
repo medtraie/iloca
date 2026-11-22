@@ -621,24 +621,30 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
                                     mainAxisAlignment:
                                         MainAxisAlignment.spaceBetween,
                                     children: [
-                                      if (!hasPhoto)
-                                        Text(
-                                          '${currencyFmt.format(v.dailyRate.round())} DH / jour',
-                                          style: const TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w900,
-                                            color: AppColors2026.goldLight,
-                                          ),
-                                        )
-                                      else
-                                        Text(
-                                          'Disponibilité : ${_statusLabel(v.status)}',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w800,
-                                            color: stColor,
-                                          ),
-                                        ),
+                                      Expanded(
+                                        child: !hasPhoto
+                                            ? Text(
+                                                '${currencyFmt.format(v.dailyRate.round())} DH / jour',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: AppColors2026.goldLight,
+                                                ),
+                                              )
+                                            : Text(
+                                                'Disponibilité : ${_statusLabel(v.status)}',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: stColor,
+                                                ),
+                                              ),
+                                      ),
+                                      const SizedBox(width: 6),
                                       Row(
                                         children: [
                                           if (v.hasGps ||

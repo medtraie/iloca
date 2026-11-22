@@ -869,11 +869,12 @@ class _OverviewScreenState extends State<OverviewScreen>
                           _marqueeAnim.repeat();
                         }
                       },
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: SizedBox(
-                          height: 68,
-                          width: constraints.maxWidth,
+                      child: RepaintBoundary(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: SizedBox(
+                            height: 76,
+                            width: constraints.maxWidth,
                           child: AnimatedBuilder(
                             animation: _marqueeAnim,
                             builder: (context, child) {
@@ -917,9 +918,9 @@ class _OverviewScreenState extends State<OverviewScreen>
                                                 },
                                                 child: Container(
                                                   width: cardW,
-                                                  height: 68,
+                                                  height: 76,
                                                   margin: const EdgeInsets.only(right: gapW),
-                                                  padding: const EdgeInsets.all(8),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                                                   decoration: BoxDecoration(
                                                     color: AppColors2026.surfaceSub.withOpacity(0.95),
                                                     borderRadius: BorderRadius.circular(16),
@@ -1014,9 +1015,10 @@ class _OverviewScreenState extends State<OverviewScreen>
                           ),
                         ),
                       ),
-                    );
-                  },
-                ),
+                    ),
+                  );
+                },
+              ),
             ],
           ),
         ],
@@ -1199,19 +1201,21 @@ class _OverviewScreenState extends State<OverviewScreen>
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            RotationTransition(
-                              turns: _radarCtrl,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: SweepGradient(
-                                    colors: [
-                                      AppColors2026.emeraldNeon.withOpacity(0.32),
-                                      AppColors2026.gold.withOpacity(0.14),
-                                      Colors.transparent,
-                                      Colors.transparent,
-                                    ],
-                                    stops: const [0.0, 0.14, 0.28, 1.0],
+                            RepaintBoundary(
+                              child: RotationTransition(
+                                turns: _radarCtrl,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: SweepGradient(
+                                      colors: [
+                                        AppColors2026.emeraldNeon.withOpacity(0.32),
+                                        AppColors2026.gold.withOpacity(0.14),
+                                        Colors.transparent,
+                                        Colors.transparent,
+                                      ],
+                                      stops: const [0.0, 0.14, 0.28, 1.0],
+                                    ),
                                   ),
                                 ),
                               ),

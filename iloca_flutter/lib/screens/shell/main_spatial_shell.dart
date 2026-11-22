@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -116,12 +115,17 @@ class MainSpatialShell extends StatefulWidget {
 class _MainSpatialShellState extends State<MainSpatialShell> {
   Timer? _clockTimer;
   DateTime _now = DateTime.now();
+  final Set<int> _visitedTabs = {0};
 
   @override
   void initState() {
     super.initState();
-    _clockTimer = Timer.periodic(const Duration(seconds: 20), (_) {
-      if (mounted) setState(() => _now = DateTime.now());
+    _clockTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (!mounted) return;
+      final next = DateTime.now();
+      if (next.minute != _now.minute) {
+        setState(() => _now = next);
+      }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted &&
@@ -262,7 +266,7 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
                 crossAxisCount: 2,
                 mainAxisSpacing: 12,
                 crossAxisSpacing: 12,
-                childAspectRatio: 1.18,
+                childAspectRatio: 1.04,
                 children: [
                   Executive3DTile(
                     label: 'Contrat Express',
@@ -481,7 +485,7 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
                 crossAxisCount: 3,
                 mainAxisSpacing: 10,
                 crossAxisSpacing: 10,
-                childAspectRatio: 0.92,
+                childAspectRatio: 0.80,
                 children: [
                   if (state.isSectionAllowed('Contrats'))
                     Executive3DTile(
@@ -768,20 +772,34 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
                             !appState.isSyncing)
                           _buildSyncErrorBanner(appState),
                         Expanded(
-                          child: IndexedStack(
-                            index: currentIndex,
-                            children: [
-                              OverviewScreen(appState: appState),
-                              FleetMapScreen(appState: appState),
-                              VehiclesScreen(appState: appState),
-                              ContractsScreen(appState: appState),
-                              ClientsScreen(appState: appState),
-                              InvoicesScreen(appState: appState),
-                              RepairsScreen(appState: appState),
-                              ExpensesScreen(appState: appState),
-                              ReportsScreen(appState: appState),
-                              AlertsScreen(appState: appState),
-                            ],
+                          child: Builder(
+                            builder: (_) {
+                              _visitedTabs.add(currentIndex);
+                              final screens = <Widget>[
+                                OverviewScreen(appState: appState),
+                                FleetMapScreen(appState: appState),
+                                VehiclesScreen(appState: appState),
+                                ContractsScreen(appState: appState),
+                                ClientsScreen(appState: appState),
+                                InvoicesScreen(appState: appState),
+                                RepairsScreen(appState: appState),
+                                ExpensesScreen(appState: appState),
+                                ReportsScreen(appState: appState),
+                                AlertsScreen(appState: appState),
+                              ];
+                              return IndexedStack(
+                                index: currentIndex,
+                                children: [
+                                  for (int i = 0; i < screens.length; i++)
+                                    _visitedTabs.contains(i)
+                                        ? TickerMode(
+                                            enabled: currentIndex == i,
+                                            child: screens[i],
+                                          )
+                                        : const SizedBox.shrink(),
+                                ],
+                              );
+                            },
                           ),
                         ),
                       ],
@@ -849,20 +867,17 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
         ? SupabaseSyncService.currentCompanyName
         : 'BOUNATOURS';
 
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: AppColors2026.surfaceHeader,
-            border: Border(
-              bottom: BorderSide(
-                color: AppColors2026.gold.withOpacity(0.16),
-              ),
-            ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xF507080C),
+        border: Border(
+          bottom: BorderSide(
+            color: AppColors2026.gold.withOpacity(0.16),
           ),
-          child: Row(
+        ),
+      ),
+      child: Row(
             children: [
               // Brand Crest & Playfair Wordmark (Tap to return to Cockpit)
               Expanded(
@@ -1018,8 +1033,6 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
               ),
             ],
           ),
-        ),
-      ),
     );
   }
 
@@ -1046,14 +1059,11 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
           ),
         ],
       ),
-      child: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-          child: SafeArea(
-            top: false,
-            child: SizedBox(
-              height: 68,
-              child: Padding(
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 72,
+          child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -1123,8 +1133,6 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
               ),
             ),
           ),
-        ),
-      ),
     );
   }
 
@@ -1166,16 +1174,21 @@ class _MainSpatialShellState extends State<MainSpatialShell> {
                   ),
               ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                color: color,
-                letterSpacing: 0.2,
+            const SizedBox(height: 3),
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                    color: color,
+                    letterSpacing: 0.15,
+                  ),
+                ),
               ),
             ),
           ],
